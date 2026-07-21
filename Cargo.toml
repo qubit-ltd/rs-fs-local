@@ -1,0 +1,31 @@
+[package]
+name = "qubit-fs-local"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+authors = ["Haixing Hu <starfish.hu@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/qubit-ltd/rs-fs-local"
+description = "Local filesystem provider for qubit-fs"
+homepage = "https://github.com/qubit-ltd/rs-fs-local"
+documentation = "https://docs.rs/qubit-fs-local"
+readme = "README.md"
+keywords = ["filesystem", "local", "provider", "qubit"]
+categories = ["filesystem"]
+
+[lib]
+name = "qubit_fs_local"
+doctest = true
+
+[dependencies]
+log = "0.4"
+parking_lot = "0.12"
+qubit-fs = { path = "../rs-fs", version = "0.2" }
+qubit-local-files = { path = "../rs-local-files", version = "0.7" }
+qubit-spi = { path = "../rs-spi", version = "0.9" }
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
