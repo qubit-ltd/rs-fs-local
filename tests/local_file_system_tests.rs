@@ -16,6 +16,8 @@ use std::os::unix::{
 };
 
 use qubit_fs::{
+    AchievedAtomicity,
+    AtomicityRequirement,
     FileKind,
     FileSystem,
     FileSystemCapabilities,
@@ -26,11 +28,13 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
     FsPath,
-    NativePathCodec,
-    OsStrPathCodec,
+    PublicationMethod,
     ReadOptions,
+    WriteDisposition,
+    WriteOptions,
 };
 use qubit_fs_local::LocalFileSystem;
+use qubit_io::Output;
 use qubit_spi::ProviderId;
 
 /// Converts a native test path into the canonical filesystem path form.
@@ -48,10 +52,7 @@ use qubit_spi::ProviderId;
 /// Panics when the test fixture path cannot be represented as a valid
 /// canonical filesystem path.
 fn canonical_path(path: &Path) -> FsPath {
-    let text = OsStrPathCodec
-        .decode(path.as_os_str())
-        .expect("decode native test path");
-    FsPath::parse(text.as_ref()).expect("parse canonical test path")
+    LocalFileSystem::path_from_native(path).expect("decode native test path")
 }
 
 /// Confirms canonical percent escapes are decoded before native filesystem I/O.
@@ -173,15 +174,208 @@ fn test_stat_rejects_relative_native_path() {
     );
 }
 
-/// Confirms the host implementation advertises only optional read capability.
+/// Confirms Windows-native separators cannot be smuggled through one canonical
+/// path component.
+#[cfg(windows)]
 #[test]
-fn test_host_advertises_read_capability() {
+fn test_stat_rejects_backslash_inside_canonical_component() {
+    let fs = LocalFileSystem::host();
+    let path = FsPath::parse("/C:/safe/..\\outside")
+        .expect("parse canonical path text");
+
+    let error = fs
+        .stat(&path)
+        .expect_err("reject embedded Windows separator");
+
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
+    assert_eq!(error.operation(), FsOperation::Stat);
+    assert_eq!(error.path(), Some(&path));
+}
+
+/// Confirms the host implementation advertises supported read and write
+/// contracts.
+#[test]
+fn test_host_advertises_read_and_write_capabilities() {
     let fs = LocalFileSystem::host();
 
     assert_eq!(
         fs.capabilities(),
-        FileSystemCapabilities::default().with(FileSystemCapability::Read),
+        FileSystemCapabilities::default()
+            .with(FileSystemCapability::Read)
+            .with(FileSystemCapability::Write)
+            .with(FileSystemCapability::Append)
+            .with(FileSystemCapability::AtomicReplace),
     );
+}
+
+/// Confirms the default preferred write uses atomic whole-file publication.
+#[test]
+fn test_write_all_atomically_replaces_local_file() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    std::fs::write(&file_path, b"old").expect("write old contents");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+
+    let outcome = fs.write_all(&path, b"replacement").expect("write file");
+
+    assert_eq!(
+        b"replacement",
+        std::fs::read(&file_path).unwrap().as_slice()
+    );
+    assert_eq!(Some(11), outcome.bytes_written);
+    assert_eq!(AchievedAtomicity::Atomic, outcome.atomicity);
+    assert_eq!(PublicationMethod::AtomicRename, outcome.method);
+}
+
+/// Confirms explicitly non-atomic replacement writes directly to the target.
+#[test]
+fn test_open_writer_supports_direct_replacement() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let options = WriteOptions {
+        atomicity: AtomicityRequirement::NotRequired,
+        ..WriteOptions::default()
+    };
+
+    let mut writer =
+        fs.open_writer(&path, options).expect("open direct writer");
+    writer
+        .write_fully(b"direct")
+        .expect("write direct contents");
+    let outcome = writer.commit().expect("commit direct write");
+
+    assert_eq!(b"direct", std::fs::read(&file_path).unwrap().as_slice());
+    assert_eq!(Some(6), outcome.bytes_written);
+    assert_eq!(AchievedAtomicity::NonAtomic, outcome.atomicity);
+    assert_eq!(PublicationMethod::Direct, outcome.method);
+}
+
+/// Confirms append sessions preserve existing bytes and report direct output.
+#[test]
+fn test_open_writer_appends_to_existing_file() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    std::fs::write(&file_path, b"first").expect("write initial contents");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let options = WriteOptions {
+        disposition: WriteDisposition::Append,
+        atomicity: AtomicityRequirement::NotRequired,
+        ..WriteOptions::default()
+    };
+
+    let mut writer =
+        fs.open_writer(&path, options).expect("open append writer");
+    writer.write_fully(b"-second").expect("append contents");
+    let outcome = writer.commit().expect("commit append");
+
+    assert_eq!(
+        b"first-second",
+        std::fs::read(&file_path).unwrap().as_slice()
+    );
+    assert_eq!(Some(7), outcome.bytes_written);
+    assert_eq!(PublicationMethod::Direct, outcome.method);
+}
+
+/// Confirms create-new refuses to truncate an existing destination.
+#[test]
+fn test_open_writer_create_new_preserves_existing_file() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    std::fs::write(&file_path, b"original").expect("write original contents");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let options = WriteOptions {
+        disposition: WriteDisposition::CreateNew,
+        atomicity: AtomicityRequirement::NotRequired,
+        ..WriteOptions::default()
+    };
+
+    let error = fs
+        .open_writer(&path, options)
+        .expect_err("existing destination should be rejected");
+
+    assert_eq!(FsErrorKind::AlreadyExists, error.kind());
+    assert_eq!(b"original", std::fs::read(&file_path).unwrap().as_slice());
+}
+
+/// Confirms parent creation follows the provider-neutral write option.
+#[test]
+fn test_open_writer_respects_create_parent() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let parent = temporary_directory.path().join("missing").join("nested");
+    let file_path = parent.join("item.txt");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .open_writer(&path, WriteOptions::default())
+        .expect_err("missing parent should fail");
+    assert_eq!(FsErrorKind::NotFound, error.kind());
+    assert!(!parent.exists());
+
+    let options = WriteOptions {
+        create_parent: true,
+        ..WriteOptions::default()
+    };
+    let mut writer = fs.open_writer(&path, options).expect("create parents");
+    writer.write_fully(b"payload").expect("write payload");
+    writer.commit().expect("commit payload");
+    assert_eq!(b"payload", std::fs::read(&file_path).unwrap().as_slice());
+}
+
+/// Confirms required atomic create-new is rejected before filesystem effects.
+#[test]
+fn test_open_writer_rejects_required_atomic_create_new_before_io() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("missing").join("item.txt");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let options = WriteOptions {
+        create_parent: true,
+        disposition: WriteDisposition::CreateNew,
+        atomicity: AtomicityRequirement::Required,
+        ..WriteOptions::default()
+    };
+
+    let error = fs
+        .open_writer(&path, options)
+        .expect_err("atomic create-new is unsupported");
+
+    assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
+    assert_eq!(FsOperation::OpenWriter, error.operation());
+    assert!(!file_path.parent().unwrap().exists());
+}
+
+/// Confirms unsupported content metadata is rejected before opening a file.
+#[test]
+fn test_open_writer_rejects_content_type_before_io() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("missing").join("item.txt");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let options = WriteOptions {
+        create_parent: true,
+        content_type: Some("text/plain".to_owned()),
+        ..WriteOptions::default()
+    };
+
+    let error = fs
+        .open_writer(&path, options)
+        .expect_err("content type is unsupported");
+
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
+    assert!(!file_path.parent().unwrap().exists());
 }
 
 /// Confirms local limits are represented explicitly instead of omitted.

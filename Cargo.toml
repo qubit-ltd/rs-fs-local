@@ -31,6 +31,7 @@ qubit-local-files = { path = "../rs-local-files", version = "0.7" }
 qubit-spi = { path = "../rs-spi", version = "0.9" }
 
 [dev-dependencies]
+qubit-io = { path = "../rs-io", version = "0.14" }
 qubit-metadata = { path = "../rs-metadata", version = "0.9" }
 tempfile = "3.27"
 

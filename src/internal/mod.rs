@@ -5,13 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Local filesystem provider for [`qubit_fs`].
+//! Private local provider implementation types.
 
-#![deny(missing_docs)]
+mod local_file_write_session;
 
-mod internal;
-mod local_file_system;
-mod local_file_system_provider;
-
-pub use local_file_system::LocalFileSystem;
-pub use local_file_system_provider::LocalFileSystemProvider;
+pub(crate) use local_file_write_session::LocalFileWriteSession;

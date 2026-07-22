@@ -136,6 +136,7 @@ fn test_registry_reads_percent_encoded_windows_file_uri() {
 
     let resource = registry.resource_uri(&uri).expect("resolve local resource");
 
+    assert!(resource.path().is_absolute());
     assert_eq!(resource.read_all(64).expect("read resource"), b"payload");
 }
 

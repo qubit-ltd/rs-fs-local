@@ -10,10 +10,15 @@
 use std::{
     fs,
     io,
-    path::PathBuf,
+    path::{
+        Component,
+        Path,
+        PathBuf,
+    },
 };
 
 use qubit_fs::{
+    AtomicityRequirement,
     FileKind,
     FileLocation,
     FileMetadata,
@@ -25,22 +30,31 @@ use qubit_fs::{
     FileSystemInfo,
     FileSystemLimits,
     FileSystemProperties,
+    FileWriter,
     FsError,
     FsErrorKind,
     FsOperation,
     FsPath,
     FsResult,
     NativePathCodec,
+    NativePathCodecError,
     OpenedFileInfo,
     OsStrPathCodec,
     PathSemantics,
     ReadOptions,
+    WriteDisposition,
+    WriteOptions,
 };
 use qubit_local_files::{
     FileReadOptions,
+    FileWriteMode,
+    FileWriteOptions,
+    LocalAtomicWriteOptions,
     LocalFiles,
 };
 use qubit_spi::ProviderId;
+
+use crate::internal::LocalFileWriteSession;
 
 /// Provides the synchronous `file:` filesystem implementation.
 ///
@@ -79,9 +93,51 @@ impl LocalFileSystem {
         Self {
             info,
             capabilities: FileSystemCapabilities::default()
-                .with(FileSystemCapability::Read),
+                .with(FileSystemCapability::Read)
+                .with(FileSystemCapability::Write)
+                .with(FileSystemCapability::Append)
+                .with(FileSystemCapability::AtomicReplace),
             limits: FileSystemLimits::unknown(),
         }
+    }
+
+    /// Converts one absolute native path into canonical filesystem path text.
+    ///
+    /// Native roots and separators are interpreted by [`Path::components`],
+    /// while each ordinary component is decoded independently. On Windows only
+    /// drive-letter paths are accepted; UNC and device prefixes remain outside
+    /// this provider's host-path contract.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute path in the current operating system's native form.
+    ///
+    /// # Returns
+    ///
+    /// An absolute canonical [`FsPath`] using `/` component separators.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-path error when `path` is relative, contains a parent
+    /// component, uses an unsupported native prefix, or a component cannot be
+    /// decoded losslessly.
+    pub fn path_from_native(path: &Path) -> FsResult<FsPath> {
+        if !path.is_absolute() {
+            return Err(Self::invalid_native_path(
+                FsOperation::ParsePath,
+                "local filesystem path must be absolute",
+            ));
+        }
+        let canonical = Self::decode_native_components(path)?;
+        FsPath::parse(&canonical).map_err(|error| {
+            FsError::with_source(
+                FsErrorKind::InvalidPath,
+                FsOperation::ParsePath,
+                "native path is not a valid canonical filesystem path",
+                error,
+            )
+            .with_provider(Self::provider_id())
+        })
     }
 
     /// Returns the identifier shared by the filesystem and its provider.
@@ -120,20 +176,259 @@ impl LocalFileSystem {
     /// Panics only if validated [`FsPath`] text violates the native path codec
     /// invariant.
     fn native_path(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
-        let native_path = OsStrPathCodec
-            .encode(path.as_str())
-            .map(|path| PathBuf::from(path.into_owned()))
-            .expect("validated FsPath text must encode as a native path");
-        if !native_path.is_absolute() {
-            return Err(FsError::new(
-                FsErrorKind::InvalidPath,
+        if !path.is_absolute() {
+            return Err(Self::invalid_native_path(
                 operation,
                 "local filesystem path must be absolute",
             )
-            .with_path(path.clone())
-            .with_provider(Self::provider_id()));
+            .with_path(path.clone()));
         }
-        Ok(native_path)
+        Self::encode_canonical_components(operation, path)
+    }
+
+    /// Decodes native components without allowing lexical parent traversal.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Validated absolute native path.
+    ///
+    /// # Returns
+    ///
+    /// Canonical `/`-separated path text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-path error for parent components, unsupported native
+    /// prefixes, or lossless codec failures.
+    fn decode_native_components(path: &Path) -> FsResult<String> {
+        let mut canonical = String::new();
+        for component in path.components() {
+            match component {
+                Component::Prefix(prefix) => {
+                    Self::decode_native_prefix(&mut canonical, prefix)?;
+                }
+                Component::RootDir | Component::CurDir => {}
+                Component::ParentDir => {
+                    return Err(Self::invalid_native_path(
+                        FsOperation::ParsePath,
+                        "native path must not contain parent traversal",
+                    ));
+                }
+                Component::Normal(component) => {
+                    let component = OsStrPathCodec.decode(component).map_err(
+                        |error| Self::native_codec_error(
+                            FsOperation::ParsePath,
+                            "native path component cannot be decoded losslessly",
+                            error,
+                        ),
+                    )?;
+                    if canonical.is_empty() || !canonical.ends_with('/') {
+                        canonical.push('/');
+                    }
+                    canonical.push_str(component.as_ref());
+                }
+            }
+        }
+        if canonical.is_empty() {
+            canonical.push('/');
+        }
+        Ok(canonical)
+    }
+
+    /// Adds an operating-system prefix to canonical path text.
+    ///
+    /// # Parameters
+    ///
+    /// * `canonical` - Canonical text under construction.
+    /// * `prefix` - Native path prefix reported by [`Path::components`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-path error when the current platform reports a prefix
+    /// that this provider does not support.
+    #[cfg(windows)]
+    fn decode_native_prefix(
+        canonical: &mut String,
+        prefix: std::path::PrefixComponent<'_>,
+    ) -> FsResult<()> {
+        use std::path::Prefix;
+
+        let drive = match prefix.kind() {
+            Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) => drive,
+            _ => {
+                return Err(Self::invalid_native_path(
+                    FsOperation::ParsePath,
+                    "local filesystem path uses an unsupported Windows prefix",
+                ));
+            }
+        };
+        canonical.push('/');
+        canonical.push(char::from(drive).to_ascii_uppercase());
+        canonical.push(':');
+        Ok(())
+    }
+
+    /// Rejects native prefixes on platforms where they are not meaningful.
+    ///
+    /// # Parameters
+    ///
+    /// * `canonical` - Canonical text under construction.
+    /// * `prefix` - Unexpected native prefix.
+    ///
+    /// # Errors
+    ///
+    /// Always returns an invalid-path error.
+    #[cfg(not(windows))]
+    fn decode_native_prefix(
+        _canonical: &mut String,
+        _prefix: std::path::PrefixComponent<'_>,
+    ) -> FsResult<()> {
+        Err(Self::invalid_native_path(
+            FsOperation::ParsePath,
+            "local filesystem path uses an unsupported native prefix",
+        ))
+    }
+
+    /// Encodes canonical components into a native absolute path.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation` - Public filesystem operation using the path.
+    /// * `path` - Absolute canonical filesystem path.
+    ///
+    /// # Returns
+    ///
+    /// Native path safe to pass to local filesystem APIs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-path error when the canonical root is unsupported or
+    /// a component cannot be encoded without changing its boundary.
+    #[cfg(not(windows))]
+    fn encode_canonical_components(
+        operation: FsOperation,
+        path: &FsPath,
+    ) -> FsResult<PathBuf> {
+        let mut native = PathBuf::from("/");
+        for component in
+            path.as_str().split('/').filter(|value| !value.is_empty())
+        {
+            let component =
+                OsStrPathCodec.encode(component).map_err(|error| {
+                    Self::native_codec_error(
+                        operation,
+                        "canonical path component cannot be encoded losslessly",
+                        error,
+                    )
+                    .with_path(path.clone())
+                })?;
+            let component: &std::ffi::OsStr = component.as_ref();
+            native.push(component);
+        }
+        Ok(native)
+    }
+
+    /// Encodes a canonical Windows drive path component by component.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation` - Public filesystem operation using the path.
+    /// * `path` - Absolute canonical filesystem path.
+    ///
+    /// # Returns
+    ///
+    /// Native drive path safe to pass to Windows filesystem APIs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-path error for a missing drive prefix or for a
+    /// component containing a native separator.
+    #[cfg(windows)]
+    fn encode_canonical_components(
+        operation: FsOperation,
+        path: &FsPath,
+    ) -> FsResult<PathBuf> {
+        let mut components =
+            path.as_str().split('/').filter(|value| !value.is_empty());
+        let drive = components.next().unwrap_or_default();
+        let drive_bytes = drive.as_bytes();
+        if drive_bytes.len() != 2
+            || !drive_bytes[0].is_ascii_alphabetic()
+            || drive_bytes[1] != b':'
+        {
+            return Err(Self::invalid_native_path(
+                operation,
+                "local Windows path must begin with an absolute drive prefix",
+            )
+            .with_path(path.clone()));
+        }
+        let mut native = PathBuf::from(format!(
+            "{}:\\",
+            char::from(drive_bytes[0]).to_ascii_uppercase(),
+        ));
+        for component in components {
+            if component.contains('\\') {
+                return Err(Self::invalid_native_path(
+                    operation,
+                    "canonical path component contains a Windows separator",
+                )
+                .with_path(path.clone()));
+            }
+            let component =
+                OsStrPathCodec.encode(component).map_err(|error| {
+                    Self::native_codec_error(
+                        operation,
+                        "canonical path component cannot be encoded losslessly",
+                        error,
+                    )
+                    .with_path(path.clone())
+                })?;
+            let component: &std::ffi::OsStr = component.as_ref();
+            native.push(component);
+        }
+        Ok(native)
+    }
+
+    /// Creates a provider-aware invalid native path error.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation` - Operation that rejected the path.
+    /// * `message` - Stable non-sensitive rejection reason.
+    ///
+    /// # Returns
+    ///
+    /// Invalid-path error carrying the local provider id.
+    #[inline]
+    fn invalid_native_path(operation: FsOperation, message: &str) -> FsError {
+        FsError::new(FsErrorKind::InvalidPath, operation, message)
+            .with_provider(Self::provider_id())
+    }
+
+    /// Creates a provider-aware native codec error.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation` - Operation that failed during conversion.
+    /// * `message` - Stable non-sensitive failure description.
+    /// * `error` - Lossless native codec failure retained as source.
+    ///
+    /// # Returns
+    ///
+    /// Invalid-path error carrying provider and source context.
+    #[inline]
+    fn native_codec_error(
+        operation: FsOperation,
+        message: &str,
+        error: NativePathCodecError,
+    ) -> FsError {
+        FsError::with_source(
+            FsErrorKind::InvalidPath,
+            operation,
+            message,
+            error,
+        )
+        .with_provider(Self::provider_id())
     }
 
     /// Converts one native metadata result into provider-neutral metadata.
@@ -202,7 +497,8 @@ impl FileSystemProperties for LocalFileSystem {
     ///
     /// # Returns
     ///
-    /// The `Read` capability snapshot fixed at construction time.
+    /// The read, write, append, and atomic-replace capability snapshot fixed
+    /// at construction time.
     #[inline(always)]
     fn capabilities(&self) -> FileSystemCapabilities {
         self.capabilities
@@ -261,6 +557,109 @@ impl FileSystem for LocalFileSystem {
         let location = FileLocation::new(self.info.id().clone(), path.clone());
         let info = OpenedFileInfo::new(location);
         Ok(FileReader::new(reader, info))
+    }
+
+    /// Opens a synchronous local file write session.
+    ///
+    /// Preferred and required create-or-replace writes use same-directory
+    /// atomic publication. Explicitly non-atomic replacement, append, and
+    /// create-new requests use direct native writers.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute provider-local destination path.
+    /// * `options` - Required disposition, atomicity, and parent policy.
+    ///
+    /// # Returns
+    /// An open writer bound to the requested local filesystem location.
+    ///
+    /// # Errors
+    ///
+    /// Returns an option or requirement error before side effects when the
+    /// requested contract is unsupported. Returns a path-aware filesystem
+    /// error when the native path cannot be prepared or opened.
+    fn open_writer(
+        &self,
+        path: &FsPath,
+        options: WriteOptions,
+    ) -> FsResult<FileWriter> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(path.clone())
+                    .with_provider(Self::provider_id())
+            })?;
+        if options.content_type.is_some()
+            || !options.user_metadata.is_empty()
+            || options.checksum.is_some()
+        {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::OpenWriter,
+                "local writes do not support content metadata or checksums",
+            )
+            .with_path(path.clone())
+            .with_provider(Self::provider_id()));
+        }
+        if options.disposition == WriteDisposition::CreateNew
+            && options.atomicity == AtomicityRequirement::Required
+        {
+            return Err(FsError::new(
+                FsErrorKind::RequirementNotMet,
+                FsOperation::OpenWriter,
+                "atomic create-new publication is not supported",
+            )
+            .with_path(path.clone())
+            .with_provider(Self::provider_id())
+            .with_required_capability(FileSystemCapability::AtomicReplace));
+        }
+
+        let native_path = Self::native_path(FsOperation::OpenWriter, path)?;
+        let session = if options.disposition
+            == WriteDisposition::CreateOrReplace
+            && options.atomicity != AtomicityRequirement::NotRequired
+        {
+            let atomic_options = if options.create_parent {
+                LocalAtomicWriteOptions::new().with_parent()
+            } else {
+                LocalAtomicWriteOptions::new()
+            };
+            let writer = LocalFiles::begin_atomic_write_with_options(
+                native_path,
+                atomic_options,
+            )
+            .map_err(|error| {
+                let kind = error.kind();
+                FsError::from_io(
+                    io::Error::new(kind, error),
+                    FsOperation::OpenWriter,
+                )
+                .with_path(path.clone())
+                .with_provider(Self::provider_id())
+            })?;
+            LocalFileWriteSession::atomic(writer, path.clone())
+        } else {
+            let mode = match options.disposition {
+                WriteDisposition::CreateNew => FileWriteMode::CreateNew,
+                WriteDisposition::CreateOrReplace => {
+                    FileWriteMode::CreateOrTruncate
+                }
+                WriteDisposition::Append => FileWriteMode::AppendExisting,
+            };
+            let local_options = if options.create_parent {
+                FileWriteOptions::new(mode).with_parent()
+            } else {
+                FileWriteOptions::new(mode)
+            };
+            let writer = LocalFiles::open_writer(native_path, local_options)
+                .map_err(|error| {
+                    Self::map_io_error(FsOperation::OpenWriter, path, error)
+                })?;
+            LocalFileWriteSession::direct(writer, path.clone())
+        };
+        let location = FileLocation::new(self.info.id().clone(), path.clone());
+        Ok(FileWriter::new(session, OpenedFileInfo::new(location)))
     }
 
     /// Reads native metadata for one host-wide local path.

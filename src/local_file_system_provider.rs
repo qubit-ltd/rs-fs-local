@@ -8,7 +8,6 @@
 //! Defines the service-provider adapter for the local filesystem.
 
 use std::{
-    ffi::OsStr,
     path::Path,
     sync::Arc,
 };
@@ -20,8 +19,6 @@ use qubit_fs::{
     FileSystemSpec,
     FsPath,
     FsUriPath,
-    NativePathCodec,
-    OsStrPathCodec,
 };
 use qubit_spi::{
     ProviderDescriptor,
@@ -97,10 +94,10 @@ impl LocalFileSystemProvider {
     ///
     /// # Panics
     ///
-    /// Panics only if validated [`FsUriPath`] text violates its percent-escape,
-    /// UTF-8, or native path codec invariants.
+    /// Panics only if validated URI text violates the native path codec
+    /// invariant.
     fn decode_path(path: &FsUriPath) -> Result<FsPath, ProviderError> {
-        let decoded = percent_decode(path.as_encoded());
+        let decoded = path.decode();
         let native_text = native_uri_path(&decoded);
         let native_path = Path::new(native_text);
         if !native_path.is_absolute() {
@@ -108,10 +105,7 @@ impl LocalFileSystemProvider {
                 "local file URI path must be absolute",
             ));
         }
-        let canonical = OsStrPathCodec
-            .decode(OsStr::new(native_text))
-            .expect("validated UTF-8 URI path must be a valid native path");
-        FsPath::parse(canonical.as_ref()).map_err(|error| {
+        LocalFileSystem::path_from_native(native_path).map_err(|error| {
             ProviderError::invalid_configuration_with_source(
                 "local file URI path is not a valid filesystem path",
                 error,
@@ -168,41 +162,6 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let fs: Arc<dyn FileSystem> = Arc::new(LocalFileSystem::host());
         Ok(FileSystemResolution::new(fs, path, config.uri().clone()))
     }
-}
-
-/// Decodes percent escapes in one URI path without applying path semantics.
-///
-/// # Parameters
-///
-/// * `encoded` - Validated URI path text.
-///
-/// # Returns
-///
-/// The UTF-8 path text represented by the URI bytes.
-///
-/// # Panics
-///
-/// Panics when `encoded` contains an incomplete or non-hexadecimal escape, or
-/// when its decoded bytes are not valid UTF-8. Callers pass a validated
-/// [`FsUriPath`], whose invariants exclude these cases.
-fn percent_decode(encoded: &str) -> String {
-    let input = encoded.as_bytes();
-    let mut output = Vec::with_capacity(input.len());
-    let mut index = 0;
-    while index < input.len() {
-        if input[index] != b'%' {
-            output.push(input[index]);
-            index += 1;
-            continue;
-        }
-        let digits = &encoded[index + 1..index + 3];
-        let byte = u8::from_str_radix(digits, 16)
-            .expect("FsUriPath must contain complete hexadecimal escapes");
-        output.push(byte);
-        index += 3;
-    }
-    String::from_utf8(output)
-        .expect("FsUriPath must contain percent-encoded UTF-8 text")
 }
 
 /// Adapts decoded file-URI text to the current platform's native path form.
