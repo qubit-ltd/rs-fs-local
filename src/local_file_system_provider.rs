@@ -94,6 +94,11 @@ impl LocalFileSystemProvider {
     ///
     /// Returns an invalid-configuration error when the decoded path is not
     /// native-absolute or violates canonical filesystem path semantics.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if validated [`FsUriPath`] text violates its percent-escape,
+    /// UTF-8, or native path codec invariants.
     fn decode_path(path: &FsUriPath) -> Result<FsPath, ProviderError> {
         let decoded = percent_decode(path.as_encoded());
         let native_text = native_uri_path(&decoded);
@@ -118,9 +123,14 @@ impl LocalFileSystemProvider {
 impl ProviderMetadata for LocalFileSystemProvider {
     /// Returns the canonical provider descriptor and its `file` alias.
     ///
+    /// # Returns
+    ///
+    /// The validated `local-file` descriptor with the `file` alias.
+    ///
     /// # Panics
     ///
     /// Panics only if a static provider id or alias violates SPI grammar.
+    #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
         ProviderDescriptor::new(LocalFileSystem::provider_id())
             .with_aliases(["file"])
@@ -143,6 +153,12 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     ///
     /// Returns an invalid-configuration error for unsupported fields or an
     /// invalid local URI path.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the provider's static filesystem id, provider id, URI
+    /// scheme, or alias violates its corresponding grammar.
+    #[inline]
     fn create_configured(
         &self,
         config: &FileSystemConfig,
@@ -163,6 +179,12 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
 /// # Returns
 ///
 /// The UTF-8 path text represented by the URI bytes.
+///
+/// # Panics
+///
+/// Panics when `encoded` contains an incomplete or non-hexadecimal escape, or
+/// when its decoded bytes are not valid UTF-8. Callers pass a validated
+/// [`FsUriPath`], whose invariants exclude these cases.
 fn percent_decode(encoded: &str) -> String {
     let input = encoded.as_bytes();
     let mut output = Vec::with_capacity(input.len());
@@ -193,7 +215,7 @@ fn percent_decode(encoded: &str) -> String {
 ///
 /// A borrowed native path spelling for the current platform.
 #[cfg(not(windows))]
-#[inline]
+#[inline(always)]
 fn native_uri_path(decoded: &str) -> &str {
     decoded
 }
@@ -209,6 +231,7 @@ fn native_uri_path(decoded: &str) -> &str {
 /// A borrowed Windows path with the URI-only leading slash removed for drive
 /// paths.
 #[cfg(windows)]
+#[inline]
 fn native_uri_path(decoded: &str) -> &str {
     let bytes = decoded.as_bytes();
     if bytes.len() >= 3

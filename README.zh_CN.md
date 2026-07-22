@@ -9,8 +9,8 @@
 
 `qubit-fs-local` 为
 [`qubit-fs`](https://crates.io/crates/qubit-fs) 提供同步的主机本地 `file:`
-文件系统后端。当前版本通过 `stat` 提供元数据查询，并可借助 `file` provider
-别名注册到 `FileSystemRegistry`。
+文件系统后端。它通过基础 `stat` 契约提供元数据查询，支持同步整文件读取和顺序
+读取，并可借助 `file` provider 别名注册到 `FileSystemRegistry`。
 
 ## 安装
 
@@ -25,7 +25,7 @@ cargo add qubit-fs-local
 注册 `LocalFileSystemProvider`，然后通过经过校验的 `file:` URI 解析本地资源：
 
 ```rust
-use qubit_fs::{FileSystemRegistry, FsUri};
+use qubit_fs::{FileSystemRegistry, FsUri, ReadOptions};
 use qubit_fs_local::LocalFileSystemProvider;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let uri = FsUri::parse("file:///tmp/example.txt")?;
     let resource = registry.resource_uri(&uri)?;
     let metadata = resource.stat()?;
+    let content = resource.read_all(1024 * 1024)?;
+    let _streaming_reader = resource.open_reader(ReadOptions::default())?;
     println!("{metadata:?}");
+    println!("读取了 {} 字节", content.len());
     Ok(())
 }
 ```
@@ -46,8 +49,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - 规范化的 `FsPath` 文本通过 `OsStrPathCodec` 转换，能够保留字面 `%`、Unix
   非 UTF-8 字节和 Windows 原生路径代码单元。
 - `stat` 使用 `symlink_metadata`，因此返回最终符号链接本身的信息而不会跟随它。
+- `open_reader` 执行阻塞式本地 I/O，并按值接收 `ReadOptions`。当前后端只支持
+  顺序整文件读取；range、conditional 和 required-checksum 请求会在预检阶段失败。
 - provider 接受无 authority 或空 authority 的 `file:` URI，并拒绝远程
   authority、query、provider options 和 credentials。
+
+## 属性
+
+`LocalFileSystem` 声明 `FileSystemCapability::Read`。`stat` 属于文件系统基础契约，
+因此不再需要 capability 标记。依赖主机的路径和 I/O 限制会明确报告为
+`FileSystemLimits::unknown()`。
 
 当前版本仅提供同步 API。若后续增加异步支持，将以可选 feature 发布，不增加默认
 依赖面。
