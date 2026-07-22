@@ -18,13 +18,11 @@ name = "qubit_fs_local"
 doctest = true
 
 [dependencies]
-log = "0.4"
-parking_lot = "0.12"
 qubit-fs = { path = "../rs-fs", version = "0.2" }
-qubit-local-files = { path = "../rs-local-files", version = "0.7" }
 qubit-spi = { path = "../rs-spi", version = "0.9" }
 
 [dev-dependencies]
+qubit-metadata = { path = "../rs-metadata", version = "0.9" }
 tempfile = "3.27"
 
 [lints.rust]

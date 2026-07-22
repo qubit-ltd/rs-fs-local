@@ -10,7 +10,7 @@
 use std::{
     fs,
     io,
-    path::Path,
+    path::PathBuf,
 };
 
 use qubit_fs::{
@@ -18,6 +18,7 @@ use qubit_fs::{
     FileMetadata,
     FileSystem,
     FileSystemCapabilities,
+    FileSystemCapability,
     FileSystemId,
     FileSystemInfo,
     FileSystemProperties,
@@ -26,14 +27,16 @@ use qubit_fs::{
     FsOperation,
     FsPath,
     FsResult,
+    NativePathCodec,
+    OsStrPathCodec,
     PathSemantics,
 };
 use qubit_spi::ProviderId;
 
 /// Provides the synchronous `file:` filesystem implementation.
 ///
-/// This initial form owns host-wide local filesystem authority. Rooted
-/// authority is added through the same type without changing this public path.
+/// This type has host-wide authority and accepts only native absolute paths.
+/// It does not provide rooted sandbox semantics.
 pub struct LocalFileSystem {
     /// Immutable provider information returned without I/O.
     info: FileSystemInfo,
@@ -45,24 +48,73 @@ impl LocalFileSystem {
     /// Creates a filesystem with authority over host-native absolute paths.
     ///
     /// # Returns
+    ///
     /// A filesystem whose paths use hierarchical local semantics.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if a static filesystem id, provider id, or URI scheme
+    /// violates its corresponding grammar.
     #[must_use]
     pub fn host() -> Self {
         let id = FileSystemId::new("local-host")
             .expect("static local filesystem id must be valid");
-        let provider_id = ProviderId::new("local-file")
-            .expect("static local provider id must be valid");
-        let info = FileSystemInfo::new(
-            id,
-            provider_id,
-            PathSemantics::Hierarchical,
-        )
-        .with_scheme("file")
-        .expect("static file URI scheme must be valid");
+        let provider_id = Self::provider_id();
+        let info =
+            FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
+                .with_scheme("file")
+                .expect("static file URI scheme must be valid");
         Self {
             info,
-            capabilities: FileSystemCapabilities::default(),
+            capabilities: FileSystemCapabilities::default()
+                .with(FileSystemCapability::Stat),
         }
+    }
+
+    /// Returns the identifier shared by the filesystem and its provider.
+    ///
+    /// # Returns
+    ///
+    /// The validated static `local-file` provider identifier.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the static provider identifier violates the provider-id
+    /// grammar.
+    pub(crate) fn provider_id() -> ProviderId {
+        ProviderId::new("local-file")
+            .expect("static local provider id must be valid")
+    }
+
+    /// Converts a canonical filesystem path into its native representation.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation` - Public filesystem operation that needs the path.
+    /// * `path` - Canonical filesystem path to convert.
+    ///
+    /// # Returns
+    ///
+    /// The losslessly reconstructed native path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-path error when the decoded native path is relative.
+    fn native_path(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
+        let native_path = OsStrPathCodec
+            .encode(path.as_str())
+            .map(|path| PathBuf::from(path.into_owned()))
+            .expect("validated FsPath text must encode as a native path");
+        if !native_path.is_absolute() {
+            return Err(FsError::new(
+                FsErrorKind::InvalidPath,
+                operation,
+                "local filesystem path must be absolute",
+            )
+            .with_path(path.clone())
+            .with_provider(Self::provider_id()));
+        }
+        Ok(native_path)
     }
 
     /// Converts one native metadata result into provider-neutral metadata.
@@ -72,6 +124,7 @@ impl LocalFileSystem {
     /// * `metadata` - Native metadata captured without following a final link.
     ///
     /// # Returns
+    ///
     /// The corresponding file kind, byte length, and available timestamps.
     fn map_metadata(metadata: fs::Metadata) -> FileMetadata {
         let file_type = metadata.file_type();
@@ -101,36 +154,28 @@ impl LocalFileSystem {
     /// * `error` - Native I/O error to retain as an opaque source.
     ///
     /// # Returns
+    ///
     /// A provider-neutral error with a scrubbed message and native source.
     fn map_io_error(
         operation: FsOperation,
         path: &FsPath,
         error: io::Error,
     ) -> FsError {
-        let kind = match error.kind() {
-            io::ErrorKind::NotFound => FsErrorKind::NotFound,
-            io::ErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
-            io::ErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
-            io::ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
-            io::ErrorKind::IsADirectory => FsErrorKind::IsDirectory,
-            io::ErrorKind::InvalidInput => FsErrorKind::InvalidPath,
-            io::ErrorKind::StorageFull | io::ErrorKind::QuotaExceeded => {
-                FsErrorKind::QuotaExceeded
-            }
-            _ => FsErrorKind::Io,
-        };
-        FsError::with_source(kind, operation, "local filesystem operation failed", error)
+        FsError::from_io(error, operation)
             .with_path(path.clone())
+            .with_provider(Self::provider_id())
     }
 }
 
 impl FileSystemProperties for LocalFileSystem {
     /// Returns immutable local provider information without performing I/O.
+    #[inline]
     fn info(&self) -> &FileSystemInfo {
         &self.info
     }
 
     /// Returns immutable local capability guarantees without performing I/O.
+    #[inline]
     fn capabilities(&self) -> FileSystemCapabilities {
         self.capabilities
     }
@@ -144,12 +189,15 @@ impl FileSystem for LocalFileSystem {
     /// * `path` - Absolute provider-local path to inspect.
     ///
     /// # Returns
+    ///
     /// Metadata captured without following the final symbolic link.
     ///
     /// # Errors
+    ///
     /// Returns a path-aware filesystem error when native metadata lookup fails.
     fn stat(&self, path: &FsPath) -> FsResult<FileMetadata> {
-        fs::symlink_metadata(Path::new(path.as_str()))
+        let native_path = Self::native_path(FsOperation::Stat, path)?;
+        fs::symlink_metadata(native_path)
             .map(Self::map_metadata)
             .map_err(|error| Self::map_io_error(FsOperation::Stat, path, error))
     }

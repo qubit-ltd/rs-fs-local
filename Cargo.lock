@@ -150,10 +150,8 @@ dependencies = [
 name = "qubit-fs-local"
 version = "0.1.0"
 dependencies = [
- "log",
- "parking_lot",
  "qubit-fs",
- "qubit-local-files",
+ "qubit-metadata",
  "qubit-spi",
  "tempfile",
 ]
@@ -163,24 +161,19 @@ name = "qubit-io"
 version = "0.14.0"
 
 [[package]]
-name = "qubit-local-files"
-version = "0.7.0"
-dependencies = [
- "getrandom",
- "libc",
- "log",
- "windows-sys",
-]
-
-[[package]]
 name = "qubit-metadata"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "qubit-datatype",
+ "qubit-redact",
  "qubit-value",
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "qubit-redact"
+version = "0.3.0"
 
 [[package]]
 name = "qubit-spi"

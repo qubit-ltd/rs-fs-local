@@ -10,5 +10,7 @@
 #![deny(missing_docs)]
 
 mod local_file_system;
+mod local_file_system_provider;
 
 pub use local_file_system::LocalFileSystem;
+pub use local_file_system_provider::LocalFileSystemProvider;
