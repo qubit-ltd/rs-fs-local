@@ -27,6 +27,7 @@ doctest = true
 
 [dependencies]
 qubit-fs = { path = "../rs-fs", version = "0.2" }
+qubit-local-files = { path = "../rs-local-files", version = "0.7" }
 qubit-spi = { path = "../rs-spi", version = "0.9" }
 
 [dev-dependencies]

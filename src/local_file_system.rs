@@ -15,12 +15,15 @@ use std::{
 
 use qubit_fs::{
     FileKind,
+    FileLocation,
     FileMetadata,
+    FileReader,
     FileSystem,
     FileSystemCapabilities,
     FileSystemCapability,
     FileSystemId,
     FileSystemInfo,
+    FileSystemLimits,
     FileSystemProperties,
     FsError,
     FsErrorKind,
@@ -28,8 +31,14 @@ use qubit_fs::{
     FsPath,
     FsResult,
     NativePathCodec,
+    OpenedFileInfo,
     OsStrPathCodec,
     PathSemantics,
+    ReadOptions,
+};
+use qubit_local_files::{
+    FileReadOptions,
+    LocalFiles,
 };
 use qubit_spi::ProviderId;
 
@@ -42,6 +51,8 @@ pub struct LocalFileSystem {
     info: FileSystemInfo,
     /// Immutable operation guarantees returned without I/O.
     capabilities: FileSystemCapabilities,
+    /// Stable provider limits returned without I/O.
+    limits: FileSystemLimits,
 }
 
 impl LocalFileSystem {
@@ -56,6 +67,7 @@ impl LocalFileSystem {
     /// Panics only if a static filesystem id, provider id, or URI scheme
     /// violates its corresponding grammar.
     #[must_use]
+    #[inline]
     pub fn host() -> Self {
         let id = FileSystemId::new("local-host")
             .expect("static local filesystem id must be valid");
@@ -67,7 +79,8 @@ impl LocalFileSystem {
         Self {
             info,
             capabilities: FileSystemCapabilities::default()
-                .with(FileSystemCapability::Stat),
+                .with(FileSystemCapability::Read),
+            limits: FileSystemLimits::unknown(),
         }
     }
 
@@ -81,6 +94,7 @@ impl LocalFileSystem {
     ///
     /// Panics only if the static provider identifier violates the provider-id
     /// grammar.
+    #[inline]
     pub(crate) fn provider_id() -> ProviderId {
         ProviderId::new("local-file")
             .expect("static local provider id must be valid")
@@ -100,6 +114,11 @@ impl LocalFileSystem {
     /// # Errors
     ///
     /// Returns an invalid-path error when the decoded native path is relative.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if validated [`FsPath`] text violates the native path codec
+    /// invariant.
     fn native_path(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
         let native_path = OsStrPathCodec
             .encode(path.as_str())
@@ -156,6 +175,7 @@ impl LocalFileSystem {
     /// # Returns
     ///
     /// A provider-neutral error with a scrubbed message and native source.
+    #[inline(always)]
     fn map_io_error(
         operation: FsOperation,
         path: &FsPath,
@@ -169,20 +189,83 @@ impl LocalFileSystem {
 
 impl FileSystemProperties for LocalFileSystem {
     /// Returns immutable local provider information without performing I/O.
-    #[inline]
+    ///
+    /// # Returns
+    ///
+    /// Identity and path semantics fixed when this filesystem was constructed.
+    #[inline(always)]
     fn info(&self) -> &FileSystemInfo {
         &self.info
     }
 
     /// Returns immutable local capability guarantees without performing I/O.
-    #[inline]
+    ///
+    /// # Returns
+    ///
+    /// The `Read` capability snapshot fixed at construction time.
+    #[inline(always)]
     fn capabilities(&self) -> FileSystemCapabilities {
         self.capabilities
+    }
+
+    /// Returns stable local provider limits without performing I/O.
+    ///
+    /// # Returns
+    ///
+    /// The explicit host-dependent limit snapshot fixed at construction time.
+    #[inline(always)]
+    fn limits(&self) -> &FileSystemLimits {
+        &self.limits
     }
 }
 
 impl FileSystem for LocalFileSystem {
+    /// Opens a native regular file for synchronous sequential reading.
+    ///
+    /// This method performs blocking local filesystem I/O. It validates all
+    /// requested read semantics before attempting to inspect or open the path.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute provider-local path to open.
+    /// * `options` - Required read semantics; only whole-file reads are
+    ///   supported.
+    ///
+    /// # Returns
+    ///
+    /// An unbuffered reader bound to the requested local filesystem location.
+    ///
+    /// # Errors
+    ///
+    /// Returns a requirement error when range, conditional, or required
+    /// checksum semantics are requested. Returns a path-aware filesystem error
+    /// when the path is relative, missing, inaccessible, or not a regular file.
+    fn open_reader(
+        &self,
+        path: &FsPath,
+        options: ReadOptions,
+    ) -> FsResult<FileReader> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(path.clone())
+                    .with_provider(Self::provider_id())
+            })?;
+        let native_path = Self::native_path(FsOperation::OpenReader, path)?;
+        let reader =
+            LocalFiles::open_reader(native_path, FileReadOptions::unbuffered())
+                .map_err(|error| {
+                    Self::map_io_error(FsOperation::OpenReader, path, error)
+                })?;
+        let location = FileLocation::new(self.info.id().clone(), path.clone());
+        let info = OpenedFileInfo::new(location);
+        Ok(FileReader::new(reader, info))
+    }
+
     /// Reads native metadata for one host-wide local path.
+    ///
+    /// This method performs blocking local filesystem I/O.
     ///
     /// # Parameters
     ///

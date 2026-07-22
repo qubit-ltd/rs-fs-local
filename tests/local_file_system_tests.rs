@@ -20,12 +20,15 @@ use qubit_fs::{
     FileSystem,
     FileSystemCapabilities,
     FileSystemCapability,
+    FileSystemExt,
+    FileSystemLimits,
     FileSystemProperties,
     FsErrorKind,
     FsOperation,
     FsPath,
     NativePathCodec,
     OsStrPathCodec,
+    ReadOptions,
 };
 use qubit_fs_local::LocalFileSystem;
 use qubit_spi::ProviderId;
@@ -39,6 +42,11 @@ use qubit_spi::ProviderId;
 /// # Returns
 ///
 /// The lossless canonical filesystem path.
+///
+/// # Panics
+///
+/// Panics when the test fixture path cannot be represented as a valid
+/// canonical filesystem path.
 fn canonical_path(path: &Path) -> FsPath {
     let text = OsStrPathCodec
         .decode(path.as_os_str())
@@ -165,14 +173,84 @@ fn test_stat_rejects_relative_native_path() {
     );
 }
 
-/// Confirms the host implementation advertises its metadata operation.
+/// Confirms the host implementation advertises only optional read capability.
 #[test]
-fn test_host_advertises_stat_capability() {
+fn test_host_advertises_read_capability() {
     let fs = LocalFileSystem::host();
 
     assert_eq!(
         fs.capabilities(),
-        FileSystemCapabilities::default().with(FileSystemCapability::Stat),
+        FileSystemCapabilities::default().with(FileSystemCapability::Read),
+    );
+}
+
+/// Confirms local limits are represented explicitly instead of omitted.
+#[test]
+fn test_host_reports_unknown_limits() {
+    let fs = LocalFileSystem::host();
+
+    assert_eq!(fs.limits(), &FileSystemLimits::unknown());
+}
+
+/// Confirms the filesystem extension reads a complete local file.
+#[test]
+fn test_read_all_reads_regular_file() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    std::fs::write(&file_path, b"payload").expect("write test file");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+
+    let content = fs.read_all(&path, 64).expect("read complete local file");
+
+    assert_eq!(content, b"payload");
+}
+
+/// Confirms an opened reader is bound to the requested filesystem location.
+#[test]
+fn test_open_reader_binds_file_location() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    std::fs::write(&file_path, b"payload").expect("write test file");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+
+    let reader = fs
+        .open_reader(&path, ReadOptions::default())
+        .expect("open local reader");
+
+    assert_eq!(reader.info().location().path(), &path);
+    assert_eq!(reader.info().location().file_system_id(), fs.info().id(),);
+}
+
+/// Confirms unsupported range semantics fail before native file lookup.
+#[test]
+fn test_open_reader_preflights_range_options_before_io() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let path = canonical_path(&temporary_directory.path().join("missing.txt"));
+    let fs = LocalFileSystem::host();
+    let options = ReadOptions {
+        offset: Some(1),
+        ..ReadOptions::default()
+    };
+
+    let error = fs
+        .open_reader(&path, options)
+        .expect_err("reject unsupported range read");
+
+    assert_eq!(error.kind(), FsErrorKind::RequirementNotMet);
+    assert_eq!(error.operation(), FsOperation::OpenReader);
+    assert_eq!(
+        error.required_capability(),
+        Some(FileSystemCapability::RangeRead),
+    );
+    assert_eq!(error.path(), Some(&path));
+    assert_eq!(
+        error.provider(),
+        Some(&ProviderId::new("local-file").expect("parse provider id")),
     );
 }
 

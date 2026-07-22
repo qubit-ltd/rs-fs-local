@@ -151,6 +151,7 @@ name = "qubit-fs-local"
 version = "0.1.0"
 dependencies = [
  "qubit-fs",
+ "qubit-local-files",
  "qubit-metadata",
  "qubit-spi",
  "tempfile",
@@ -159,6 +160,16 @@ dependencies = [
 [[package]]
 name = "qubit-io"
 version = "0.14.0"
+
+[[package]]
+name = "qubit-local-files"
+version = "0.7.0"
+dependencies = [
+ "getrandom",
+ "libc",
+ "log",
+ "windows-sys",
+]
 
 [[package]]
 name = "qubit-metadata"
