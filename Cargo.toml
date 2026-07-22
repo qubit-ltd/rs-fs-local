@@ -32,7 +32,7 @@ qubit-spi = { path = "../rs-spi", version = "0.9" }
 
 [dev-dependencies]
 qubit-io = { path = "../rs-io", version = "0.14" }
-qubit-metadata = { path = "../rs-metadata", version = "0.9" }
+qubit-metadata = { path = "../rs-metadata", version = "0.10" }
 tempfile = "3.27"
 
 [lints.rust]
