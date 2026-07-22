@@ -46,8 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 路径语义
 
 - `LocalFileSystem` 拥有主机范围权限，只接受本机绝对路径。
-- 规范化的 `FsPath` 文本通过 `OsStrPathCodec` 转换，能够保留字面 `%`、Unix
-  非 UTF-8 字节和 Windows 原生路径代码单元。
+- 规范化的 `FsPath` 文本逐 component 通过 `OsStrPathCodec` 转换，能够保留字面
+  `%`、Unix 非 UTF-8 字节和 Windows 原生路径代码单元，同时防止解码后的 separator
+  穿越 component 边界。
 - `stat` 使用 `symlink_metadata`，因此返回最终符号链接本身的信息而不会跟随它。
 - `open_reader` 执行阻塞式本地 I/O，并按值接收 `ReadOptions`。当前后端只支持
   顺序整文件读取；range、conditional 和 required-checksum 请求会在预检阶段失败。

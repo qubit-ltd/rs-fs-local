@@ -48,9 +48,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 - `LocalFileSystem` has host-wide authority and accepts native absolute paths
   only.
-- Canonical `FsPath` text is converted through `OsStrPathCodec`, preserving
-  literal percent characters, Unix non-UTF-8 bytes, and Windows native path
-  code units.
+- Canonical `FsPath` text is converted component by component through
+  `OsStrPathCodec`, preserving literal percent characters, Unix non-UTF-8
+  bytes, and Windows native path code units without letting decoded separators
+  cross a component boundary.
 - `stat` uses `symlink_metadata`, so it reports the final symbolic link itself
   instead of following it.
 - `open_reader` performs blocking local I/O and accepts `ReadOptions` by value.
