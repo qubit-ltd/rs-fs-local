@@ -27,6 +27,11 @@ use qubit_spi::{
 /// # Parameters
 ///
 /// * `config` - Configuration expected to be unsupported.
+///
+/// # Panics
+///
+/// Panics when the provider accepts the configuration or reports a different
+/// error kind.
 fn assert_invalid_configuration(config: FileSystemConfig) {
     let result = ServiceProvider::<FileSystemSpec>::create_configured(
         &LocalFileSystemProvider,
@@ -99,6 +104,56 @@ fn test_registry_decodes_alphabetic_hexadecimal_uri_escape() {
         .replace('?', "%3F");
     let uri = FsUri::parse(&format!("file://{encoded_path}"))
         .expect("parse file URI");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider)
+        .expect("register local provider");
+
+    let resource = registry.resource_uri(&uri).expect("resolve local resource");
+
+    assert_eq!(resource.stat().expect("stat resource").kind, FileKind::File);
+}
+
+/// Confirms Windows drive paths round-trip through a percent-encoded file URI.
+#[cfg(windows)]
+#[test]
+fn test_registry_reads_percent_encoded_windows_file_uri() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("100%ready.txt");
+    std::fs::write(&file_path, b"payload").expect("write test file");
+    let encoded_path = file_path
+        .to_str()
+        .expect("temporary path should be UTF-8")
+        .replace('\\', "/")
+        .replace('%', "%25");
+    let uri = FsUri::parse(&format!("file:///{encoded_path}"))
+        .expect("parse Windows file URI");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider)
+        .expect("register local provider");
+
+    let resource = registry.resource_uri(&uri).expect("resolve local resource");
+
+    assert_eq!(resource.read_all(64).expect("read resource"), b"payload");
+}
+
+/// Confirms alphabetic hexadecimal URI escapes work in Windows drive paths.
+#[cfg(windows)]
+#[test]
+fn test_registry_decodes_alphabetic_windows_uri_escape() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("readyA.txt");
+    std::fs::write(&file_path, b"payload").expect("write test file");
+    let encoded_path = file_path
+        .to_str()
+        .expect("temporary path should be UTF-8")
+        .replace('\\', "/")
+        .replace('A', "%41");
+    let uri = FsUri::parse(&format!("file:///{encoded_path}"))
+        .expect("parse Windows file URI");
     let registry = FileSystemRegistry::default();
     registry
         .register(LocalFileSystemProvider)
