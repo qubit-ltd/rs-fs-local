@@ -10,6 +10,14 @@ description = "Local filesystem provider for qubit-fs"
 homepage = "https://github.com/qubit-ltd/rs-fs-local"
 documentation = "https://docs.rs/qubit-fs-local"
 readme = "README.md"
+include = [
+  "/Cargo.toml",
+  "/LICENSE",
+  "/README.md",
+  "/README.zh_CN.md",
+  "/src/**",
+  "/tests/**",
+]
 keywords = ["filesystem", "local", "provider", "qubit"]
 categories = ["filesystem"]
 
