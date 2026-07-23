@@ -231,7 +231,7 @@ impl FileWriteSession for LocalFileWriteSession {
                 path,
                 terminal_state,
             } => {
-                let Some(writer) = writer.take() else {
+                let Some(active_writer) = writer.take() else {
                     return Err(WriteFailure::new(
                         FsError::new(
                             FsErrorKind::InvalidState,
@@ -243,7 +243,7 @@ impl FileWriteSession for LocalFileWriteSession {
                         WriteFailureState::Indeterminate,
                     ));
                 };
-                match writer.commit() {
+                match active_writer.commit_recoverable() {
                     Ok(()) => {
                         let mut outcome = WriteOutcome::new(
                             AchievedAtomicity::Atomic,
@@ -252,10 +252,21 @@ impl FileWriteSession for LocalFileWriteSession {
                         outcome.bytes_written = Some(*bytes_written);
                         Ok(outcome)
                     }
-                    Err(error) => {
+                    Err(commit_error) => {
+                        let (error, retained_writer) =
+                            commit_error.into_parts();
                         let destination_state = error.destination_state();
                         *terminal_state = Some(destination_state);
+                        let is_retryable = retained_writer.is_some()
+                            && destination_state
+                                == LocalAtomicDestinationState::Unchanged;
+                        *writer = retained_writer;
                         let state = match destination_state {
+                            LocalAtomicDestinationState::Unchanged
+                                if is_retryable =>
+                            {
+                                WriteFailureState::Retryable
+                            }
                             LocalAtomicDestinationState::Unchanged
                             | LocalAtomicDestinationState::Missing => {
                                 WriteFailureState::NotPublished

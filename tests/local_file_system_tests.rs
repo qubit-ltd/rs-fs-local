@@ -229,6 +229,40 @@ fn test_write_all_atomically_replaces_local_file() {
     assert_eq!(PublicationMethod::AtomicRename, outcome.method);
 }
 
+/// Confirms failed atomic publication retains its session for explicit abort.
+#[test]
+fn test_atomic_commit_failure_retains_session_for_abort() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    std::fs::write(&file_path, b"old").expect("write old contents");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let mut writer = fs
+        .open_writer(&path, WriteOptions::default())
+        .expect("open atomic writer");
+    writer
+        .write_fully(b"replacement")
+        .expect("stage replacement");
+    std::fs::remove_file(&file_path).expect("remove destination before commit");
+
+    let error = writer
+        .commit()
+        .expect_err("missing destination should reject commit");
+
+    assert_eq!(FsErrorKind::NotFound, error.kind());
+    writer
+        .abort()
+        .expect("failed atomic session should remain available for abort");
+    assert_eq!(
+        0,
+        std::fs::read_dir(temporary_directory.path())
+            .expect("read temporary directory")
+            .count(),
+        "explicit abort must remove retained atomic staging",
+    );
+}
+
 /// Confirms explicitly non-atomic replacement writes directly to the target.
 #[test]
 fn test_open_writer_supports_direct_replacement() {
