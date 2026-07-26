@@ -8,6 +8,7 @@
 // qubit-style: allow source-test-pair
 //! Local synchronous file write session.
 
+use std::fs::File;
 use std::io::{
     self,
     IoSlice,
@@ -27,12 +28,7 @@ use qubit_fs::{
     WriteFailureState,
     WriteOutcome,
 };
-use qubit_local_files::{
-    LocalAtomicDestinationState,
-    LocalAtomicWriteError,
-    LocalAtomicWriter,
-    LocalFileWriter,
-};
+use qubit_local_files::atomic;
 
 use crate::LocalFileSystem;
 
@@ -42,7 +38,7 @@ pub(crate) enum LocalFileWriteSession {
     /// Writer that modifies the destination directly.
     Direct {
         /// Active native writer, removed when the session is aborted.
-        writer: Option<LocalFileWriter>,
+        writer: Option<File>,
         /// Number of bytes accepted by the writer.
         bytes_written: u64,
         /// Canonical destination path used for error context.
@@ -51,13 +47,13 @@ pub(crate) enum LocalFileWriteSession {
     /// Writer that publishes through an atomic same-directory replacement.
     Atomic {
         /// Active staging writer, consumed by commit or abort.
-        writer: Option<LocalAtomicWriter>,
+        writer: Option<atomic::Writer>,
         /// Number of bytes accepted by the staging writer.
         bytes_written: u64,
         /// Canonical destination path used for error context.
         path: FsPath,
         /// Destination state retained after a failed consuming commit.
-        terminal_state: Option<LocalAtomicDestinationState>,
+        terminal_state: Option<atomic::DestinationState>,
     },
 }
 
@@ -72,7 +68,7 @@ impl LocalFileWriteSession {
     /// # Returns
     /// A session that publishes bytes directly to the destination.
     #[inline(always)]
-    pub(crate) fn direct(writer: LocalFileWriter, path: FsPath) -> Self {
+    pub(crate) fn direct(writer: File, path: FsPath) -> Self {
         Self::Direct {
             writer: Some(writer),
             bytes_written: 0,
@@ -90,7 +86,7 @@ impl LocalFileWriteSession {
     /// # Returns
     /// A session that publishes bytes through atomic replacement.
     #[inline(always)]
-    pub(crate) fn atomic(writer: LocalAtomicWriter, path: FsPath) -> Self {
+    pub(crate) fn atomic(writer: atomic::Writer, path: FsPath) -> Self {
         Self::Atomic {
             writer: Some(writer),
             bytes_written: 0,
@@ -112,7 +108,7 @@ impl LocalFileWriteSession {
     fn map_atomic_error(
         path: &FsPath,
         operation: FsOperation,
-        error: LocalAtomicWriteError,
+        error: atomic::Error,
     ) -> FsError {
         let kind = error.kind();
         FsError::from_io(io::Error::new(kind, error), operation)
@@ -259,22 +255,22 @@ impl FileWriteSession for LocalFileWriteSession {
                         *terminal_state = Some(destination_state);
                         let is_retryable = retained_writer.is_some()
                             && destination_state
-                                == LocalAtomicDestinationState::Unchanged;
+                                == atomic::DestinationState::Unchanged;
                         *writer = retained_writer;
                         let state = match destination_state {
-                            LocalAtomicDestinationState::Unchanged
+                            atomic::DestinationState::Unchanged
                                 if is_retryable =>
                             {
                                 WriteFailureState::Retryable
                             }
-                            LocalAtomicDestinationState::Unchanged
-                            | LocalAtomicDestinationState::Missing => {
+                            atomic::DestinationState::Unchanged
+                            | atomic::DestinationState::Missing => {
                                 WriteFailureState::NotPublished
                             }
-                            LocalAtomicDestinationState::Replaced => {
+                            atomic::DestinationState::Replaced => {
                                 WriteFailureState::Published
                             }
-                            LocalAtomicDestinationState::Indeterminate => {
+                            atomic::DestinationState::Indeterminate => {
                                 WriteFailureState::Indeterminate
                             }
                             _ => WriteFailureState::Indeterminate,
@@ -327,8 +323,8 @@ impl FileWriteSession for LocalFileWriteSession {
                 if matches!(
                     terminal_state,
                     Some(
-                        LocalAtomicDestinationState::Missing
-                            | LocalAtomicDestinationState::Indeterminate
+                        atomic::DestinationState::Missing
+                            | atomic::DestinationState::Indeterminate
                     )
                 ) {
                     return Err(FsError::new(

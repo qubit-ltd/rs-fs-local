@@ -46,11 +46,9 @@ use qubit_fs::{
     WriteOptions,
 };
 use qubit_local_files::{
-    FileReadOptions,
-    FileWriteMode,
-    FileWriteOptions,
-    LocalAtomicWriteOptions,
-    LocalFiles,
+    atomic,
+    read,
+    write,
 };
 
 use crate::internal::LocalFileWriteSession;
@@ -547,11 +545,10 @@ impl FileSystem for LocalFileSystem {
                     .with_provider(Self::provider_id())
             })?;
         let native_path = Self::native_path(FsOperation::OpenReader, path)?;
-        let reader =
-            LocalFiles::open_reader(native_path, FileReadOptions::unbuffered())
-                .map_err(|error| {
-                    Self::map_io_error(FsOperation::OpenReader, path, error)
-                })?;
+        let reader = read::open(&native_path, &read::OpenOptions::default())
+            .map_err(|error| {
+                Self::map_io_error(FsOperation::OpenReader, path, error)
+            })?;
         let location = FileLocation::new(self.info.id().clone(), path.clone());
         let info = OpenedFileInfo::new(location);
         Ok(FileReader::new(reader, info))
@@ -619,39 +616,36 @@ impl FileSystem for LocalFileSystem {
             && options.atomicity != AtomicityRequirement::NotRequired
         {
             let atomic_options = if options.create_parent {
-                LocalAtomicWriteOptions::new().with_parent()
+                atomic::Options::new().with_parent()
             } else {
-                LocalAtomicWriteOptions::new()
+                atomic::Options::new()
             };
-            let writer = LocalFiles::begin_atomic_write_with_options(
-                native_path,
-                atomic_options,
-            )
-            .map_err(|error| {
-                let kind = error.kind();
-                FsError::from_io(
-                    io::Error::new(kind, error),
-                    FsOperation::OpenWriter,
-                )
-                .with_path(path.clone())
-                .with_provider(Self::provider_id())
-            })?;
+            let writer = atomic::begin_with(&native_path, atomic_options)
+                .map_err(|error| {
+                    let kind = error.kind();
+                    FsError::from_io(
+                        io::Error::new(kind, error),
+                        FsOperation::OpenWriter,
+                    )
+                    .with_path(path.clone())
+                    .with_provider(Self::provider_id())
+                })?;
             LocalFileWriteSession::atomic(writer, path.clone())
         } else {
             let mode = match options.disposition {
-                WriteDisposition::CreateNew => FileWriteMode::CreateNew,
+                WriteDisposition::CreateNew => write::Mode::CreateNew,
                 WriteDisposition::CreateOrReplace => {
-                    FileWriteMode::CreateOrTruncate
+                    write::Mode::CreateOrTruncate
                 }
-                WriteDisposition::Append => FileWriteMode::AppendExisting,
+                WriteDisposition::Append => write::Mode::AppendExisting,
             };
             let local_options = if options.create_parent {
-                FileWriteOptions::new(mode).with_parent()
+                write::OpenOptions::new(mode).with_parents()
             } else {
-                FileWriteOptions::new(mode)
+                write::OpenOptions::new(mode)
             };
-            let writer = LocalFiles::open_writer(native_path, local_options)
-                .map_err(|error| {
+            let writer =
+                write::open(&native_path, &local_options).map_err(|error| {
                     Self::map_io_error(FsOperation::OpenWriter, path, error)
                 })?;
             LocalFileWriteSession::direct(writer, path.clone())
