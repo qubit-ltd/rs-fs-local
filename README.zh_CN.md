@@ -15,15 +15,18 @@
 
 ## 安装
 
-将本 crate 添加到项目：
+将本 crate 添加到项目。只有应用通过 `qubit-fs-registry` 使用
+`LocalFileSystemProvider` 时才启用 `registry`：
 
 ```bash
 cargo add qubit-fs-local
+cargo add qubit-fs-local --features registry
 ```
 
 ## 使用方法
 
-注册 `LocalFileSystemProvider`，然后通过经过校验的 `file:` URI 解析本地资源：
+启用 `registry` 后注册 `LocalFileSystemProvider`，再通过经过校验的 `file:` URI
+解析本地资源：
 
 ```rust
 use qubit_fs::{FsUri, ReadOptions};

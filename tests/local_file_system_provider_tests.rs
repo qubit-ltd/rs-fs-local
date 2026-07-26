@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+#![cfg(feature = "registry")]
 
 use qubit_fs::{
     FileKind,
@@ -116,6 +117,15 @@ fn test_registry_decodes_alphabetic_hexadecimal_uri_escape() {
     assert_eq!(resource.stat().expect("stat resource").kind, FileKind::File);
 }
 
+/// Confirms an encoded separator cannot create an additional local path component.
+#[test]
+fn test_provider_rejects_encoded_path_separator() {
+    let uri = FsUri::parse("file:///tmp/parent%2Fchild")
+        .expect("parse URI containing an encoded separator");
+
+    assert_invalid_configuration(FileSystemConfig::new(uri));
+}
+
 /// Confirms Windows drive paths round-trip through a percent-encoded file URI.
 #[cfg(windows)]
 #[test]
@@ -200,8 +210,7 @@ fn test_provider_rejects_options() {
         .with("mode", "readonly")
         .expect("the option key should be safe");
     let config = FileSystemConfig::new(uri)
-        .with_options(options)
-        .expect("set non-sensitive options");
+        .with_options(options);
 
     assert_invalid_configuration(config);
 }

@@ -7,8 +7,11 @@
 // =============================================================================
 //! Descriptor-relative local filesystem adapter.
 
-use std::fs;
-use std::path::Path;
+use std::path::{
+    Component,
+    Path,
+    PathBuf,
+};
 
 use qubit_fs::{
     FileKind,
@@ -24,10 +27,13 @@ use qubit_fs::{
     FileSystemProperties,
     FileWriter,
     FsError,
+    FsErrorKind,
     FsOperation,
     FsPath,
     FsResult,
+    NativePathCodec,
     OpenedFileInfo,
+    OsStrPathCodec,
     PathSemantics,
     ReadOptions,
     WriteDisposition,
@@ -53,14 +59,25 @@ pub struct RootedLocalFileSystem {
 }
 
 impl RootedLocalFileSystem {
-    /// Opens a descriptor-relative filesystem rooted at `path`.
+    /// Opens a descriptor-relative filesystem rooted at `path` with `id`.
+    ///
+    /// Descriptor-relative roots are currently available only on Unix targets.
+    /// The caller must supply the stable identity of this configured root so
+    /// opened locations from different roots cannot collide.
+    ///
+    /// # Parameters
+    ///
+    /// * `id` - Stable identity of this configured rooted filesystem.
+    /// * `path` - Directory whose opened descriptor becomes the authority.
+    ///
+    /// # Returns
+    /// A filesystem that accepts canonical absolute paths below `path`.
     ///
     /// # Errors
-    /// Returns an I/O error when the root cannot be securely opened.
-    pub fn open(path: &Path) -> std::io::Result<Self> {
+    /// Returns an I/O error when the root cannot be securely opened or when
+    /// descriptor-relative roots are unsupported on the current platform.
+    pub fn open(id: FileSystemId, path: &Path) -> std::io::Result<Self> {
         let root = rooted::Root::open(path)?;
-        let id = FileSystemId::new("local-rooted")
-            .expect("the static rooted filesystem ID must be valid");
         let info =
             FileSystemInfo::new(id, "local-file", PathSemantics::Hierarchical);
         Ok(Self {
@@ -75,6 +92,22 @@ impl RootedLocalFileSystem {
     }
 
     /// Converts canonical rooted syntax to a validated native relative path.
+    ///
+    /// Each canonical component is decoded independently through
+    /// [`OsStrPathCodec`]. Decoded native separators, roots, prefixes, and dot
+    /// components are rejected before the value reaches the rooted API.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute canonical path below this filesystem root.
+    /// * `operation` - Public operation used to build an error context.
+    ///
+    /// # Returns
+    /// A non-empty rooted native path.
+    ///
+    /// # Errors
+    /// Returns an invalid-path error for a relative/root path or a component
+    /// that cannot be decoded without changing its native boundary.
     fn relative_path(
         path: &FsPath,
         operation: FsOperation,
@@ -87,30 +120,57 @@ impl RootedLocalFileSystem {
             .with_path(path.clone())
             .with_provider("local-file")
         })?;
-        rooted::Path::new(relative).map_err(|error| {
+        if relative.is_empty() {
+            return Err(FsError::invalid_path(
+                operation,
+                "rooted local filesystem root cannot be opened as a file",
+            )
+            .with_path(path.clone())
+            .with_provider("local-file"));
+        }
+        let mut native = PathBuf::new();
+        for component in relative.split('/') {
+            let native_component = OsStrPathCodec.encode(component).map_err(|error| {
+                FsError::with_source(
+                    FsErrorKind::InvalidPath,
+                    operation,
+                    "canonical rooted path component cannot be decoded losslessly",
+                    error,
+                )
+                .with_path(path.clone())
+                .with_provider("local-file")
+            })?;
+            let native_component: &std::ffi::OsStr = native_component.as_ref();
+            if Path::new(native_component)
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
+            {
+                return Err(FsError::invalid_path(
+                    operation,
+                    "canonical rooted path component introduces a native boundary",
+                )
+                .with_path(path.clone())
+                .with_provider("local-file"));
+            }
+            native.push(native_component);
+        }
+        rooted::Path::new(native).map_err(|error| {
             FsError::from_io(error, operation)
                 .with_path(path.clone())
                 .with_provider("local-file")
         })
     }
 
-    /// Maps native metadata into the provider-neutral fixed fields.
-    fn map_metadata(metadata: fs::Metadata) -> FileMetadata {
-        let file_type = metadata.file_type();
-        let kind = if file_type.is_file() {
-            FileKind::File
-        } else if file_type.is_dir() {
-            FileKind::Directory
-        } else if file_type.is_symlink() {
-            FileKind::Symlink
-        } else {
-            FileKind::Other("native-special".to_owned())
+    /// Maps descriptor-relative metadata into provider-neutral fixed fields.
+    fn map_metadata(metadata: rooted::Metadata) -> FileMetadata {
+        let kind = match metadata.kind() {
+            rooted::EntryKind::File => FileKind::File,
+            rooted::EntryKind::Directory => FileKind::Directory,
+            rooted::EntryKind::Symlink => FileKind::Symlink,
+            rooted::EntryKind::Other => FileKind::Other("native-special".to_owned()),
         };
         let mut result = FileMetadata::new(kind);
         result.len = Some(metadata.len());
-        result.modified_at = metadata.modified().ok();
-        result.created_at = metadata.created().ok();
-        result.accessed_at = metadata.accessed().ok();
         result
     }
 }
@@ -131,17 +191,17 @@ impl FileSystemProperties for RootedLocalFileSystem {
 
 impl FileSystem for RootedLocalFileSystem {
     fn stat(&self, path: &FsPath) -> FsResult<FileMetadata> {
-        let path = Self::relative_path(path, FsOperation::Stat)?;
-        let file = self
-            .root
-            .open_reader(&path, &read::OpenOptions::default())
-            .map_err(|error| {
-                FsError::from_io(error, FsOperation::Stat)
-                    .with_provider("local-file")
-            })?;
-        file.metadata()
-            .map(Self::map_metadata)
-            .map_err(|error| FsError::from_io(error, FsOperation::Stat))
+        let metadata = if path.as_str() == "/" {
+            self.root.metadata()
+        } else {
+            let relative = Self::relative_path(path, FsOperation::Stat)?;
+            self.root.symlink_metadata(&relative)
+        };
+        metadata.map(Self::map_metadata).map_err(|error| {
+            FsError::from_io(error, FsOperation::Stat)
+                .with_path(path.clone())
+                .with_provider("local-file")
+        })
     }
 
     fn open_reader(
@@ -149,7 +209,11 @@ impl FileSystem for RootedLocalFileSystem {
         path: &FsPath,
         options: ReadOptions,
     ) -> FsResult<FileReader> {
-        options.validate_against(self.capabilities)?;
+        options.validate_against(self.capabilities).map_err(|error| {
+            error
+                .with_path(path.clone())
+                .with_provider("local-file")
+        })?;
         let relative = Self::relative_path(path, FsOperation::OpenReader)?;
         let file = self
             .root
@@ -168,7 +232,23 @@ impl FileSystem for RootedLocalFileSystem {
         path: &FsPath,
         options: WriteOptions,
     ) -> FsResult<FileWriter> {
-        options.validate_against(self.capabilities)?;
+        options.validate_against(self.capabilities).map_err(|error| {
+            error
+                .with_path(path.clone())
+                .with_provider("local-file")
+        })?;
+        if options.content_type.is_some()
+            || options.user_metadata.as_metadata().iter().next().is_some()
+            || options.checksum.is_some()
+        {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::OpenWriter,
+                "rooted local writes do not support content metadata or checksums",
+            )
+            .with_path(path.clone())
+            .with_provider("local-file"));
+        }
         let relative = Self::relative_path(path, FsOperation::OpenWriter)?;
         let mode = match options.disposition {
             WriteDisposition::CreateNew => write::Mode::CreateNew,

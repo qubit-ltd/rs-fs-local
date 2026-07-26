@@ -15,16 +15,18 @@ through the `file` provider alias is optional behind the `registry` feature.
 
 ## Installation
 
-Add the crate to your project:
+Add the crate to your project. Enable `registry` when the application uses
+`LocalFileSystemProvider` with `qubit-fs-registry`:
 
 ```bash
 cargo add qubit-fs-local
+cargo add qubit-fs-local --features registry
 ```
 
 ## Usage
 
-Enable `registry`, register `LocalFileSystemProvider`, then resolve a local resource from a
-validated `file:` URI:
+Enable `registry`, register `LocalFileSystemProvider`, then resolve a local
+resource from a validated `file:` URI:
 
 ```rust
 use qubit_fs::{FsUri, ReadOptions};
