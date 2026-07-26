@@ -6,9 +6,11 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+#[cfg(feature = "registry")]
+use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::{
     LocalFileSystem,
-    LocalFileSystemProvider,
+    RootedLocalFileSystem,
 };
 
 /// Confirms the synchronous local filesystem is part of the crate's public API.
@@ -19,6 +21,14 @@ fn test_local_file_system_is_exported() {
 
 /// Confirms the local filesystem provider is part of the crate's public API.
 #[test]
+#[cfg(feature = "registry")]
 fn test_local_file_system_provider_is_exported() {
     let _ = std::any::TypeId::of::<LocalFileSystemProvider>();
+}
+
+/// Confirms the rooted local filesystem is part of the default public API.
+#[test]
+fn test_rooted_local_file_system_is_exported() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<RootedLocalFileSystem>();
 }

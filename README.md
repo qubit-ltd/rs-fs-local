@@ -9,8 +9,9 @@
 
 `qubit-fs-local` provides the synchronous host-local `file:` filesystem backend
 for [`qubit-fs`](https://crates.io/crates/qubit-fs). It exposes mandatory
-metadata lookup through `stat`, synchronous whole-file and sequential reads,
-and integration with `FileSystemRegistry` through the `file` provider alias.
+metadata lookup, synchronous reads and writes, and
+`RootedLocalFileSystem` for descriptor-relative authority. Registry integration
+through the `file` provider alias is optional behind the `registry` feature.
 
 ## Installation
 
@@ -22,11 +23,12 @@ cargo add qubit-fs-local
 
 ## Usage
 
-Register `LocalFileSystemProvider`, then resolve a local resource from a
+Enable `registry`, register `LocalFileSystemProvider`, then resolve a local resource from a
 validated `file:` URI:
 
 ```rust
-use qubit_fs::{FileSystemRegistry, FsUri, ReadOptions};
+use qubit_fs::{FsUri, ReadOptions};
+use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_local::LocalFileSystemProvider;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

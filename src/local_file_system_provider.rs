@@ -14,11 +14,13 @@ use std::{
 
 use qubit_fs::{
     FileSystem,
+    FsPath,
+    FsUriPath,
+};
+use qubit_fs_registry::{
     FileSystemConfig,
     FileSystemResolution,
     FileSystemSpec,
-    FsPath,
-    FsUriPath,
 };
 use qubit_spi::{
     ProviderDescriptor,
@@ -64,7 +66,7 @@ impl LocalFileSystemProvider {
                 "local filesystem provider does not support URI queries",
             ));
         }
-        if !config.options().is_empty() {
+        if config.options().iter().next().is_some() {
             return Err(ProviderError::invalid_configuration(
                 "local filesystem provider does not support provider options",
             ));
@@ -126,9 +128,12 @@ impl ProviderMetadata for LocalFileSystemProvider {
     /// Panics only if a static provider id or alias violates SPI grammar.
     #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(LocalFileSystem::provider_id())
-            .with_aliases(["file"])
-            .expect("static local provider alias must be valid")
+        ProviderDescriptor::new(
+            qubit_spi::ProviderId::new(LocalFileSystem::provider_id())
+                .expect("the static local provider ID must be valid"),
+        )
+        .with_aliases(["file"])
+        .expect("static local provider alias must be valid")
     }
 }
 

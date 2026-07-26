@@ -52,7 +52,6 @@ use qubit_local_files::{
     LocalAtomicWriteOptions,
     LocalFiles,
 };
-use qubit_spi::ProviderId;
 
 use crate::internal::LocalFileWriteSession;
 
@@ -151,9 +150,8 @@ impl LocalFileSystem {
     /// Panics only if the static provider identifier violates the provider-id
     /// grammar.
     #[inline]
-    pub(crate) fn provider_id() -> ProviderId {
-        ProviderId::new("local-file")
-            .expect("static local provider id must be valid")
+    pub(crate) const fn provider_id() -> &'static str {
+        "local-file"
     }
 
     /// Converts a canonical filesystem path into its native representation.
@@ -215,13 +213,13 @@ impl LocalFileSystem {
                     ));
                 }
                 Component::Normal(component) => {
-                    let component = OsStrPathCodec.decode(component).map_err(
-                        |error| Self::native_codec_error(
+                    let component = OsStrPathCodec.decode(component).map_err(|error| {
+                        Self::native_codec_error(
                             FsOperation::ParsePath,
                             "native path component cannot be decoded losslessly",
                             error,
-                        ),
-                    )?;
+                        )
+                    })?;
                     if canonical.is_empty() || !canonical.ends_with('/') {
                         canonical.push('/');
                     }
@@ -591,7 +589,7 @@ impl FileSystem for LocalFileSystem {
                     .with_provider(Self::provider_id())
             })?;
         if options.content_type.is_some()
-            || !options.user_metadata.is_empty()
+            || options.user_metadata.as_metadata().iter().next().is_some()
             || options.checksum.is_some()
         {
             return Err(FsError::new(

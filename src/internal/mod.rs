@@ -8,5 +8,7 @@
 //! Private local provider implementation types.
 
 mod local_file_write_session;
+mod rooted_file_write_session;
 
 pub(crate) use local_file_write_session::LocalFileWriteSession;
+pub(crate) use rooted_file_write_session::RootedFileWriteSession;

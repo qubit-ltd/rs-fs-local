@@ -9,8 +9,9 @@
 
 `qubit-fs-local` 为
 [`qubit-fs`](https://crates.io/crates/qubit-fs) 提供同步的主机本地 `file:`
-文件系统后端。它通过基础 `stat` 契约提供元数据查询，支持同步整文件读取和顺序
-读取，并可借助 `file` provider 别名注册到 `FileSystemRegistry`。
+文件系统后端。它支持同步读写，并提供以目录 descriptor 为 authority 的
+`RootedLocalFileSystem`。通过 `file` provider 别名进行 registry 集成的能力
+位于可选的 `registry` feature 中。
 
 ## 安装
 
@@ -25,7 +26,8 @@ cargo add qubit-fs-local
 注册 `LocalFileSystemProvider`，然后通过经过校验的 `file:` URI 解析本地资源：
 
 ```rust
-use qubit_fs::{FileSystemRegistry, FsUri, ReadOptions};
+use qubit_fs::{FsUri, ReadOptions};
+use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_local::LocalFileSystemProvider;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

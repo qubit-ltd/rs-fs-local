@@ -7,15 +7,17 @@
 // =============================================================================
 
 use qubit_fs::{
-    CredentialRef,
     FileKind,
+    FsUri,
+    UserMetadata,
+};
+use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_registry::{
+    CredentialRef,
     FileSystemConfig,
     FileSystemRegistry,
     FileSystemSpec,
-    FsUri,
 };
-use qubit_fs_local::LocalFileSystemProvider;
-use qubit_metadata::Metadata;
 use qubit_spi::{
     ProviderMetadata,
     ServiceProvider,
@@ -194,7 +196,9 @@ fn test_provider_rejects_query() {
 #[test]
 fn test_provider_rejects_options() {
     let uri = FsUri::parse("file:///tmp/item.txt").expect("parse URI");
-    let options = Metadata::new().with("mode", "readonly");
+    let options = UserMetadata::new()
+        .with("mode", "readonly")
+        .expect("the option key should be safe");
     let config = FileSystemConfig::new(uri)
         .with_options(options)
         .expect("set non-sensitive options");

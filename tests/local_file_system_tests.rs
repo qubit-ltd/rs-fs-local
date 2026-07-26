@@ -35,7 +35,6 @@ use qubit_fs::{
 };
 use qubit_fs_local::LocalFileSystem;
 use qubit_io::Output;
-use qubit_spi::ProviderId;
 
 /// Converts a native test path into the canonical filesystem path form.
 ///
@@ -168,10 +167,7 @@ fn test_stat_rejects_relative_native_path() {
     assert_eq!(error.kind(), FsErrorKind::InvalidPath);
     assert_eq!(error.operation(), FsOperation::Stat);
     assert_eq!(error.path(), Some(&path));
-    assert_eq!(
-        error.provider(),
-        Some(&ProviderId::new("local-file").expect("parse provider id")),
-    );
+    assert_eq!(error.provider(), Some("local-file"),);
 }
 
 /// Confirms Windows-native separators cannot be smuggled through one canonical
@@ -476,10 +472,7 @@ fn test_open_reader_preflights_range_options_before_io() {
         Some(FileSystemCapability::RangeRead),
     );
     assert_eq!(error.path(), Some(&path));
-    assert_eq!(
-        error.provider(),
-        Some(&ProviderId::new("local-file").expect("parse provider id")),
-    );
+    assert_eq!(error.provider(), Some("local-file"),);
 }
 
 /// Confirms native I/O failures retain operation, path, and provider context.
@@ -495,8 +488,5 @@ fn test_stat_maps_missing_path_with_context() {
     assert_eq!(error.kind(), FsErrorKind::NotFound);
     assert_eq!(error.operation(), FsOperation::Stat);
     assert_eq!(error.path(), Some(&path));
-    assert_eq!(
-        error.provider(),
-        Some(&ProviderId::new("local-file").expect("parse provider id")),
-    );
+    assert_eq!(error.provider(), Some("local-file"),);
 }

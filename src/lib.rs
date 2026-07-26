@@ -11,7 +11,11 @@
 
 mod internal;
 mod local_file_system;
+#[cfg(feature = "registry")]
 mod local_file_system_provider;
+mod rooted_local_file_system;
 
 pub use local_file_system::LocalFileSystem;
+#[cfg(feature = "registry")]
 pub use local_file_system_provider::LocalFileSystemProvider;
+pub use rooted_local_file_system::RootedLocalFileSystem;
