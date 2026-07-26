@@ -68,8 +68,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 属性
 
 `LocalFileSystem` 声明 `Read`、`Write`、`Append` 和 `AtomicReplace`。
-`RootedLocalFileSystem` 声明 `Read`、`Write` 和 `Append`；Rooted 写入为直接写入，
-不承诺原子替换。`stat` 属于文件系统基础契约，因此不再需要 capability 标记。
+`RootedLocalFileSystem` 声明相同能力，并在已打开的 root 下执行原子替换。
+`stat` 属于文件系统基础契约，因此不再需要 capability 标记。
 依赖主机的路径和 I/O 限制会明确报告为 `FileSystemLimits::unknown()`。
 
 当前版本仅提供同步 API。若后续增加异步支持，将以可选 feature 发布，不增加默认

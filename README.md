@@ -73,10 +73,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Properties
 
 `LocalFileSystem` advertises `Read`, `Write`, `Append`, and `AtomicReplace`.
-`RootedLocalFileSystem` advertises `Read`, `Write`, and `Append`; rooted writes
-are direct and do not claim atomic replacement. `stat` is part of the base
-filesystem contract and therefore has no capability flag. Host-dependent path
-and I/O limits are reported explicitly as `FileSystemLimits::unknown()`.
+`RootedLocalFileSystem` advertises the same capabilities and performs atomic
+replacement beneath its opened root. `stat` is part of the base filesystem
+contract and therefore has no capability flag. Host-dependent path and I/O
+limits are reported explicitly as `FileSystemLimits::unknown()`.
 
 This release is synchronous only. If asynchronous support is added later, it
 will be published as an opt-in feature rather than increasing the default
