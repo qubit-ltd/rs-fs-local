@@ -520,6 +520,119 @@ fn test_copy_supports_file_and_tree_modes() {
     );
 }
 
+/// Confirms copy rejects identical canonical source and destination paths
+/// before truncating an overwrite target.
+#[test]
+fn test_copy_rejects_identical_source_and_destination() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("value.txt");
+    std::fs::write(&file_path, b"preserved").expect("write source file");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .copy(
+            &path,
+            &path,
+            CopyOptions {
+                conflict: CopyConflictPolicy::Overwrite,
+                ..CopyOptions::file()
+            },
+        )
+        .expect_err("self-copy should be rejected");
+
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
+    assert_eq!(
+        b"preserved",
+        std::fs::read(&file_path)
+            .expect("the original file should remain")
+            .as_slice(),
+    );
+}
+
+/// Confirms copy rejects distinct paths that identify the same native file.
+#[cfg(unix)]
+#[test]
+fn test_copy_rejects_hard_link_alias_destination() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let source_path = temporary_directory.path().join("source.txt");
+    let alias_path = temporary_directory.path().join("alias.txt");
+    std::fs::write(&source_path, b"preserved").expect("write source file");
+    std::fs::hard_link(&source_path, &alias_path).expect("create hard link");
+    let source = canonical_path(&source_path);
+    let alias = canonical_path(&alias_path);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .copy(
+            &source,
+            &alias,
+            CopyOptions {
+                conflict: CopyConflictPolicy::Overwrite,
+                ..CopyOptions::file()
+            },
+        )
+        .expect_err("hard-link alias copy should be rejected");
+
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
+    assert_eq!(
+        b"preserved",
+        std::fs::read(&source_path)
+            .expect("the original file should remain")
+            .as_slice(),
+    );
+}
+
+/// Confirms overwrite copy replaces a destination link entry instead of
+/// following it to an unrelated file.
+#[cfg(unix)]
+#[test]
+fn test_copy_overwrite_does_not_follow_destination_symlink() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let outside_directory =
+        tempfile::tempdir().expect("create outside directory");
+    let source_path = temporary_directory.path().join("source.txt");
+    let destination_path = temporary_directory.path().join("destination.txt");
+    let outside_path = outside_directory.path().join("outside.txt");
+    std::fs::write(&source_path, b"source").expect("write source file");
+    std::fs::write(&outside_path, b"outside").expect("write outside file");
+    symlink(&outside_path, &destination_path)
+        .expect("create destination symbolic link");
+    let fs = LocalFileSystem::host();
+
+    fs.copy(
+        &canonical_path(&source_path),
+        &canonical_path(&destination_path),
+        CopyOptions {
+            conflict: CopyConflictPolicy::Overwrite,
+            ..CopyOptions::file()
+        },
+    )
+    .expect("overwrite destination link entry");
+
+    assert!(
+        !std::fs::symlink_metadata(&destination_path)
+            .expect("inspect destination")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        b"source",
+        std::fs::read(&destination_path)
+            .expect("read copied destination")
+            .as_slice(),
+    );
+    assert_eq!(
+        b"outside",
+        std::fs::read(&outside_path)
+            .expect("read outside file")
+            .as_slice(),
+    );
+}
+
 /// Confirms the default preferred write uses atomic whole-file publication.
 #[test]
 fn test_write_all_atomically_replaces_local_file() {

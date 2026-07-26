@@ -7,6 +7,8 @@
 // =============================================================================
 //! Defines the synchronous local filesystem implementation.
 
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 use std::{
     fs,
     io,
@@ -919,6 +921,16 @@ impl FileSystem for LocalFileSystem {
             .with_target(to.clone())
             .with_provider(Self::provider_id()));
         }
+        if from == to {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "local copy source and destination must differ",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(Self::provider_id()));
+        }
         let native_from = Self::native_path(FsOperation::Copy, from)?;
         let native_to = Self::native_path(FsOperation::Copy, to)?;
         let link_metadata =
@@ -1014,14 +1026,29 @@ impl FileSystem for LocalFileSystem {
                 AchievedAtomicity::NonAtomic,
             ));
         }
-        let destination_existed = match fs::symlink_metadata(&native_to) {
-            Ok(_) => true,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        let destination_metadata = match fs::symlink_metadata(&native_to) {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => {
                 return Err(Self::map_io_error(FsOperation::Copy, to, error)
                     .with_target(to.clone()));
             }
         };
+        #[cfg(unix)]
+        if destination_metadata.as_ref().is_some_and(|destination| {
+            metadata.dev() == destination.dev()
+                && metadata.ino() == destination.ino()
+        }) {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "local copy source and destination identify the same file",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(Self::provider_id()));
+        }
+        let destination_existed = destination_metadata.is_some();
         if options.conflict == CopyConflictPolicy::Skip && destination_existed {
             return Ok(CopyOutcome::new(
                 CopyStats {
@@ -1031,6 +1058,16 @@ impl FileSystem for LocalFileSystem {
                 CopyMethod::Local,
                 AchievedAtomicity::NonAtomic,
             ));
+        }
+        if options.conflict == CopyConflictPolicy::Overwrite
+            && destination_metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.file_type().is_symlink())
+        {
+            remove::file(&native_to).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, to, error)
+                    .with_target(to.clone())
+            })?;
         }
         let copied = match options.conflict {
             CopyConflictPolicy::Overwrite => {
