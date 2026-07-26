@@ -306,7 +306,10 @@ fn test_list_supports_recursive_prefix_and_metadata_options() {
     assert_eq!(2, entries.len());
     assert_eq!("alpha.txt", entries[0].name);
     assert_eq!(FileKind::File, entries[0].kind);
-    assert_eq!(Some(5), entries[0].metadata.as_ref().and_then(|value| value.len));
+    assert_eq!(
+        Some(5),
+        entries[0].metadata.as_ref().and_then(|value| value.len)
+    );
     assert_eq!("alpha-child.txt", entries[1].name);
     assert_eq!(FileKind::File, entries[1].kind);
     assert_eq!(
@@ -428,7 +431,10 @@ fn test_rename_honors_destination_conflict_policy() {
     assert_eq!(AchievedAtomicity::Atomic, outcome.atomicity);
     assert_eq!(PublicationMethod::AtomicRename, outcome.method);
     assert!(!source_path.exists());
-    assert_eq!(b"source", std::fs::read(&destination_path).unwrap().as_slice());
+    assert_eq!(
+        b"source",
+        std::fs::read(&destination_path).unwrap().as_slice()
+    );
 }
 
 /// Confirms file and tree copy report local copy statistics and conflict
@@ -481,7 +487,10 @@ fn test_copy_supports_file_and_tree_modes() {
     assert_eq!(1, copied.stats.files);
     assert_eq!(6, copied.stats.bytes);
     assert_eq!(1, copied.stats.overwritten);
-    assert_eq!(b"source", std::fs::read(&destination_file).unwrap().as_slice());
+    assert_eq!(
+        b"source",
+        std::fs::read(&destination_file).unwrap().as_slice()
+    );
 
     let source_tree = temporary_directory.path().join("source-tree");
     let destination_tree = temporary_directory.path().join("destination-tree");
