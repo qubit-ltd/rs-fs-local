@@ -7,14 +7,27 @@
 // =============================================================================
 //! Descriptor-relative local filesystem adapter.
 
-use std::path::{
-    Component,
-    Path,
-    PathBuf,
+use std::{
+    io,
+    path::{
+        Component,
+        Path,
+        PathBuf,
+    },
 };
 
 use qubit_fs::{
+    AchievedAtomicity,
     AtomicityRequirement,
+    CopyConflictPolicy,
+    CopyMethod,
+    CopyMode,
+    CopyOptions,
+    CopyOutcome,
+    CopyStats,
+    CreateDirOptions,
+    DeleteOptions,
+    DirectoryStream,
     FileKind,
     FileLocation,
     FileMetadata,
@@ -32,11 +45,16 @@ use qubit_fs::{
     FsOperation,
     FsPath,
     FsResult,
+    ListOptions,
+    MetadataPreservePolicy,
     NativePathCodec,
     OpenedFileInfo,
     OsStrPathCodec,
     PathSemantics,
+    PublicationMethod,
     ReadOptions,
+    RenameOptions,
+    RenameOutcome,
     WriteDisposition,
     WriteOptions,
 };
@@ -50,6 +68,7 @@ use qubit_local_files::{
 use crate::{
     LocalFileSystem,
     internal::{
+        RootedDirectoryStreamSession,
         RootedFileWriteSession,
         validate_hierarchical_path,
     },
@@ -91,14 +110,32 @@ impl RootedLocalFileSystem {
             LocalFileSystem::provider_id(),
             PathSemantics::Hierarchical,
         );
+        let capabilities = FileSystemCapabilities::default()
+            .with(FileSystemCapability::List)
+            .with(FileSystemCapability::Read)
+            .with(FileSystemCapability::Write)
+            .with(FileSystemCapability::Append)
+            .with(FileSystemCapability::CreateDirectory)
+            .with(FileSystemCapability::Delete)
+            .with(FileSystemCapability::RecursiveDelete)
+            .with(FileSystemCapability::Rename)
+            .with(FileSystemCapability::AtomicReplace)
+            .with(FileSystemCapability::Copy);
+        #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios",
+        ))]
+        let capabilities = {
+            let mut capabilities = capabilities;
+            capabilities.insert(FileSystemCapability::AtomicRename);
+            capabilities
+        };
         Ok(Self {
             root,
             info,
-            capabilities: FileSystemCapabilities::default()
-                .with(FileSystemCapability::Read)
-                .with(FileSystemCapability::Write)
-                .with(FileSystemCapability::Append)
-                .with(FileSystemCapability::AtomicReplace),
+            capabilities,
             limits: FileSystemLimits::unknown(),
         })
     }
@@ -120,7 +157,7 @@ impl RootedLocalFileSystem {
     /// # Errors
     /// Returns an invalid-path error for a relative/root path or a component
     /// that cannot be decoded without changing its native boundary.
-    fn relative_path(
+    pub(crate) fn relative_path(
         path: &FsPath,
         operation: FsOperation,
     ) -> FsResult<rooted::Path> {
@@ -171,7 +208,7 @@ impl RootedLocalFileSystem {
     }
 
     /// Maps descriptor-relative metadata into provider-neutral fixed fields.
-    fn map_metadata(metadata: rooted::Metadata) -> FileMetadata {
+    pub(crate) fn map_metadata(metadata: rooted::Metadata) -> FileMetadata {
         let kind = match metadata.kind() {
             rooted::EntryKind::File => FileKind::File,
             rooted::EntryKind::Directory => FileKind::Directory,
@@ -186,6 +223,177 @@ impl RootedLocalFileSystem {
         result.modified_at = metadata.modified_at();
         result.created_at = metadata.created_at();
         result
+    }
+
+    /// Maps rooted native errors into provider-aware filesystem errors.
+    pub(crate) fn map_io_error(
+        operation: FsOperation,
+        path: &FsPath,
+        error: io::Error,
+    ) -> FsError {
+        FsError::from_io(error, operation)
+            .with_path(path.clone())
+            .with_provider(LocalFileSystem::provider_id())
+    }
+
+    /// Creates missing parents of one rooted destination.
+    fn create_parent(&self, path: &rooted::Path) -> io::Result<()> {
+        let Some(parent) = path
+            .as_path()
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        else {
+            return Ok(());
+        };
+        let parent = rooted::Path::new(parent)?;
+        self.root.create_dir(&parent, true, true)
+    }
+
+    /// Reads destination metadata, returning `None` for a missing entry.
+    fn optional_metadata(
+        &self,
+        path: &rooted::Path,
+    ) -> io::Result<Option<rooted::Metadata>> {
+        match self.root.symlink_metadata(path) {
+            Ok(metadata) => Ok(Some(metadata)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Copies one regular file through rooted reader and writer descriptors.
+    fn copy_file(
+        &self,
+        source: &rooted::Path,
+        destination: &rooted::Path,
+        options: &CopyOptions,
+    ) -> io::Result<CopyStats> {
+        let source_metadata = self.root.symlink_metadata(source)?;
+        let destination_metadata = self.optional_metadata(destination)?;
+        if destination_metadata.as_ref().is_some_and(|destination| {
+            source_metadata.is_same_file(destination)
+        }) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "rooted copy source and destination identify the same file",
+            ));
+        }
+        if options.conflict == CopyConflictPolicy::Skip
+            && destination_metadata.is_some()
+        {
+            return Ok(CopyStats {
+                skipped: 1,
+                ..CopyStats::default()
+            });
+        }
+        if let Some(metadata) = destination_metadata
+            && metadata.kind() != rooted::EntryKind::File
+        {
+            if options.conflict == CopyConflictPolicy::Overwrite {
+                self.root.remove(destination, true)?;
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "rooted copy destination has a different entry type",
+                ));
+            }
+        }
+        let mode = if options.conflict == CopyConflictPolicy::Overwrite {
+            write::Mode::CreateOrTruncate
+        } else {
+            write::Mode::CreateNew
+        };
+        let mut reader = self
+            .root
+            .open_reader(source, &read::OpenOptions::default())?;
+        let mut writer = self
+            .root
+            .open_writer(destination, &write::OpenOptions::new(mode))?;
+        let bytes = io::copy(&mut reader, &mut writer)?;
+        writer.sync_all()?;
+        drop(writer);
+        if options.preserve_metadata == MetadataPreservePolicy::Portable
+            && let Some(mode) = source_metadata.permissions_mode()
+        {
+            self.root.set_permissions(destination, mode)?;
+        }
+        Ok(CopyStats {
+            files: 1,
+            bytes,
+            overwritten: u64::from(destination_metadata.is_some()),
+            ..CopyStats::default()
+        })
+    }
+
+    /// Recursively copies one rooted directory tree.
+    fn copy_tree(
+        &self,
+        source: &rooted::Path,
+        destination: &rooted::Path,
+        options: &CopyOptions,
+    ) -> io::Result<CopyStats> {
+        let source_metadata = self.root.symlink_metadata(source)?;
+        let destination_metadata = self.optional_metadata(destination)?;
+        if options.conflict == CopyConflictPolicy::Skip
+            && destination_metadata.is_some()
+        {
+            return Ok(CopyStats {
+                skipped: 1,
+                ..CopyStats::default()
+            });
+        }
+        if let Some(metadata) = destination_metadata {
+            if metadata.kind() != rooted::EntryKind::Directory {
+                if options.conflict == CopyConflictPolicy::Overwrite {
+                    self.root.remove(destination, true)?;
+                    self.root.create_dir(destination, false, false)?;
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        "rooted copy destination has a different entry type",
+                    ));
+                }
+            } else if options.conflict != CopyConflictPolicy::Overwrite {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "rooted copy destination already exists",
+                ));
+            }
+        } else {
+            self.root.create_dir(destination, false, false)?;
+        }
+        let mut stats = CopyStats {
+            directories: 1,
+            overwritten: u64::from(destination_metadata.is_some()),
+            ..CopyStats::default()
+        };
+        for entry in self.root.read_dir(source)? {
+            let source_child =
+                rooted::Path::new(source.as_path().join(entry.name()))?;
+            let destination_child =
+                rooted::Path::new(destination.as_path().join(entry.name()))?;
+            let child_stats = match entry.metadata().kind() {
+                rooted::EntryKind::File => {
+                    self.copy_file(&source_child, &destination_child, options)?
+                }
+                rooted::EntryKind::Directory => {
+                    self.copy_tree(&source_child, &destination_child, options)?
+                }
+                rooted::EntryKind::Symlink | rooted::EntryKind::Other => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "rooted copy supports only regular files and directories",
+                    ));
+                }
+            };
+            stats.add_assign(&child_stats);
+        }
+        if options.preserve_metadata == MetadataPreservePolicy::Portable
+            && let Some(mode) = source_metadata.permissions_mode()
+        {
+            self.root.set_permissions(destination, mode)?;
+        }
+        Ok(stats)
     }
 }
 
@@ -204,6 +412,234 @@ impl FileSystemProperties for RootedLocalFileSystem {
 }
 
 impl FileSystem for RootedLocalFileSystem {
+    fn list(
+        &self,
+        path: &FsPath,
+        options: ListOptions,
+    ) -> FsResult<DirectoryStream> {
+        validate_hierarchical_path(FsOperation::List, path)?;
+        let session =
+            RootedDirectoryStreamSession::capture(&self.root, path, options)?;
+        Ok(DirectoryStream::new(session))
+    }
+
+    fn create_dir(
+        &self,
+        path: &FsPath,
+        options: CreateDirOptions,
+    ) -> FsResult<()> {
+        if options.user_metadata.as_metadata().iter().next().is_some() {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::CreateDir,
+                "rooted local directories do not support user metadata",
+            )
+            .with_path(path.clone())
+            .with_provider(LocalFileSystem::provider_id()));
+        }
+        let relative = Self::relative_path(path, FsOperation::CreateDir)?;
+        self.root
+            .create_dir(&relative, options.recursive, options.exists_ok)
+            .map_err(|error| {
+                Self::map_io_error(FsOperation::CreateDir, path, error)
+            })
+    }
+
+    fn delete(&self, path: &FsPath, options: DeleteOptions) -> FsResult<()> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(path.clone())
+                    .with_provider(LocalFileSystem::provider_id())
+            })?;
+        let relative = Self::relative_path(path, FsOperation::Delete)?;
+        match self.root.remove(&relative, options.recursive) {
+            Ok(()) => Ok(()),
+            Err(error)
+                if options.missing_ok
+                    && error.kind() == io::ErrorKind::NotFound =>
+            {
+                Ok(())
+            }
+            Err(error) => {
+                Err(Self::map_io_error(FsOperation::Delete, path, error))
+            }
+        }
+    }
+
+    fn rename(
+        &self,
+        from: &FsPath,
+        to: &FsPath,
+        options: RenameOptions,
+    ) -> FsResult<RenameOutcome> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(from.clone())
+                    .with_target(to.clone())
+                    .with_provider(LocalFileSystem::provider_id())
+            })?;
+        let source = Self::relative_path(from, FsOperation::Rename)?;
+        let destination = Self::relative_path(to, FsOperation::Rename)?;
+        self.root
+            .rename(&source, &destination, options.overwrite)
+            .map_err(|error| {
+                Self::map_io_error(FsOperation::Rename, from, error)
+                    .with_target(to.clone())
+            })?;
+        Ok(RenameOutcome::new(
+            AchievedAtomicity::Atomic,
+            PublicationMethod::AtomicRename,
+        ))
+    }
+
+    fn copy(
+        &self,
+        from: &FsPath,
+        to: &FsPath,
+        options: CopyOptions,
+    ) -> FsResult<CopyOutcome> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(from.clone())
+                    .with_target(to.clone())
+                    .with_provider(LocalFileSystem::provider_id())
+            })?;
+        if options.continue_on_error {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "rooted copy does not support continue-on-error",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(LocalFileSystem::provider_id()));
+        }
+        if !matches!(
+            options.preserve_metadata,
+            MetadataPreservePolicy::None | MetadataPreservePolicy::Portable
+        ) {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "rooted copy supports only none or portable metadata preservation",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(LocalFileSystem::provider_id()));
+        }
+        if options.follow_symlinks {
+            return Err(FsError::new(
+                FsErrorKind::UnsupportedCapability,
+                FsOperation::Copy,
+                "rooted copy does not follow symbolic links",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(LocalFileSystem::provider_id())
+            .with_required_capability(FileSystemCapability::Symlink));
+        }
+        let source = Self::relative_path(from, FsOperation::Copy)?;
+        let destination = Self::relative_path(to, FsOperation::Copy)?;
+        if source == destination {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "rooted copy source and destination must differ",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(LocalFileSystem::provider_id()));
+        }
+        let metadata =
+            self.root.symlink_metadata(&source).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, from, error)
+                    .with_target(to.clone())
+            })?;
+        let copy_tree = match (options.mode, metadata.kind()) {
+            (CopyMode::Auto | CopyMode::File, rooted::EntryKind::File) => false,
+            (CopyMode::Auto | CopyMode::Tree, rooted::EntryKind::Directory) => {
+                true
+            }
+            (_, rooted::EntryKind::Symlink | rooted::EntryKind::Other) => {
+                return Err(FsError::new(
+                    FsErrorKind::UnsupportedCapability,
+                    FsOperation::Copy,
+                    "rooted copy supports only regular files and directories",
+                )
+                .with_path(from.clone())
+                .with_target(to.clone())
+                .with_provider(LocalFileSystem::provider_id()));
+            }
+            _ => {
+                return Err(FsError::new(
+                    FsErrorKind::InvalidOptions,
+                    FsOperation::Copy,
+                    "copy mode does not match the source entry type",
+                )
+                .with_path(from.clone())
+                .with_target(to.clone())
+                .with_provider(LocalFileSystem::provider_id()));
+            }
+        };
+        if copy_tree && destination.as_path().starts_with(source.as_path()) {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "rooted tree destination must not be inside the source",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(LocalFileSystem::provider_id()));
+        }
+        if !copy_tree
+            && self
+                .optional_metadata(&destination)
+                .map_err(|error| {
+                    Self::map_io_error(FsOperation::Copy, to, error)
+                        .with_target(to.clone())
+                })?
+                .as_ref()
+                .is_some_and(|destination_metadata| {
+                    metadata.is_same_file(destination_metadata)
+                })
+        {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "rooted copy source and destination identify the same file",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(LocalFileSystem::provider_id()));
+        }
+        if options.create_parent {
+            self.create_parent(&destination).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, to, error)
+                    .with_target(to.clone())
+            })?;
+        }
+        let stats = if copy_tree {
+            self.copy_tree(&source, &destination, &options)
+        } else {
+            self.copy_file(&source, &destination, &options)
+        }
+        .map_err(|error| {
+            Self::map_io_error(FsOperation::Copy, from, error)
+                .with_target(to.clone())
+        })?;
+        Ok(CopyOutcome::new(
+            stats,
+            CopyMethod::Local,
+            AchievedAtomicity::NonAtomic,
+        ))
+    }
+
     fn stat(&self, path: &FsPath) -> FsResult<FileMetadata> {
         let metadata = if path.as_str() == "/" {
             self.root.metadata()
