@@ -18,7 +18,17 @@ use std::{
 };
 
 use qubit_fs::{
+    AchievedAtomicity,
     AtomicityRequirement,
+    CopyConflictPolicy,
+    CopyMethod,
+    CopyMode,
+    CopyOptions,
+    CopyOutcome,
+    CopyStats,
+    CreateDirOptions,
+    DeleteOptions,
+    DirectoryStream,
     FileKind,
     FileLocation,
     FileMetadata,
@@ -36,22 +46,32 @@ use qubit_fs::{
     FsOperation,
     FsPath,
     FsResult,
+    ListOptions,
+    MetadataPreservePolicy,
     NativePathCodec,
     NativePathCodecError,
     OpenedFileInfo,
     OsStrPathCodec,
     PathSemantics,
+    PublicationMethod,
     ReadOptions,
+    RenameOptions,
+    RenameOutcome,
     WriteDisposition,
     WriteOptions,
 };
 use qubit_local_files::{
     atomic,
+    copy,
+    directory,
     read,
+    remove,
+    rename,
     write,
 };
 
 use crate::internal::{
+    LocalDirectoryStreamSession,
     LocalFileWriteSession,
     validate_hierarchical_path,
 };
@@ -90,13 +110,22 @@ impl LocalFileSystem {
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
                 .with_scheme("file")
                 .expect("static file URI scheme must be valid");
+        let mut capabilities = FileSystemCapabilities::default()
+            .with(FileSystemCapability::List)
+            .with(FileSystemCapability::Read)
+            .with(FileSystemCapability::Write)
+            .with(FileSystemCapability::Append)
+            .with(FileSystemCapability::CreateDirectory)
+            .with(FileSystemCapability::Delete)
+            .with(FileSystemCapability::RecursiveDelete)
+            .with(FileSystemCapability::Rename)
+            .with(FileSystemCapability::AtomicReplace)
+            .with(FileSystemCapability::Copy);
+        #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+        capabilities.insert(FileSystemCapability::AtomicRename);
         Self {
             info,
-            capabilities: FileSystemCapabilities::default()
-                .with(FileSystemCapability::Read)
-                .with(FileSystemCapability::Write)
-                .with(FileSystemCapability::Append)
-                .with(FileSystemCapability::AtomicReplace),
+            capabilities,
             limits: FileSystemLimits::unknown(),
         }
     }
@@ -434,7 +463,7 @@ impl LocalFileSystem {
     /// # Returns
     ///
     /// The corresponding file kind, byte length, and available timestamps.
-    fn map_metadata(metadata: fs::Metadata) -> FileMetadata {
+    pub(crate) fn map_metadata(metadata: fs::Metadata) -> FileMetadata {
         let file_type = metadata.file_type();
         let kind = if file_type.is_file() {
             FileKind::File
@@ -465,7 +494,7 @@ impl LocalFileSystem {
     ///
     /// A provider-neutral error with a scrubbed message and native source.
     #[inline(always)]
-    fn map_io_error(
+    pub(crate) fn map_io_error(
         operation: FsOperation,
         path: &FsPath,
         error: io::Error,
@@ -510,6 +539,32 @@ impl FileSystemProperties for LocalFileSystem {
 }
 
 impl FileSystem for LocalFileSystem {
+    /// Opens a deterministic snapshot of a host-local directory listing.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute directory path to enumerate.
+    /// * `options` - Recursion, symbolic-link, metadata, and prefix policies.
+    ///
+    /// # Returns
+    ///
+    /// A type-erased stream over matching canonical directory entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a path-aware filesystem error when the path is invalid, the
+    /// directory cannot be read, or entry metadata cannot be represented.
+    fn list(
+        &self,
+        path: &FsPath,
+        options: ListOptions,
+    ) -> FsResult<DirectoryStream> {
+        let native_path = Self::native_path(FsOperation::List, path)?;
+        let session =
+            LocalDirectoryStreamSession::capture(native_path, path, options)?;
+        Ok(DirectoryStream::new(session))
+    }
+
     /// Opens a native regular file for synchronous sequential reading.
     ///
     /// This method performs blocking local filesystem I/O. It validates all
@@ -649,6 +704,359 @@ impl FileSystem for LocalFileSystem {
         };
         let location = FileLocation::new(self.info.id().clone(), path.clone());
         Ok(FileWriter::new(session, OpenedFileInfo::new(location)))
+    }
+
+    /// Creates one host-local directory.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute directory path to create.
+    /// * `options` - Parent creation and existing-directory policies.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-options error for user metadata, or a path-aware I/O
+    /// error when the directory cannot be created.
+    fn create_dir(
+        &self,
+        path: &FsPath,
+        options: CreateDirOptions,
+    ) -> FsResult<()> {
+        if options.user_metadata.as_metadata().iter().next().is_some() {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::CreateDir,
+                "local directories do not support user metadata",
+            )
+            .with_path(path.clone())
+            .with_provider(Self::provider_id()));
+        }
+        let native_path = Self::native_path(FsOperation::CreateDir, path)?;
+        if options.recursive {
+            directory::create_parent(&native_path).map_err(|error| {
+                Self::map_io_error(FsOperation::CreateDir, path, error)
+            })?;
+        }
+        match directory::create(&native_path) {
+            Ok(()) => Ok(()),
+            Err(error)
+                if options.exists_ok
+                    && error.kind() == io::ErrorKind::AlreadyExists =>
+            {
+                let metadata =
+                    fs::symlink_metadata(&native_path).map_err(|error| {
+                        Self::map_io_error(FsOperation::CreateDir, path, error)
+                    })?;
+                if metadata.is_dir() {
+                    Ok(())
+                } else {
+                    Err(Self::map_io_error(FsOperation::CreateDir, path, error))
+                }
+            }
+            Err(error) => {
+                Err(Self::map_io_error(FsOperation::CreateDir, path, error))
+            }
+        }
+    }
+
+    /// Deletes one host-local entry with explicit recursive and absence policy.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Absolute path to delete.
+    /// * `options` - Recursive, missing-target, and conditional policies.
+    ///
+    /// # Errors
+    ///
+    /// Returns a requirement error before I/O for unsupported conditional
+    /// deletion, or a path-aware I/O error when removal fails.
+    fn delete(&self, path: &FsPath, options: DeleteOptions) -> FsResult<()> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(path.clone())
+                    .with_provider(Self::provider_id())
+            })?;
+        let native_path = Self::native_path(FsOperation::Delete, path)?;
+        let metadata = match fs::symlink_metadata(&native_path) {
+            Ok(metadata) => metadata,
+            Err(error)
+                if options.missing_ok
+                    && error.kind() == io::ErrorKind::NotFound =>
+            {
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(Self::map_io_error(
+                    FsOperation::Delete,
+                    path,
+                    error,
+                ));
+            }
+        };
+        let result = if metadata.is_dir() {
+            if options.recursive {
+                remove::directory_tree(&native_path)
+            } else {
+                remove::empty_directory(&native_path)
+            }
+        } else {
+            remove::file(&native_path)
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(error)
+                if options.missing_ok
+                    && error.kind() == io::ErrorKind::NotFound =>
+            {
+                Ok(())
+            }
+            Err(error) => {
+                Err(Self::map_io_error(FsOperation::Delete, path, error))
+            }
+        }
+    }
+
+    /// Renames one host-local entry within the host filesystem namespace.
+    ///
+    /// # Parameters
+    ///
+    /// * `from` - Absolute source path.
+    /// * `to` - Absolute destination path.
+    /// * `options` - Destination overwrite and required atomicity policies.
+    ///
+    /// # Returns
+    ///
+    /// An atomic-rename outcome after successful native publication.
+    ///
+    /// # Errors
+    ///
+    /// Returns a requirement error before I/O when required atomic rename is
+    /// unavailable, or a source/target-aware error when native rename fails.
+    fn rename(
+        &self,
+        from: &FsPath,
+        to: &FsPath,
+        options: RenameOptions,
+    ) -> FsResult<RenameOutcome> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(from.clone())
+                    .with_target(to.clone())
+                    .with_provider(Self::provider_id())
+            })?;
+        let native_from = Self::native_path(FsOperation::Rename, from)?;
+        let native_to = Self::native_path(FsOperation::Rename, to)?;
+        let result = if options.overwrite {
+            rename::move_path(&native_from, &native_to)
+        } else {
+            rename::move_path_without_replacing(&native_from, &native_to)
+        };
+        result.map_err(|error| {
+            Self::map_io_error(FsOperation::Rename, from, error)
+                .with_target(to.clone())
+        })?;
+        Ok(RenameOutcome::new(
+            AchievedAtomicity::Atomic,
+            PublicationMethod::AtomicRename,
+        ))
+    }
+
+    /// Copies one file or directory tree within the host filesystem namespace.
+    ///
+    /// # Parameters
+    ///
+    /// * `from` - Absolute source path.
+    /// * `to` - Absolute destination path.
+    /// * `options` - Source mode, conflict, metadata, link, and parent policy.
+    ///
+    /// # Returns
+    ///
+    /// Local copy statistics and the non-atomic publication guarantee.
+    ///
+    /// # Errors
+    ///
+    /// Returns an option or capability error before destination changes when
+    /// requested semantics are unsupported, or a source/target-aware I/O error
+    /// when native copying fails.
+    fn copy(
+        &self,
+        from: &FsPath,
+        to: &FsPath,
+        options: CopyOptions,
+    ) -> FsResult<CopyOutcome> {
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error
+                    .with_path(from.clone())
+                    .with_target(to.clone())
+                    .with_provider(Self::provider_id())
+            })?;
+        if options.continue_on_error {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "local copy does not support continue-on-error",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(Self::provider_id()));
+        }
+        if !matches!(
+            options.preserve_metadata,
+            MetadataPreservePolicy::None | MetadataPreservePolicy::Portable
+        ) {
+            return Err(FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::Copy,
+                "local copy supports only none or portable metadata preservation",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(Self::provider_id()));
+        }
+        let native_from = Self::native_path(FsOperation::Copy, from)?;
+        let native_to = Self::native_path(FsOperation::Copy, to)?;
+        let link_metadata =
+            fs::symlink_metadata(&native_from).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, from, error)
+                    .with_target(to.clone())
+            })?;
+        if link_metadata.file_type().is_symlink() && !options.follow_symlinks {
+            return Err(FsError::new(
+                FsErrorKind::UnsupportedCapability,
+                FsOperation::Copy,
+                "local copy does not copy symbolic-link entries",
+            )
+            .with_path(from.clone())
+            .with_target(to.clone())
+            .with_provider(Self::provider_id())
+            .with_required_capability(FileSystemCapability::Symlink));
+        }
+        let metadata = if link_metadata.file_type().is_symlink() {
+            fs::metadata(&native_from).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, from, error)
+                    .with_target(to.clone())
+            })?
+        } else {
+            link_metadata
+        };
+        let copy_tree = match options.mode {
+            CopyMode::Auto => metadata.is_dir(),
+            CopyMode::File if metadata.is_file() => false,
+            CopyMode::Tree if metadata.is_dir() => true,
+            CopyMode::File | CopyMode::Tree => {
+                return Err(FsError::new(
+                    FsErrorKind::InvalidOptions,
+                    FsOperation::Copy,
+                    "copy mode does not match the source entry type",
+                )
+                .with_path(from.clone())
+                .with_target(to.clone())
+                .with_provider(Self::provider_id()));
+            }
+        };
+        if options.create_parent {
+            directory::create_parent(&native_to).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, to, error)
+                    .with_target(to.clone())
+            })?;
+        }
+        if copy_tree {
+            let conflict = match options.conflict {
+                CopyConflictPolicy::Fail => copy::ConflictPolicy::Fail,
+                CopyConflictPolicy::Overwrite => {
+                    copy::ConflictPolicy::Overwrite
+                }
+                CopyConflictPolicy::Skip => copy::ConflictPolicy::Skip,
+            };
+            let type_conflict =
+                if options.conflict == CopyConflictPolicy::Overwrite {
+                    copy::TypeConflictPolicy::Replace
+                } else {
+                    copy::TypeConflictPolicy::Fail
+                };
+            let mut local_options = copy::Options::new()
+                .with_conflict(conflict)
+                .with_type_conflict(type_conflict);
+            if options.follow_symlinks {
+                local_options = local_options.follow_symlinks();
+            }
+            if options.preserve_metadata == MetadataPreservePolicy::Portable {
+                local_options = local_options.preserve_permissions();
+            }
+            let statistics =
+                copy::directory(&native_from, &native_to, local_options)
+                    .map_err(|error| {
+                        let kind = error.kind();
+                        FsError::from_io(
+                            io::Error::new(kind, error),
+                            FsOperation::Copy,
+                        )
+                        .with_path(from.clone())
+                        .with_target(to.clone())
+                        .with_provider(Self::provider_id())
+                    })?;
+            let stats = CopyStats {
+                files: statistics.files(),
+                directories: statistics.directories(),
+                bytes: statistics.bytes(),
+                skipped: statistics.skipped(),
+                ..CopyStats::default()
+            };
+            return Ok(CopyOutcome::new(
+                stats,
+                CopyMethod::Local,
+                AchievedAtomicity::NonAtomic,
+            ));
+        }
+        let destination_existed = match fs::symlink_metadata(&native_to) {
+            Ok(_) => true,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => {
+                return Err(Self::map_io_error(FsOperation::Copy, to, error)
+                    .with_target(to.clone()));
+            }
+        };
+        if options.conflict == CopyConflictPolicy::Skip && destination_existed {
+            return Ok(CopyOutcome::new(
+                CopyStats {
+                    skipped: 1,
+                    ..CopyStats::default()
+                },
+                CopyMethod::Local,
+                AchievedAtomicity::NonAtomic,
+            ));
+        }
+        let copied = match options.conflict {
+            CopyConflictPolicy::Overwrite => {
+                copy::file(&native_from, &native_to)
+            }
+            CopyConflictPolicy::Fail | CopyConflictPolicy::Skip => {
+                copy::file_without_replacing(&native_from, &native_to)
+            }
+        }
+        .map_err(|error| {
+            Self::map_io_error(FsOperation::Copy, from, error)
+                .with_target(to.clone())
+        })?;
+        Ok(CopyOutcome::new(
+            CopyStats {
+                files: 1,
+                bytes: copied,
+                overwritten: u64::from(
+                    destination_existed
+                        && options.conflict == CopyConflictPolicy::Overwrite,
+                ),
+                ..CopyStats::default()
+            },
+            CopyMethod::Local,
+            AchievedAtomicity::NonAtomic,
+        ))
     }
 
     /// Reads native metadata for one host-wide local path.

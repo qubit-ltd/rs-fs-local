@@ -8,9 +8,11 @@
 //! Private local provider implementation types.
 
 mod hierarchical_path;
+mod local_directory_stream_session;
 mod local_file_write_session;
 mod rooted_file_write_session;
 
 pub(crate) use hierarchical_path::validate_hierarchical_path;
+pub(crate) use local_directory_stream_session::LocalDirectoryStreamSession;
 pub(crate) use local_file_write_session::LocalFileWriteSession;
 pub(crate) use rooted_file_write_session::RootedFileWriteSession;
