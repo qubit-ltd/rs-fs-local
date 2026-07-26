@@ -212,8 +212,7 @@ fn test_stat_rejects_noncanonical_hierarchical_paths() {
     ];
 
     for literal in literal_paths {
-        let path =
-            FsPath::parse_literal(&literal).expect("parse literal path");
+        let path = FsPath::parse_literal(&literal).expect("parse literal path");
         let error = fs
             .stat(&path)
             .expect_err("reject noncanonical hierarchical path");
@@ -356,7 +355,9 @@ fn test_direct_commit_releases_native_descriptor() {
     };
     let mut writer =
         fs.open_writer(&path, options).expect("open direct writer");
-    writer.write_fully(b"direct").expect("write direct contents");
+    writer
+        .write_fully(b"direct")
+        .expect("write direct contents");
     assert_eq!(1, open_descriptor_count(&file_path));
 
     writer.commit().expect("commit direct write");

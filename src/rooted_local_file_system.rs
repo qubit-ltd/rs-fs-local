@@ -47,7 +47,13 @@ use qubit_local_files::{
     write,
 };
 
-use crate::internal::RootedFileWriteSession;
+use crate::{
+    LocalFileSystem,
+    internal::{
+        RootedFileWriteSession,
+        validate_hierarchical_path,
+    },
+};
 
 /// A local filesystem whose authority is anchored to an opened directory.
 ///
@@ -80,8 +86,11 @@ impl RootedLocalFileSystem {
     /// descriptor-relative roots are unsupported on the current platform.
     pub fn open(id: FileSystemId, path: &Path) -> std::io::Result<Self> {
         let root = rooted::Root::open(path)?;
-        let info =
-            FileSystemInfo::new(id, "local-file", PathSemantics::Hierarchical);
+        let info = FileSystemInfo::new(
+            id,
+            LocalFileSystem::provider_id(),
+            PathSemantics::Hierarchical,
+        );
         Ok(Self {
             root,
             info,
@@ -115,21 +124,18 @@ impl RootedLocalFileSystem {
         path: &FsPath,
         operation: FsOperation,
     ) -> FsResult<rooted::Path> {
-        let relative = path.as_str().strip_prefix('/').ok_or_else(|| {
-            FsError::invalid_path(
-                operation,
-                "rooted local filesystem paths must be absolute",
-            )
-            .with_path(path.clone())
-            .with_provider("local-file")
-        })?;
+        validate_hierarchical_path(operation, path)?;
+        let relative = path
+            .as_str()
+            .strip_prefix('/')
+            .expect("validated absolute path must have a leading slash");
         if relative.is_empty() {
             return Err(FsError::invalid_path(
                 operation,
                 "rooted local filesystem root cannot be opened as a file",
             )
             .with_path(path.clone())
-            .with_provider("local-file"));
+            .with_provider(LocalFileSystem::provider_id()));
         }
         let mut native = PathBuf::new();
         for component in relative.split('/') {
@@ -141,7 +147,7 @@ impl RootedLocalFileSystem {
                     error,
                 )
                 .with_path(path.clone())
-                .with_provider("local-file")
+                .with_provider(LocalFileSystem::provider_id())
             })?;
             let native_component: &std::ffi::OsStr = native_component.as_ref();
             if Path::new(native_component)
@@ -153,14 +159,14 @@ impl RootedLocalFileSystem {
                     "canonical rooted path component introduces a native boundary",
                 )
                 .with_path(path.clone())
-                .with_provider("local-file"));
+                .with_provider(LocalFileSystem::provider_id()));
             }
             native.push(native_component);
         }
         rooted::Path::new(native).map_err(|error| {
             FsError::from_io(error, operation)
                 .with_path(path.clone())
-                .with_provider("local-file")
+                .with_provider(LocalFileSystem::provider_id())
         })
     }
 
@@ -208,7 +214,7 @@ impl FileSystem for RootedLocalFileSystem {
         metadata.map(Self::map_metadata).map_err(|error| {
             FsError::from_io(error, FsOperation::Stat)
                 .with_path(path.clone())
-                .with_provider("local-file")
+                .with_provider(LocalFileSystem::provider_id())
         })
     }
 
@@ -220,7 +226,9 @@ impl FileSystem for RootedLocalFileSystem {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
-                error.with_path(path.clone()).with_provider("local-file")
+                error
+                    .with_path(path.clone())
+                    .with_provider(LocalFileSystem::provider_id())
             })?;
         let relative = Self::relative_path(path, FsOperation::OpenReader)?;
         let file = self
@@ -229,7 +237,7 @@ impl FileSystem for RootedLocalFileSystem {
             .map_err(|error| {
                 FsError::from_io(error, FsOperation::OpenReader)
                     .with_path(path.clone())
-                    .with_provider("local-file")
+                    .with_provider(LocalFileSystem::provider_id())
             })?;
         let location = FileLocation::new(self.info.id().clone(), path.clone());
         Ok(FileReader::new(file, OpenedFileInfo::new(location)))
@@ -243,7 +251,9 @@ impl FileSystem for RootedLocalFileSystem {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
-                error.with_path(path.clone()).with_provider("local-file")
+                error
+                    .with_path(path.clone())
+                    .with_provider(LocalFileSystem::provider_id())
             })?;
         if options.content_type.is_some()
             || options.user_metadata.as_metadata().iter().next().is_some()
@@ -255,7 +265,7 @@ impl FileSystem for RootedLocalFileSystem {
                 "rooted local writes do not support content metadata or checksums",
             )
             .with_path(path.clone())
-            .with_provider("local-file"));
+            .with_provider(LocalFileSystem::provider_id()));
         }
         if options.disposition == WriteDisposition::CreateNew
             && options.atomicity == AtomicityRequirement::Required
@@ -266,7 +276,7 @@ impl FileSystem for RootedLocalFileSystem {
                 "atomic create-new publication is not supported",
             )
             .with_path(path.clone())
-            .with_provider("local-file")
+            .with_provider(LocalFileSystem::provider_id())
             .with_required_capability(FileSystemCapability::AtomicReplace));
         }
         let relative = Self::relative_path(path, FsOperation::OpenWriter)?;
@@ -289,7 +299,7 @@ impl FileSystem for RootedLocalFileSystem {
                         FsOperation::OpenWriter,
                     )
                     .with_path(path.clone())
-                    .with_provider("local-file")
+                    .with_provider(LocalFileSystem::provider_id())
                 })?;
             RootedFileWriteSession::atomic(writer, path.clone())
         } else {
@@ -311,7 +321,7 @@ impl FileSystem for RootedLocalFileSystem {
                 .map_err(|error| {
                     FsError::from_io(error, FsOperation::OpenWriter)
                         .with_path(path.clone())
-                        .with_provider("local-file")
+                        .with_provider(LocalFileSystem::provider_id())
                 })?;
             RootedFileWriteSession::direct(file, path.clone())
         };

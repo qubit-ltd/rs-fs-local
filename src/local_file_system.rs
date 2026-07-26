@@ -51,7 +51,10 @@ use qubit_local_files::{
     write,
 };
 
-use crate::internal::LocalFileWriteSession;
+use crate::internal::{
+    LocalFileWriteSession,
+    validate_hierarchical_path,
+};
 
 /// Provides the synchronous `file:` filesystem implementation.
 ///
@@ -165,20 +168,15 @@ impl LocalFileSystem {
     ///
     /// # Errors
     ///
-    /// Returns an invalid-path error when the decoded native path is relative.
+    /// Returns an invalid-path error when `path` is relative or not already
+    /// normalized, or when a decoded component changes its native boundary.
     ///
     /// # Panics
     ///
     /// Panics only if validated [`FsPath`] text violates the native path codec
     /// invariant.
     fn native_path(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
-        if !path.is_absolute() {
-            return Err(Self::invalid_native_path(
-                operation,
-                "local filesystem path must be absolute",
-            )
-            .with_path(path.clone()));
-        }
+        validate_hierarchical_path(operation, path)?;
         Self::encode_canonical_components(operation, path)
     }
 
