@@ -18,6 +18,13 @@ use std::os::unix::{
 use qubit_fs::{
     AchievedAtomicity,
     AtomicityRequirement,
+    CopyConflictPolicy,
+    CopyMethod,
+    CopyMode,
+    CopyOptions,
+    CreateDirOptions,
+    DeleteOptions,
+    DirectoryStreamExt,
     FileKind,
     FileSystem,
     FileSystemCapabilities,
@@ -28,8 +35,10 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
     FsPath,
+    ListOptions,
     PublicationMethod,
     ReadOptions,
+    RenameOptions,
     WriteDisposition,
     WriteOptions,
 };
@@ -251,10 +260,254 @@ fn test_host_advertises_read_and_write_capabilities() {
     assert_eq!(
         fs.capabilities(),
         FileSystemCapabilities::default()
+            .with(FileSystemCapability::List)
             .with(FileSystemCapability::Read)
             .with(FileSystemCapability::Write)
             .with(FileSystemCapability::Append)
-            .with(FileSystemCapability::AtomicReplace),
+            .with(FileSystemCapability::CreateDirectory)
+            .with(FileSystemCapability::Delete)
+            .with(FileSystemCapability::RecursiveDelete)
+            .with(FileSystemCapability::Rename)
+            .with(FileSystemCapability::AtomicRename)
+            .with(FileSystemCapability::AtomicReplace)
+            .with(FileSystemCapability::Copy),
+    );
+}
+
+/// Confirms direct and recursive listings preserve canonical paths, filtering,
+/// kinds, and requested metadata.
+#[test]
+fn test_list_supports_recursive_prefix_and_metadata_options() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let nested = temporary_directory.path().join("nested");
+    std::fs::create_dir(&nested).expect("create nested directory");
+    std::fs::write(temporary_directory.path().join("alpha.txt"), b"alpha")
+        .expect("write alpha file");
+    std::fs::write(temporary_directory.path().join("beta.txt"), b"beta")
+        .expect("write beta file");
+    std::fs::write(nested.join("alpha-child.txt"), b"child")
+        .expect("write nested alpha file");
+    let root = canonical_path(temporary_directory.path());
+    let fs = LocalFileSystem::host();
+    let options = ListOptions {
+        recursive: true,
+        include_metadata: true,
+        prefix: Some("alpha".to_owned()),
+        ..ListOptions::default()
+    };
+
+    let entries = fs
+        .list(&root, options)
+        .expect("open recursive listing")
+        .collect_entries(16)
+        .expect("collect recursive listing");
+
+    assert_eq!(2, entries.len());
+    assert_eq!("alpha.txt", entries[0].name);
+    assert_eq!(FileKind::File, entries[0].kind);
+    assert_eq!(Some(5), entries[0].metadata.as_ref().and_then(|value| value.len));
+    assert_eq!("alpha-child.txt", entries[1].name);
+    assert_eq!(FileKind::File, entries[1].kind);
+    assert_eq!(
+        canonical_path(&nested.join("alpha-child.txt")),
+        entries[1].path,
+    );
+}
+
+/// Confirms directory creation honors parent and existing-directory policies.
+#[test]
+fn test_create_dir_honors_recursive_and_exists_ok_options() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let directory_path =
+        temporary_directory.path().join("missing").join("nested");
+    let path = canonical_path(&directory_path);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .create_dir(&path, CreateDirOptions::default())
+        .expect_err("missing parent should reject nonrecursive creation");
+    assert_eq!(FsErrorKind::NotFound, error.kind());
+
+    fs.create_dir(
+        &path,
+        CreateDirOptions {
+            recursive: true,
+            ..CreateDirOptions::default()
+        },
+    )
+    .expect("create recursive directory");
+
+    let error = fs
+        .create_dir(&path, CreateDirOptions::default())
+        .expect_err("existing directory should be rejected by default");
+    assert_eq!(FsErrorKind::AlreadyExists, error.kind());
+    fs.create_dir(
+        &path,
+        CreateDirOptions {
+            exists_ok: true,
+            ..CreateDirOptions::default()
+        },
+    )
+    .expect("accept existing directory");
+}
+
+/// Confirms deletion distinguishes empty and recursive directory operations.
+#[test]
+fn test_delete_honors_recursive_and_missing_ok_options() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let directory_path = temporary_directory.path().join("tree");
+    std::fs::create_dir(&directory_path).expect("create directory");
+    std::fs::write(directory_path.join("value.txt"), b"value")
+        .expect("write nested file");
+    let path = canonical_path(&directory_path);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .delete(&path, DeleteOptions::default())
+        .expect_err("nonempty directory should reject nonrecursive deletion");
+    assert_ne!(FsErrorKind::NotFound, error.kind());
+
+    fs.delete(
+        &path,
+        DeleteOptions {
+            recursive: true,
+            ..DeleteOptions::default()
+        },
+    )
+    .expect("delete directory tree");
+    assert!(!directory_path.exists());
+
+    fs.delete(
+        &path,
+        DeleteOptions {
+            missing_ok: true,
+            ..DeleteOptions::default()
+        },
+    )
+    .expect("accept missing deletion target");
+}
+
+/// Confirms rename uses atomic no-replace semantics and explicit overwrite.
+#[test]
+fn test_rename_honors_destination_conflict_policy() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let source_path = temporary_directory.path().join("source.txt");
+    let destination_path = temporary_directory.path().join("destination.txt");
+    std::fs::write(&source_path, b"source").expect("write source");
+    std::fs::write(&destination_path, b"destination")
+        .expect("write destination");
+    let source = canonical_path(&source_path);
+    let destination = canonical_path(&destination_path);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .rename(&source, &destination, RenameOptions::default())
+        .expect_err("default rename should not replace a destination");
+    assert_eq!(FsErrorKind::AlreadyExists, error.kind());
+    assert_eq!(b"source", std::fs::read(&source_path).unwrap().as_slice());
+    assert_eq!(
+        b"destination",
+        std::fs::read(&destination_path).unwrap().as_slice(),
+    );
+
+    let outcome = fs
+        .rename(
+            &source,
+            &destination,
+            RenameOptions {
+                overwrite: true,
+                ..RenameOptions::default()
+            },
+        )
+        .expect("overwrite destination atomically");
+
+    assert_eq!(AchievedAtomicity::Atomic, outcome.atomicity);
+    assert_eq!(PublicationMethod::AtomicRename, outcome.method);
+    assert!(!source_path.exists());
+    assert_eq!(b"source", std::fs::read(&destination_path).unwrap().as_slice());
+}
+
+/// Confirms file and tree copy report local copy statistics and conflict
+/// behavior.
+#[test]
+fn test_copy_supports_file_and_tree_modes() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let source_file = temporary_directory.path().join("source.txt");
+    let destination_file = temporary_directory.path().join("destination.txt");
+    std::fs::write(&source_file, b"source").expect("write source file");
+    std::fs::write(&destination_file, b"destination")
+        .expect("write destination file");
+    let source = canonical_path(&source_file);
+    let destination = canonical_path(&destination_file);
+    let fs = LocalFileSystem::host();
+
+    let error = fs
+        .copy(&source, &destination, CopyOptions::file())
+        .expect_err("default file copy should reject conflicts");
+    assert_eq!(FsErrorKind::AlreadyExists, error.kind());
+
+    let skipped = fs
+        .copy(
+            &source,
+            &destination,
+            CopyOptions {
+                conflict: CopyConflictPolicy::Skip,
+                ..CopyOptions::file()
+            },
+        )
+        .expect("skip existing destination");
+    assert_eq!(1, skipped.stats.skipped);
+    assert_eq!(
+        b"destination",
+        std::fs::read(&destination_file).unwrap().as_slice(),
+    );
+
+    let copied = fs
+        .copy(
+            &source,
+            &destination,
+            CopyOptions {
+                conflict: CopyConflictPolicy::Overwrite,
+                ..CopyOptions::file()
+            },
+        )
+        .expect("overwrite destination file");
+    assert_eq!(CopyMethod::Local, copied.method);
+    assert_eq!(1, copied.stats.files);
+    assert_eq!(6, copied.stats.bytes);
+    assert_eq!(1, copied.stats.overwritten);
+    assert_eq!(b"source", std::fs::read(&destination_file).unwrap().as_slice());
+
+    let source_tree = temporary_directory.path().join("source-tree");
+    let destination_tree = temporary_directory.path().join("destination-tree");
+    std::fs::create_dir(&source_tree).expect("create source tree");
+    std::fs::write(source_tree.join("value.txt"), b"tree")
+        .expect("write tree file");
+    let tree_outcome = fs
+        .copy(
+            &canonical_path(&source_tree),
+            &canonical_path(&destination_tree),
+            CopyOptions {
+                mode: CopyMode::Tree,
+                ..CopyOptions::tree()
+            },
+        )
+        .expect("copy directory tree");
+
+    assert_eq!(CopyMethod::Local, tree_outcome.method);
+    assert_eq!(1, tree_outcome.stats.files);
+    assert_eq!(1, tree_outcome.stats.directories);
+    assert_eq!(4, tree_outcome.stats.bytes);
+    assert_eq!(
+        b"tree",
+        std::fs::read(destination_tree.join("value.txt"))
+            .unwrap()
+            .as_slice(),
     );
 }
 
