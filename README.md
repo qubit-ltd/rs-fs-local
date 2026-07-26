@@ -9,7 +9,7 @@
 
 `qubit-fs-local` provides the synchronous host-local `file:` filesystem backend
 for [`qubit-fs`](https://crates.io/crates/qubit-fs). It exposes mandatory
-metadata lookup, synchronous reads and writes, and
+metadata lookup, synchronous reads and writes, namespace management, and
 `RootedLocalFileSystem` for descriptor-relative authority. Registry integration
 through the `file` provider alias is optional behind the `registry` feature.
 
@@ -61,6 +61,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   filesystem ID, and applies the same component-wise native path conversion.
 - Rooted `stat` observes the root, directories, special files, and final
   symbolic links without following that final link.
+- Rooted listing, directory creation, deletion, rename, and copy operate from
+  the opened directory descriptor even if its diagnostic path is later
+  renamed. Recursive deletion and copy never traverse symbolic-link entries.
+- Local and rooted copy reject self-copies and native hard-link aliases before
+  opening an overwrite destination. Host-local overwrite replaces a
+  destination symbolic-link entry instead of following it.
 - `stat` uses `symlink_metadata`, so it reports the final symbolic link itself
   instead of following it.
 - `open_reader` performs blocking local I/O and accepts `ReadOptions` by value.
@@ -72,11 +78,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Properties
 
-`LocalFileSystem` advertises `Read`, `Write`, `Append`, and `AtomicReplace`.
-`RootedLocalFileSystem` advertises the same capabilities and performs atomic
-replacement beneath its opened root. `stat` is part of the base filesystem
-contract and therefore has no capability flag. Host-dependent path and I/O
-limits are reported explicitly as `FileSystemLimits::unknown()`.
+Both implementations advertise `List`, `Read`, `Write`, `Append`,
+`CreateDirectory`, `Delete`, `RecursiveDelete`, `Rename`, `AtomicReplace`, and
+`Copy`. `AtomicRename` is advertised only where the platform provides an
+atomic no-replace primitive; overwrite rename remains atomic on supported
+rooted Unix targets. Rooted portable copy preserves Unix permission bits.
+`stat` is part of the base filesystem contract and therefore has no capability
+flag. Host-dependent path and I/O limits are reported explicitly as
+`FileSystemLimits::unknown()`.
 
 This release is synchronous only. If asynchronous support is added later, it
 will be published as an opt-in feature rather than increasing the default
