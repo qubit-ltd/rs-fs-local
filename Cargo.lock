@@ -154,6 +154,7 @@ name = "qubit-fs-testkit"
 version = "0.1.0"
 dependencies = [
  "qubit-fs",
+ "qubit-io",
 ]
 
 [[package]]

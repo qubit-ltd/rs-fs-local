@@ -26,6 +26,29 @@ use qubit_fs::{
 use qubit_fs_local::RootedLocalFileSystem;
 use qubit_io::Output;
 
+/// Counts Linux process descriptors that still reference the specified path.
+///
+/// # Parameters
+///
+/// * `path` - Native path whose open descriptors should be counted.
+///
+/// # Returns
+///
+/// The number of matching descriptors visible through `/proc/self/fd`.
+///
+/// # Panics
+///
+/// Panics when the process descriptor directory cannot be inspected.
+#[cfg(target_os = "linux")]
+fn open_descriptor_count(path: &std::path::Path) -> usize {
+    std::fs::read_dir("/proc/self/fd")
+        .expect("read process descriptor directory")
+        .filter_map(Result::ok)
+        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+        .filter(|target| target == path)
+        .count()
+}
+
 /// Opens a rooted filesystem with a stable test identity.
 #[cfg(unix)]
 fn open_rooted_file_system(
@@ -130,6 +153,33 @@ fn test_rooted_open_writer_supports_direct_replacement() {
     assert_eq!(PublicationMethod::Direct, outcome.method);
 }
 
+/// Verifies a committed rooted direct writer releases its native descriptor.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_rooted_direct_commit_releases_native_descriptor() {
+    let directory =
+        tempfile::tempdir().expect("a temporary root should be created");
+    let file_system =
+        open_rooted_file_system("rooted-direct-close", directory.path());
+    let path = FsPath::parse("/value.txt").expect("the path should parse");
+    let native_path = directory.path().join("value.txt");
+    let options = WriteOptions {
+        atomicity: AtomicityRequirement::NotRequired,
+        ..WriteOptions::default()
+    };
+    let mut writer = file_system
+        .open_writer(&path, options)
+        .expect("the direct writer should open");
+    writer
+        .write_fully(b"direct")
+        .expect("the direct contents should be written");
+    assert_eq!(1, open_descriptor_count(&native_path));
+
+    writer.commit().expect("the direct write should commit");
+
+    assert_eq!(0, open_descriptor_count(&native_path));
+}
+
 /// Verifies required atomic create-new fails before creating parent entries.
 #[cfg(unix)]
 #[test]
@@ -205,6 +255,34 @@ fn test_stat_reports_root_directory_and_final_symbolic_link() {
         .expect("the file should be statable");
     assert!(metadata.accessed_at.is_some());
     assert!(metadata.modified_at.is_some());
+}
+
+/// Verifies rooted operations reject object-key literals that are not
+/// canonical hierarchical paths.
+#[cfg(unix)]
+#[test]
+fn test_rooted_stat_rejects_noncanonical_hierarchical_paths() {
+    let directory =
+        tempfile::tempdir().expect("a temporary root should be created");
+    std::fs::create_dir(directory.path().join("nested"))
+        .expect("the nested directory should be created");
+    std::fs::write(directory.path().join("value.txt"), b"value")
+        .expect("the regular file should be created");
+    let file_system =
+        open_rooted_file_system("rooted-path-validation", directory.path());
+
+    for literal in ["/./value.txt", "//value.txt", "/nested/../value.txt"] {
+        let path =
+            FsPath::parse_literal(literal).expect("the literal should parse");
+        let error = file_system
+            .stat(&path)
+            .expect_err("the noncanonical path should be rejected");
+
+        assert_eq!(FsErrorKind::InvalidPath, error.kind());
+        assert_eq!(FsOperation::Stat, error.operation());
+        assert_eq!(Some(&path), error.path());
+        assert_eq!(Some("local-file"), error.provider());
+    }
 }
 
 /// Verifies rooted paths decode canonical percent and non-UTF-8 components.

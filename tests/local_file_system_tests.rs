@@ -54,6 +54,29 @@ fn canonical_path(path: &Path) -> FsPath {
     LocalFileSystem::path_from_native(path).expect("decode native test path")
 }
 
+/// Counts Linux process descriptors that still reference the specified path.
+///
+/// # Parameters
+///
+/// * `path` - Native path whose open descriptors should be counted.
+///
+/// # Returns
+///
+/// The number of matching descriptors visible through `/proc/self/fd`.
+///
+/// # Panics
+///
+/// Panics when the process descriptor directory cannot be inspected.
+#[cfg(target_os = "linux")]
+fn open_descriptor_count(path: &Path) -> usize {
+    std::fs::read_dir("/proc/self/fd")
+        .expect("read process descriptor directory")
+        .filter_map(Result::ok)
+        .filter_map(|entry| std::fs::read_link(entry.path()).ok())
+        .filter(|target| target == path)
+        .count()
+}
+
 /// Confirms canonical percent escapes are decoded before native filesystem I/O.
 #[test]
 fn test_stat_supports_literal_percent_in_native_filename() {
@@ -170,6 +193,38 @@ fn test_stat_rejects_relative_native_path() {
     assert_eq!(error.provider(), Some("local-file"),);
 }
 
+/// Confirms host-local operations reject object-key literals that are not
+/// canonical hierarchical paths.
+#[test]
+fn test_stat_rejects_noncanonical_hierarchical_paths() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    std::fs::create_dir(temporary_directory.path().join("nested"))
+        .expect("create nested directory");
+    let file_path = temporary_directory.path().join("value.txt");
+    std::fs::write(&file_path, b"value").expect("write test file");
+    let parent = canonical_path(temporary_directory.path());
+    let fs = LocalFileSystem::host();
+    let literal_paths = [
+        format!("{}/./value.txt", parent.as_str()),
+        format!("{}//value.txt", parent.as_str()),
+        format!("{}/nested/../value.txt", parent.as_str()),
+    ];
+
+    for literal in literal_paths {
+        let path =
+            FsPath::parse_literal(&literal).expect("parse literal path");
+        let error = fs
+            .stat(&path)
+            .expect_err("reject noncanonical hierarchical path");
+
+        assert_eq!(FsErrorKind::InvalidPath, error.kind());
+        assert_eq!(FsOperation::Stat, error.operation());
+        assert_eq!(Some(&path), error.path());
+        assert_eq!(Some("local-file"), error.provider());
+    }
+}
+
 /// Confirms Windows-native separators cannot be smuggled through one canonical
 /// path component.
 #[cfg(windows)]
@@ -283,6 +338,30 @@ fn test_open_writer_supports_direct_replacement() {
     assert_eq!(Some(6), outcome.bytes_written);
     assert_eq!(AchievedAtomicity::NonAtomic, outcome.atomicity);
     assert_eq!(PublicationMethod::Direct, outcome.method);
+}
+
+/// Confirms a committed direct writer releases its native descriptor even
+/// while the provider-neutral writer value remains alive.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_direct_commit_releases_native_descriptor() {
+    let temporary_directory =
+        tempfile::tempdir().expect("create temporary directory");
+    let file_path = temporary_directory.path().join("item.txt");
+    let path = canonical_path(&file_path);
+    let fs = LocalFileSystem::host();
+    let options = WriteOptions {
+        atomicity: AtomicityRequirement::NotRequired,
+        ..WriteOptions::default()
+    };
+    let mut writer =
+        fs.open_writer(&path, options).expect("open direct writer");
+    writer.write_fully(b"direct").expect("write direct contents");
+    assert_eq!(1, open_descriptor_count(&file_path));
+
+    writer.commit().expect("commit direct write");
+
+    assert_eq!(0, open_descriptor_count(&file_path));
 }
 
 /// Confirms append sessions preserve existing bytes and report direct output.
