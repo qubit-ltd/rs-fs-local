@@ -202,11 +202,23 @@ impl FileWriteSession for LocalFileWriteSession {
     fn commit(&mut self) -> Result<WriteOutcome, WriteFailure> {
         match self {
             Self::Direct {
-                writer: Some(writer),
+                writer,
                 bytes_written,
                 path,
             } => {
-                writer.sync_all().map_err(|error| {
+                let Some(active_writer) = writer.as_mut() else {
+                    return Err(WriteFailure::new(
+                        FsError::new(
+                            FsErrorKind::InvalidState,
+                            FsOperation::CommitWriter,
+                            "direct write session was already consumed",
+                        )
+                        .with_path(path.clone())
+                        .with_provider(LocalFileSystem::provider_id()),
+                        WriteFailureState::NotPublished,
+                    ));
+                };
+                active_writer.sync_all().map_err(|error| {
                     WriteFailure::new(
                         FsError::from_io(error, FsOperation::CommitWriter)
                             .with_path(path.clone())
@@ -214,6 +226,7 @@ impl FileWriteSession for LocalFileWriteSession {
                         WriteFailureState::Retryable,
                     )
                 })?;
+                writer.take();
                 let mut outcome = WriteOutcome::new(
                     AchievedAtomicity::NonAtomic,
                     PublicationMethod::Direct,
@@ -286,16 +299,6 @@ impl FileWriteSession for LocalFileWriteSession {
                     }
                 }
             }
-            Self::Direct { path, .. } => Err(WriteFailure::new(
-                FsError::new(
-                    FsErrorKind::InvalidState,
-                    FsOperation::CommitWriter,
-                    "direct write session was already aborted",
-                )
-                .with_path(path.clone())
-                .with_provider(LocalFileSystem::provider_id()),
-                WriteFailureState::NotPublished,
-            )),
         }
     }
 

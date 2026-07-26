@@ -32,6 +32,8 @@ use qubit_local_files::{
     rooted,
 };
 
+use crate::LocalFileSystem;
+
 /// Direct or staged write session beneath an opened filesystem root.
 #[derive(Debug)]
 pub(crate) enum RootedFileWriteSession {
@@ -88,7 +90,7 @@ impl RootedFileWriteSession {
         let kind = error.kind();
         FsError::from_io(io::Error::new(kind, error), operation)
             .with_path(path.clone())
-            .with_provider("local-file")
+            .with_provider(LocalFileSystem::provider_id())
     }
 
     /// Builds the stream error returned after the active writer is consumed.
@@ -101,7 +103,7 @@ impl RootedFileWriteSession {
                 "rooted write session is already closed",
             )
             .with_path(path.clone())
-            .with_provider("local-file"),
+            .with_provider(LocalFileSystem::provider_id()),
         )
     }
 }
@@ -169,20 +171,34 @@ impl FileWriteSession for RootedFileWriteSession {
     fn commit(&mut self) -> Result<WriteOutcome, WriteFailure> {
         match self {
             Self::Direct {
-                file: Some(file),
+                file,
                 path,
                 bytes_written,
             } => {
-                file.flush().and_then(|()| file.sync_all()).map_err(
-                    |error| {
+                let Some(active_file) = file.as_mut() else {
+                    return Err(WriteFailure::new(
+                        FsError::new(
+                            FsErrorKind::InvalidState,
+                            FsOperation::CommitWriter,
+                            "rooted direct write session was already consumed",
+                        )
+                        .with_path(path.clone())
+                        .with_provider(LocalFileSystem::provider_id()),
+                        WriteFailureState::NotPublished,
+                    ));
+                };
+                active_file
+                    .flush()
+                    .and_then(|()| active_file.sync_all())
+                    .map_err(|error| {
                         WriteFailure::new(
                             FsError::from_io(error, FsOperation::CommitWriter)
                                 .with_path(path.clone())
-                                .with_provider("local-file"),
-                            WriteFailureState::Published,
+                                .with_provider(LocalFileSystem::provider_id()),
+                            WriteFailureState::Retryable,
                         )
-                    },
-                )?;
+                    })?;
+                file.take();
                 let mut outcome = WriteOutcome::new(
                     AchievedAtomicity::NonAtomic,
                     PublicationMethod::Direct,
@@ -204,7 +220,7 @@ impl FileWriteSession for RootedFileWriteSession {
                             "rooted atomic write session was already consumed",
                         )
                         .with_path(path.clone())
-                        .with_provider("local-file"),
+                        .with_provider(LocalFileSystem::provider_id()),
                         WriteFailureState::Indeterminate,
                     ));
                 };
@@ -255,16 +271,6 @@ impl FileWriteSession for RootedFileWriteSession {
                     }
                 }
             }
-            Self::Direct { path, .. } => Err(WriteFailure::new(
-                FsError::new(
-                    FsErrorKind::InvalidState,
-                    FsOperation::CommitWriter,
-                    "rooted direct write session was already aborted",
-                )
-                .with_path(path.clone())
-                .with_provider("local-file"),
-                WriteFailureState::NotPublished,
-            )),
         }
     }
 
@@ -302,7 +308,7 @@ impl FileWriteSession for RootedFileWriteSession {
                         "rooted atomic staging cleanup cannot be confirmed",
                     )
                     .with_path(path.clone())
-                    .with_provider("local-file"));
+                    .with_provider(LocalFileSystem::provider_id()));
                 }
                 Ok(())
             }
