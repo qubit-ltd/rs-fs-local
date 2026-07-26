@@ -7,15 +7,24 @@
 // =============================================================================
 
 use qubit_fs::{
+    AchievedAtomicity,
+    AtomicityRequirement,
     FileKind,
     FileSystem,
+    FileSystemCapabilities,
+    FileSystemCapability,
     FileSystemExt,
     FileSystemId,
+    FileSystemProperties,
     FsErrorKind,
+    FsOperation,
     FsPath,
+    PublicationMethod,
+    WriteDisposition,
     WriteOptions,
 };
 use qubit_fs_local::RootedLocalFileSystem;
+use qubit_io::Output;
 
 /// Opens a rooted filesystem with a stable test identity.
 #[cfg(unix)]
@@ -48,6 +57,103 @@ fn test_rooted_local_file_system_round_trips_content() {
             .expect("the rooted read should succeed")
             .as_slice(),
     );
+}
+
+/// Verifies rooted filesystems advertise durable atomic replacement.
+#[cfg(unix)]
+#[test]
+fn test_rooted_local_file_system_advertises_atomic_replace() {
+    let directory =
+        tempfile::tempdir().expect("a temporary root should be created");
+    let file_system =
+        open_rooted_file_system("rooted-capabilities", directory.path());
+
+    assert_eq!(
+        FileSystemCapabilities::default()
+            .with(FileSystemCapability::Read)
+            .with(FileSystemCapability::Write)
+            .with(FileSystemCapability::Append)
+            .with(FileSystemCapability::AtomicReplace),
+        file_system.capabilities(),
+    );
+}
+
+/// Verifies default rooted whole-file writes publish atomically.
+#[cfg(unix)]
+#[test]
+fn test_rooted_write_all_atomically_replaces_file() {
+    let directory =
+        tempfile::tempdir().expect("a temporary root should be created");
+    std::fs::write(directory.path().join("value.txt"), b"old")
+        .expect("the original file should be created");
+    let file_system =
+        open_rooted_file_system("rooted-atomic", directory.path());
+    let path = FsPath::parse("/value.txt").expect("the path should parse");
+
+    let outcome = file_system
+        .write_all(&path, b"replacement")
+        .expect("the rooted replacement should succeed");
+
+    assert_eq!(AchievedAtomicity::Atomic, outcome.atomicity);
+    assert_eq!(PublicationMethod::AtomicRename, outcome.method);
+    assert_eq!(
+        b"replacement",
+        std::fs::read(directory.path().join("value.txt"))
+            .expect("the replacement should be readable")
+            .as_slice(),
+    );
+}
+
+/// Verifies rooted callers can explicitly request direct replacement.
+#[cfg(unix)]
+#[test]
+fn test_rooted_open_writer_supports_direct_replacement() {
+    let directory =
+        tempfile::tempdir().expect("a temporary root should be created");
+    let file_system =
+        open_rooted_file_system("rooted-direct", directory.path());
+    let path = FsPath::parse("/value.txt").expect("the path should parse");
+    let options = WriteOptions {
+        atomicity: AtomicityRequirement::NotRequired,
+        ..WriteOptions::default()
+    };
+
+    let mut writer = file_system
+        .open_writer(&path, options)
+        .expect("the direct writer should open");
+    writer
+        .write_fully(b"direct")
+        .expect("the direct contents should be written");
+    let outcome = writer.commit().expect("the direct write should commit");
+
+    assert_eq!(AchievedAtomicity::NonAtomic, outcome.atomicity);
+    assert_eq!(PublicationMethod::Direct, outcome.method);
+}
+
+/// Verifies required atomic create-new fails before creating parent entries.
+#[cfg(unix)]
+#[test]
+fn test_rooted_open_writer_rejects_required_atomic_create_new() {
+    let directory =
+        tempfile::tempdir().expect("a temporary root should be created");
+    let file_system =
+        open_rooted_file_system("rooted-create-new", directory.path());
+    let path =
+        FsPath::parse("/missing/value.txt").expect("the path should parse");
+    let options = WriteOptions {
+        create_parent: true,
+        disposition: WriteDisposition::CreateNew,
+        atomicity: AtomicityRequirement::Required,
+        ..WriteOptions::default()
+    };
+
+    let error = file_system
+        .open_writer(&path, options)
+        .expect_err("atomic create-new should be rejected");
+
+    assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
+    assert_eq!(FsOperation::OpenWriter, error.operation());
+    assert!(!directory.path().join("missing").exists());
 }
 
 /// Verifies rooted stat reports the root, directories, and final symbolic
@@ -92,6 +198,13 @@ fn test_stat_reports_root_directory_and_final_symbolic_link() {
             .expect("the final link should be statable")
             .kind,
     );
+
+    let file_path = FsPath::parse("/value.txt").expect("the path should parse");
+    let metadata = file_system
+        .stat(&file_path)
+        .expect("the file should be statable");
+    assert!(metadata.accessed_at.is_some());
+    assert!(metadata.modified_at.is_some());
 }
 
 /// Verifies rooted paths decode canonical percent and non-UTF-8 components.

@@ -14,6 +14,7 @@ use std::path::{
 };
 
 use qubit_fs::{
+    AtomicityRequirement,
     FileKind,
     FileLocation,
     FileMetadata,
@@ -40,6 +41,7 @@ use qubit_fs::{
     WriteOptions,
 };
 use qubit_local_files::{
+    atomic,
     read,
     rooted,
     write,
@@ -86,7 +88,8 @@ impl RootedLocalFileSystem {
             capabilities: FileSystemCapabilities::default()
                 .with(FileSystemCapability::Read)
                 .with(FileSystemCapability::Write)
-                .with(FileSystemCapability::Append),
+                .with(FileSystemCapability::Append)
+                .with(FileSystemCapability::AtomicReplace),
             limits: FileSystemLimits::unknown(),
         })
     }
@@ -173,6 +176,9 @@ impl RootedLocalFileSystem {
         };
         let mut result = FileMetadata::new(kind);
         result.len = Some(metadata.size());
+        result.accessed_at = metadata.accessed_at();
+        result.modified_at = metadata.modified_at();
+        result.created_at = metadata.created_at();
         result
     }
 }
@@ -251,28 +257,65 @@ impl FileSystem for RootedLocalFileSystem {
             .with_path(path.clone())
             .with_provider("local-file"));
         }
+        if options.disposition == WriteDisposition::CreateNew
+            && options.atomicity == AtomicityRequirement::Required
+        {
+            return Err(FsError::new(
+                FsErrorKind::RequirementNotMet,
+                FsOperation::OpenWriter,
+                "atomic create-new publication is not supported",
+            )
+            .with_path(path.clone())
+            .with_provider("local-file")
+            .with_required_capability(FileSystemCapability::AtomicReplace));
+        }
         let relative = Self::relative_path(path, FsOperation::OpenWriter)?;
-        let mode = match options.disposition {
-            WriteDisposition::CreateNew => write::Mode::CreateNew,
-            WriteDisposition::CreateOrReplace => write::Mode::CreateOrTruncate,
-            WriteDisposition::Append => write::Mode::AppendExisting,
-        };
-        let local_options = if options.create_parent {
-            write::OpenOptions::new(mode).with_parents()
-        } else {
-            write::OpenOptions::new(mode)
-        };
-        let file = self.root.open_writer(&relative, &local_options).map_err(
-            |error| {
-                FsError::from_io(error, FsOperation::OpenWriter)
+        let session = if options.disposition
+            == WriteDisposition::CreateOrReplace
+            && options.atomicity != AtomicityRequirement::NotRequired
+        {
+            let atomic_options = if options.create_parent {
+                atomic::Options::new().with_parent()
+            } else {
+                atomic::Options::new()
+            };
+            let writer = self
+                .root
+                .begin_atomic_write_with_options(&relative, atomic_options)
+                .map_err(|error| {
+                    let kind = error.kind();
+                    FsError::from_io(
+                        std::io::Error::new(kind, error),
+                        FsOperation::OpenWriter,
+                    )
                     .with_path(path.clone())
                     .with_provider("local-file")
-            },
-        )?;
+                })?;
+            RootedFileWriteSession::atomic(writer, path.clone())
+        } else {
+            let mode = match options.disposition {
+                WriteDisposition::CreateNew => write::Mode::CreateNew,
+                WriteDisposition::CreateOrReplace => {
+                    write::Mode::CreateOrTruncate
+                }
+                WriteDisposition::Append => write::Mode::AppendExisting,
+            };
+            let local_options = if options.create_parent {
+                write::OpenOptions::new(mode).with_parents()
+            } else {
+                write::OpenOptions::new(mode)
+            };
+            let file = self
+                .root
+                .open_writer(&relative, &local_options)
+                .map_err(|error| {
+                    FsError::from_io(error, FsOperation::OpenWriter)
+                        .with_path(path.clone())
+                        .with_provider("local-file")
+                })?;
+            RootedFileWriteSession::direct(file, path.clone())
+        };
         let location = FileLocation::new(self.info.id().clone(), path.clone());
-        Ok(FileWriter::new(
-            RootedFileWriteSession::new(file, path.clone()),
-            OpenedFileInfo::new(location),
-        ))
+        Ok(FileWriter::new(session, OpenedFileInfo::new(location)))
     }
 }
