@@ -5,8 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-#![cfg(feature = "registry")]
-
 use qubit_fs::{
     FileKind,
     FsUri,
@@ -117,7 +115,8 @@ fn test_registry_decodes_alphabetic_hexadecimal_uri_escape() {
     assert_eq!(resource.stat().expect("stat resource").kind, FileKind::File);
 }
 
-/// Confirms an encoded separator cannot create an additional local path component.
+/// Confirms an encoded separator cannot create an additional local path
+/// component.
 #[test]
 fn test_provider_rejects_encoded_path_separator() {
     let uri = FsUri::parse("file:///tmp/parent%2Fchild")
@@ -209,8 +208,7 @@ fn test_provider_rejects_options() {
     let options = UserMetadata::new()
         .with("mode", "readonly")
         .expect("the option key should be safe");
-    let config = FileSystemConfig::new(uri)
-        .with_options(options);
+    let config = FileSystemConfig::new(uri).with_options(options);
 
     assert_invalid_configuration(config);
 }

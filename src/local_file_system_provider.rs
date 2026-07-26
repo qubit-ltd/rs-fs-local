@@ -8,7 +8,10 @@
 //! Defines the service-provider adapter for the local filesystem.
 
 use std::{
-    path::Path,
+    path::{
+        Component,
+        Path,
+    },
     sync::Arc,
 };
 
@@ -92,14 +95,15 @@ impl LocalFileSystemProvider {
     /// # Errors
     ///
     /// Returns an invalid-configuration error when the decoded path is not
-    /// native-absolute or violates canonical filesystem path semantics.
+    /// native-absolute, a URI component introduces a native boundary, or the
+    /// resulting native path violates canonical filesystem path semantics.
     ///
     /// # Panics
     ///
     /// Panics only if validated URI text violates the native path codec
     /// invariant.
     fn decode_path(path: &FsUriPath) -> Result<FsPath, ProviderError> {
-        let decoded = path.decode();
+        let decoded = decode_uri_path_components(path)?;
         let native_text = native_uri_path(&decoded);
         let native_path = Path::new(native_text);
         if !native_path.is_absolute() {
@@ -114,6 +118,98 @@ impl LocalFileSystemProvider {
             )
         })
     }
+}
+
+/// Decodes one file-URI path while retaining its literal component boundaries.
+///
+/// URI percent decoding happens separately for each component. A decoded
+/// component must remain exactly one normal native component, except for the
+/// leading Windows drive component required by file URI syntax.
+///
+/// # Parameters
+///
+/// * `path` - Validated encoded URI path.
+///
+/// # Returns
+///
+/// Decoded slash-separated URI path text suitable for platform adaptation.
+///
+/// # Errors
+///
+/// Returns an invalid-configuration error when the URI path is relative or a
+/// decoded component introduces a native separator, root, prefix, or dot
+/// component.
+fn decode_uri_path_components(
+    path: &FsUriPath,
+) -> Result<String, ProviderError> {
+    let encoded = path.as_encoded();
+    if !encoded.starts_with('/') {
+        return Err(ProviderError::invalid_configuration(
+            "local file URI path must be absolute",
+        ));
+    }
+    let mut decoded_components = Vec::new();
+    for (index, encoded_component) in encoded
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .enumerate()
+    {
+        let decoded_component = FsUriPath::parse(encoded_component)
+            .map_err(|error| {
+                ProviderError::invalid_configuration_with_source(
+                    "local file URI path contains an invalid component",
+                    error,
+                )
+            })?
+            .decode();
+        if !is_native_uri_component(&decoded_component, index == 0) {
+            return Err(ProviderError::invalid_configuration(
+                "local file URI component introduces a native path boundary",
+            ));
+        }
+        decoded_components.push(decoded_component);
+    }
+    Ok(format!("/{}", decoded_components.join("/")))
+}
+
+/// Reports whether one decoded URI component remains one native component.
+///
+/// # Parameters
+///
+/// * `component` - URI-decoded component text.
+/// * `is_first` - Whether this is the first component after the URI root.
+///
+/// # Returns
+///
+/// `true` when the component is a single native normal component, or the
+/// platform-specific leading drive component permitted by file URIs.
+#[must_use]
+fn is_native_uri_component(component: &str, is_first: bool) -> bool {
+    #[cfg(windows)]
+    if is_first && is_windows_drive_component(component) {
+        return true;
+    }
+    #[cfg(not(windows))]
+    let _ = is_first;
+    let mut components = Path::new(component).components();
+    matches!(components.next(), Some(Component::Normal(_)))
+        && components.next().is_none()
+}
+
+/// Reports whether a URI-decoded component names a Windows drive prefix.
+///
+/// # Parameters
+///
+/// * `component` - First URI-decoded component after the leading slash.
+///
+/// # Returns
+///
+/// `true` only for an ASCII drive letter followed by a colon.
+#[cfg(windows)]
+#[must_use]
+fn is_windows_drive_component(component: &str) -> bool {
+    let bytes = component.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 impl ProviderMetadata for LocalFileSystemProvider {

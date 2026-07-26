@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "name": "minimal",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": []
+    },
+    {
+      "name": "registry",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": ["registry"]
+    }
+  ]
+}

@@ -167,10 +167,12 @@ impl RootedLocalFileSystem {
             rooted::EntryKind::File => FileKind::File,
             rooted::EntryKind::Directory => FileKind::Directory,
             rooted::EntryKind::Symlink => FileKind::Symlink,
-            rooted::EntryKind::Other => FileKind::Other("native-special".to_owned()),
+            rooted::EntryKind::Other => {
+                FileKind::Other("native-special".to_owned())
+            }
         };
         let mut result = FileMetadata::new(kind);
-        result.len = Some(metadata.len());
+        result.len = Some(metadata.size());
         result
     }
 }
@@ -209,11 +211,11 @@ impl FileSystem for RootedLocalFileSystem {
         path: &FsPath,
         options: ReadOptions,
     ) -> FsResult<FileReader> {
-        options.validate_against(self.capabilities).map_err(|error| {
-            error
-                .with_path(path.clone())
-                .with_provider("local-file")
-        })?;
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error.with_path(path.clone()).with_provider("local-file")
+            })?;
         let relative = Self::relative_path(path, FsOperation::OpenReader)?;
         let file = self
             .root
@@ -232,11 +234,11 @@ impl FileSystem for RootedLocalFileSystem {
         path: &FsPath,
         options: WriteOptions,
     ) -> FsResult<FileWriter> {
-        options.validate_against(self.capabilities).map_err(|error| {
-            error
-                .with_path(path.clone())
-                .with_provider("local-file")
-        })?;
+        options
+            .validate_against(self.capabilities)
+            .map_err(|error| {
+                error.with_path(path.clone()).with_provider("local-file")
+            })?;
         if options.content_type.is_some()
             || options.user_metadata.as_metadata().iter().next().is_some()
             || options.checksum.is_some()

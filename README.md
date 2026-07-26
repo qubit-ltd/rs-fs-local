@@ -56,19 +56,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   `OsStrPathCodec`, preserving literal percent characters, Unix non-UTF-8
   bytes, and Windows native path code units without letting decoded separators
   cross a component boundary.
+- `RootedLocalFileSystem` is currently Unix-only. It has descriptor-relative
+  authority below one opened directory, requires a caller-supplied stable
+  filesystem ID, and applies the same component-wise native path conversion.
+- Rooted `stat` observes the root, directories, special files, and final
+  symbolic links without following that final link.
 - `stat` uses `symlink_metadata`, so it reports the final symbolic link itself
   instead of following it.
 - `open_reader` performs blocking local I/O and accepts `ReadOptions` by value.
   The current backend supports sequential whole-file reads only; range,
   conditional, and required-checksum requests fail during preflight.
 - The provider accepts `file:` URIs with no authority or an empty authority. It
-  rejects remote authorities, queries, provider options, and credentials.
+  rejects remote authorities, queries, provider options, credentials, and URI
+  components whose decoding would introduce native path boundaries.
 
 ## Properties
 
-`LocalFileSystem` advertises `FileSystemCapability::Read`. `stat` is part of the
-base filesystem contract and therefore has no capability flag. Host-dependent
-path and I/O limits are reported explicitly as `FileSystemLimits::unknown()`.
+`LocalFileSystem` advertises `Read`, `Write`, `Append`, and `AtomicReplace`.
+`RootedLocalFileSystem` advertises `Read`, `Write`, and `Append`; rooted writes
+are direct and do not claim atomic replacement. `stat` is part of the base
+filesystem contract and therefore has no capability flag. Host-dependent path
+and I/O limits are reported explicitly as `FileSystemLimits::unknown()`.
 
 This release is synchronous only. If asynchronous support is added later, it
 will be published as an opt-in feature rather than increasing the default

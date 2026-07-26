@@ -23,7 +23,8 @@ fn open_rooted_file_system(
     id: &str,
     path: &std::path::Path,
 ) -> RootedLocalFileSystem {
-    let id = FileSystemId::new(id).expect("the test filesystem ID should validate");
+    let id =
+        FileSystemId::new(id).expect("the test filesystem ID should validate");
     RootedLocalFileSystem::open(id, path).expect("the root should open")
 }
 
@@ -33,7 +34,8 @@ fn open_rooted_file_system(
 fn test_rooted_local_file_system_round_trips_content() {
     let directory =
         tempfile::tempdir().expect("a temporary root should be created");
-    let file_system = open_rooted_file_system("rooted-round-trip", directory.path());
+    let file_system =
+        open_rooted_file_system("rooted-round-trip", directory.path());
     let path = FsPath::parse("/value.txt").expect("the path should parse");
 
     file_system
@@ -48,7 +50,8 @@ fn test_rooted_local_file_system_round_trips_content() {
     );
 }
 
-/// Verifies rooted stat reports the root, directories, and final symbolic links.
+/// Verifies rooted stat reports the root, directories, and final symbolic
+/// links.
 #[cfg(unix)]
 #[test]
 fn test_stat_reports_root_directory_and_final_symbolic_link() {
@@ -71,7 +74,8 @@ fn test_stat_reports_root_directory_and_final_symbolic_link() {
             .expect("the root should be statable")
             .kind,
     );
-    let directory_path = FsPath::parse("/nested").expect("the path should parse");
+    let directory_path =
+        FsPath::parse("/nested").expect("the path should parse");
     assert_eq!(
         FileKind::Directory,
         file_system
@@ -79,7 +83,8 @@ fn test_stat_reports_root_directory_and_final_symbolic_link() {
             .expect("the directory should be statable")
             .kind,
     );
-    let link_path = FsPath::parse("/value-link").expect("the path should parse");
+    let link_path =
+        FsPath::parse("/value-link").expect("the path should parse");
     assert_eq!(
         FileKind::Symlink,
         file_system
@@ -105,7 +110,8 @@ fn test_open_reader_decodes_canonical_native_components() {
         .expect("the non-UTF-8 file should be created");
     let file_system = open_rooted_file_system("rooted-codec", directory.path());
 
-    let percent_path = FsPath::parse("/100%25ready.txt").expect("the path should parse");
+    let percent_path =
+        FsPath::parse("/100%25ready.txt").expect("the path should parse");
     assert_eq!(
         b"percent",
         file_system
@@ -113,7 +119,8 @@ fn test_open_reader_decodes_canonical_native_components() {
             .expect("the percent file should be read")
             .as_slice(),
     );
-    let non_utf8_path = FsPath::parse("/fo%80o").expect("the path should parse");
+    let non_utf8_path =
+        FsPath::parse("/fo%80o").expect("the path should parse");
     assert_eq!(
         b"non-utf8",
         file_system
@@ -129,7 +136,8 @@ fn test_open_reader_decodes_canonical_native_components() {
 fn test_open_writer_rejects_content_metadata() {
     let directory =
         tempfile::tempdir().expect("a temporary root should be created");
-    let file_system = open_rooted_file_system("rooted-write-options", directory.path());
+    let file_system =
+        open_rooted_file_system("rooted-write-options", directory.path());
     let path = FsPath::parse("/value.txt").expect("the path should parse");
     let options = WriteOptions {
         content_type: Some("text/plain".to_owned()),
@@ -149,13 +157,16 @@ fn test_open_writer_rejects_content_metadata() {
 #[test]
 fn test_open_reader_distinguishes_rooted_filesystem_ids() {
     let first = tempfile::tempdir().expect("the first root should be created");
-    let second = tempfile::tempdir().expect("the second root should be created");
+    let second =
+        tempfile::tempdir().expect("the second root should be created");
     std::fs::write(first.path().join("value.txt"), b"first")
         .expect("the first file should be created");
     std::fs::write(second.path().join("value.txt"), b"second")
         .expect("the second file should be created");
-    let first_file_system = open_rooted_file_system("rooted-first", first.path());
-    let second_file_system = open_rooted_file_system("rooted-second", second.path());
+    let first_file_system =
+        open_rooted_file_system("rooted-first", first.path());
+    let second_file_system =
+        open_rooted_file_system("rooted-second", second.path());
     let path = FsPath::parse("/value.txt").expect("the path should parse");
 
     let first_reader = first_file_system

@@ -54,17 +54,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - 规范化的 `FsPath` 文本逐 component 通过 `OsStrPathCodec` 转换，能够保留字面
   `%`、Unix 非 UTF-8 字节和 Windows 原生路径代码单元，同时防止解码后的 separator
   穿越 component 边界。
+- `RootedLocalFileSystem` 当前仅支持 Unix。它以一个已打开目录为 descriptor-relative
+  authority，调用方必须提供稳定的 filesystem ID，并且同样按 component 转换原生路径。
+- Rooted `stat` 可在不跟随最终符号链接的前提下查询根目录、目录、特殊文件和最终
+  符号链接本身。
 - `stat` 使用 `symlink_metadata`，因此返回最终符号链接本身的信息而不会跟随它。
 - `open_reader` 执行阻塞式本地 I/O，并按值接收 `ReadOptions`。当前后端只支持
   顺序整文件读取；range、conditional 和 required-checksum 请求会在预检阶段失败。
 - provider 接受无 authority 或空 authority 的 `file:` URI，并拒绝远程
-  authority、query、provider options 和 credentials。
+  authority、query、provider options、credentials，以及解码后会引入原生路径边界的
+  URI component。
 
 ## 属性
 
-`LocalFileSystem` 声明 `FileSystemCapability::Read`。`stat` 属于文件系统基础契约，
-因此不再需要 capability 标记。依赖主机的路径和 I/O 限制会明确报告为
-`FileSystemLimits::unknown()`。
+`LocalFileSystem` 声明 `Read`、`Write`、`Append` 和 `AtomicReplace`。
+`RootedLocalFileSystem` 声明 `Read`、`Write` 和 `Append`；Rooted 写入为直接写入，
+不承诺原子替换。`stat` 属于文件系统基础契约，因此不再需要 capability 标记。
+依赖主机的路径和 I/O 限制会明确报告为 `FileSystemLimits::unknown()`。
 
 当前版本仅提供同步 API。若后续增加异步支持，将以可选 feature 发布，不增加默认
 依赖面。
