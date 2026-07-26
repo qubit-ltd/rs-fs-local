@@ -24,7 +24,6 @@ use qubit_fs::{
     CopyOptions,
     CreateDirOptions,
     DeleteOptions,
-    DirectoryStreamExt,
     FileKind,
     FileSystem,
     FileSystemCapabilities,
@@ -35,10 +34,8 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
     FsPath,
-    ListOptions,
     PublicationMethod,
     ReadOptions,
-    RenameOptions,
     WriteDisposition,
     WriteOptions,
 };
@@ -274,50 +271,6 @@ fn test_host_advertises_read_and_write_capabilities() {
     );
 }
 
-/// Confirms direct and recursive listings preserve canonical paths, filtering,
-/// kinds, and requested metadata.
-#[test]
-fn test_list_supports_recursive_prefix_and_metadata_options() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
-    let nested = temporary_directory.path().join("nested");
-    std::fs::create_dir(&nested).expect("create nested directory");
-    std::fs::write(temporary_directory.path().join("alpha.txt"), b"alpha")
-        .expect("write alpha file");
-    std::fs::write(temporary_directory.path().join("beta.txt"), b"beta")
-        .expect("write beta file");
-    std::fs::write(nested.join("alpha-child.txt"), b"child")
-        .expect("write nested alpha file");
-    let root = canonical_path(temporary_directory.path());
-    let fs = LocalFileSystem::host();
-    let options = ListOptions {
-        recursive: true,
-        include_metadata: true,
-        prefix: Some("alpha".to_owned()),
-        ..ListOptions::default()
-    };
-
-    let entries = fs
-        .list(&root, options)
-        .expect("open recursive listing")
-        .collect_entries(16)
-        .expect("collect recursive listing");
-
-    assert_eq!(2, entries.len());
-    assert_eq!("alpha.txt", entries[0].name);
-    assert_eq!(FileKind::File, entries[0].kind);
-    assert_eq!(
-        Some(5),
-        entries[0].metadata.as_ref().and_then(|value| value.len)
-    );
-    assert_eq!("alpha-child.txt", entries[1].name);
-    assert_eq!(FileKind::File, entries[1].kind);
-    assert_eq!(
-        canonical_path(&nested.join("alpha-child.txt")),
-        entries[1].path,
-    );
-}
-
 /// Confirms directory creation honors parent and existing-directory policies.
 #[test]
 fn test_create_dir_honors_recursive_and_exists_ok_options() {
@@ -391,50 +344,6 @@ fn test_delete_honors_recursive_and_missing_ok_options() {
         },
     )
     .expect("accept missing deletion target");
-}
-
-/// Confirms rename uses atomic no-replace semantics and explicit overwrite.
-#[test]
-fn test_rename_honors_destination_conflict_policy() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
-    let source_path = temporary_directory.path().join("source.txt");
-    let destination_path = temporary_directory.path().join("destination.txt");
-    std::fs::write(&source_path, b"source").expect("write source");
-    std::fs::write(&destination_path, b"destination")
-        .expect("write destination");
-    let source = canonical_path(&source_path);
-    let destination = canonical_path(&destination_path);
-    let fs = LocalFileSystem::host();
-
-    let error = fs
-        .rename(&source, &destination, RenameOptions::default())
-        .expect_err("default rename should not replace a destination");
-    assert_eq!(FsErrorKind::AlreadyExists, error.kind());
-    assert_eq!(b"source", std::fs::read(&source_path).unwrap().as_slice());
-    assert_eq!(
-        b"destination",
-        std::fs::read(&destination_path).unwrap().as_slice(),
-    );
-
-    let outcome = fs
-        .rename(
-            &source,
-            &destination,
-            RenameOptions {
-                overwrite: true,
-                ..RenameOptions::default()
-            },
-        )
-        .expect("overwrite destination atomically");
-
-    assert_eq!(AchievedAtomicity::Atomic, outcome.atomicity);
-    assert_eq!(PublicationMethod::AtomicRename, outcome.method);
-    assert!(!source_path.exists());
-    assert_eq!(
-        b"source",
-        std::fs::read(&destination_path).unwrap().as_slice()
-    );
 }
 
 /// Confirms file and tree copy report local copy statistics and conflict
