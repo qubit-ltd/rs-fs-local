@@ -545,10 +545,9 @@ impl FileSystem for LocalFileSystem {
                     .with_provider(Self::provider_id())
             })?;
         let native_path = Self::native_path(FsOperation::OpenReader, path)?;
-        let reader = read::open(&native_path, &read::OpenOptions::default())
-            .map_err(|error| {
-                Self::map_io_error(FsOperation::OpenReader, path, error)
-            })?;
+        let reader = read::open(&native_path).map_err(|error| {
+            Self::map_io_error(FsOperation::OpenReader, path, error)
+        })?;
         let location = FileLocation::new(self.info.id().clone(), path.clone());
         let info = OpenedFileInfo::new(location);
         Ok(FileReader::new(reader, info))
