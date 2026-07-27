@@ -10,71 +10,25 @@
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::{
-    fs,
-    io,
-    path::{
-        Component,
-        Path,
-        PathBuf,
-    },
+    fs, io,
+    path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 
 use qubit_fs::{
-    AchievedAtomicity,
-    AtomicityRequirement,
-    CopyConflictPolicy,
-    CopyMethod,
-    CopyMode,
-    CopyOptions,
-    CopyOutcome,
-    CopyStats,
-    CreateDirOptions,
-    DeleteOptions,
-    DirectoryStream,
-    FileKind,
-    FileLocation,
-    FileMetadata,
-    FileReader,
-    FileSystem,
-    FileSystemCapabilities,
-    FileSystemCapability,
-    FileSystemId,
-    FileSystemInfo,
-    FileSystemLimits,
-    FileSystemProperties,
-    FileWriter,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsPath,
-    FsResult,
-    ListOptions,
-    MetadataPreservePolicy,
-    NativePathCodec,
-    NativePathCodecError,
-    OpenedFileInfo,
-    OsStrPathCodec,
-    PathSemantics,
-    PublicationMethod,
-    ReadOptions,
-    RenameOptions,
-    RenameOutcome,
-    WriteDisposition,
-    WriteOptions,
+    AchievedAtomicity, AtomicityRequirement, CopyConflictPolicy, CopyMethod, CopyMode, CopyOptions,
+    CopyOutcome, CopyStats, CreateDirOptions, DeleteOptions, DirectoryStream, FileKind,
+    FileLocation, FileMetadata, FileReader, FileSystem, FileSystemCapabilities,
+    FileSystemCapability, FileSystemId, FileSystemInfo, FileSystemLimits, FileSystemProperties,
+    FileWriter, FsError, FsErrorKind, FsOperation, FsPath, FsResult, ListOptions,
+    MetadataPreservePolicy, NativePathCodec, NativePathCodecError, OpenedFileInfo, OsStrPathCodec,
+    PathSemantics, PublicationMethod, ReadOptions, RenameOptions, RenameOutcome, TempDir,
+    TempDirOptions, TempFile, TempFileOptions, WriteDisposition, WriteOptions,
 };
-use qubit_local_files::{
-    atomic,
-    copy,
-    directory,
-    read,
-    remove,
-    rename,
-    write,
-};
+use qubit_local_files::{atomic, copy, directory, read, remove, rename, write};
 
 use crate::internal::{
-    LocalDirectoryStreamSession,
-    LocalFileWriteSession,
+    LocalDirectoryStreamSession, LocalFileWriteSession, LocalTempResourceSession,
     validate_hierarchical_path,
 };
 
@@ -105,13 +59,11 @@ impl LocalFileSystem {
     #[must_use]
     #[inline]
     pub fn host() -> Self {
-        let id = FileSystemId::new("local-host")
-            .expect("static local filesystem id must be valid");
+        let id = FileSystemId::new("local-host").expect("static local filesystem id must be valid");
         let provider_id = Self::provider_id();
-        let info =
-            FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
-                .with_scheme("file")
-                .expect("static file URI scheme must be valid");
+        let info = FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
+            .with_scheme("file")
+            .expect("static file URI scheme must be valid");
         let mut capabilities = FileSystemCapabilities::default()
             .with(FileSystemCapability::List)
             .with(FileSystemCapability::Read)
@@ -122,7 +74,9 @@ impl LocalFileSystem {
             .with(FileSystemCapability::RecursiveDelete)
             .with(FileSystemCapability::Rename)
             .with(FileSystemCapability::AtomicReplace)
-            .with(FileSystemCapability::Copy);
+            .with(FileSystemCapability::Copy)
+            .with(FileSystemCapability::TempFile)
+            .with(FileSystemCapability::TempDirectory);
         #[cfg(any(target_os = "linux", target_os = "macos", windows))]
         capabilities.insert(FileSystemCapability::AtomicRename);
         Self {
@@ -206,7 +160,7 @@ impl LocalFileSystem {
     ///
     /// Panics only if validated [`FsPath`] text violates the native path codec
     /// invariant.
-    fn native_path(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
+    pub(crate) fn native_path(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
         validate_hierarchical_path(operation, path)?;
         Self::encode_canonical_components(operation, path)
     }
@@ -330,23 +284,17 @@ impl LocalFileSystem {
     /// Returns an invalid-path error when the canonical root is unsupported or
     /// a component cannot be encoded without changing its boundary.
     #[cfg(not(windows))]
-    fn encode_canonical_components(
-        operation: FsOperation,
-        path: &FsPath,
-    ) -> FsResult<PathBuf> {
+    fn encode_canonical_components(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
         let mut native = PathBuf::from("/");
-        for component in
-            path.as_str().split('/').filter(|value| !value.is_empty())
-        {
-            let component =
-                OsStrPathCodec.encode(component).map_err(|error| {
-                    Self::native_codec_error(
-                        operation,
-                        "canonical path component cannot be encoded losslessly",
-                        error,
-                    )
-                    .with_path(path.clone())
-                })?;
+        for component in path.as_str().split('/').filter(|value| !value.is_empty()) {
+            let component = OsStrPathCodec.encode(component).map_err(|error| {
+                Self::native_codec_error(
+                    operation,
+                    "canonical path component cannot be encoded losslessly",
+                    error,
+                )
+                .with_path(path.clone())
+            })?;
             let component: &std::ffi::OsStr = component.as_ref();
             native.push(component);
         }
@@ -369,17 +317,11 @@ impl LocalFileSystem {
     /// Returns an invalid-path error for a missing drive prefix or for a
     /// component containing a native separator.
     #[cfg(windows)]
-    fn encode_canonical_components(
-        operation: FsOperation,
-        path: &FsPath,
-    ) -> FsResult<PathBuf> {
-        let mut components =
-            path.as_str().split('/').filter(|value| !value.is_empty());
+    fn encode_canonical_components(operation: FsOperation, path: &FsPath) -> FsResult<PathBuf> {
+        let mut components = path.as_str().split('/').filter(|value| !value.is_empty());
         let drive = components.next().unwrap_or_default();
         let drive_bytes = drive.as_bytes();
-        if drive_bytes.len() != 2
-            || !drive_bytes[0].is_ascii_alphabetic()
-            || drive_bytes[1] != b':'
+        if drive_bytes.len() != 2 || !drive_bytes[0].is_ascii_alphabetic() || drive_bytes[1] != b':'
         {
             return Err(Self::invalid_native_path(
                 operation,
@@ -399,15 +341,14 @@ impl LocalFileSystem {
                 )
                 .with_path(path.clone()));
             }
-            let component =
-                OsStrPathCodec.encode(component).map_err(|error| {
-                    Self::native_codec_error(
-                        operation,
-                        "canonical path component cannot be encoded losslessly",
-                        error,
-                    )
-                    .with_path(path.clone())
-                })?;
+            let component = OsStrPathCodec.encode(component).map_err(|error| {
+                Self::native_codec_error(
+                    operation,
+                    "canonical path component cannot be encoded losslessly",
+                    error,
+                )
+                .with_path(path.clone())
+            })?;
             let component: &std::ffi::OsStr = component.as_ref();
             native.push(component);
         }
@@ -447,13 +388,8 @@ impl LocalFileSystem {
         message: &str,
         error: NativePathCodecError,
     ) -> FsError {
-        FsError::with_source(
-            FsErrorKind::InvalidPath,
-            operation,
-            message,
-            error,
-        )
-        .with_provider(Self::provider_id())
+        FsError::with_source(FsErrorKind::InvalidPath, operation, message, error)
+            .with_provider(Self::provider_id())
     }
 
     /// Converts one native metadata result into provider-neutral metadata.
@@ -496,11 +432,7 @@ impl LocalFileSystem {
     ///
     /// A provider-neutral error with a scrubbed message and native source.
     #[inline(always)]
-    pub(crate) fn map_io_error(
-        operation: FsOperation,
-        path: &FsPath,
-        error: io::Error,
-    ) -> FsError {
+    pub(crate) fn map_io_error(operation: FsOperation, path: &FsPath, error: io::Error) -> FsError {
         FsError::from_io(error, operation)
             .with_path(path.clone())
             .with_provider(Self::provider_id())
@@ -556,14 +488,9 @@ impl FileSystem for LocalFileSystem {
     ///
     /// Returns a path-aware filesystem error when the path is invalid, the
     /// directory cannot be read, or entry metadata cannot be represented.
-    fn list(
-        &self,
-        path: &FsPath,
-        options: ListOptions,
-    ) -> FsResult<DirectoryStream> {
+    fn list(&self, path: &FsPath, options: ListOptions) -> FsResult<DirectoryStream> {
         let native_path = Self::native_path(FsOperation::List, path)?;
-        let session =
-            LocalDirectoryStreamSession::capture(native_path, path, options)?;
+        let session = LocalDirectoryStreamSession::capture(native_path, path, options)?;
         Ok(DirectoryStream::new(session))
     }
 
@@ -587,11 +514,7 @@ impl FileSystem for LocalFileSystem {
     /// Returns a requirement error when range, conditional, or required
     /// checksum semantics are requested. Returns a path-aware filesystem error
     /// when the path is relative, missing, inaccessible, or not a regular file.
-    fn open_reader(
-        &self,
-        path: &FsPath,
-        options: ReadOptions,
-    ) -> FsResult<FileReader> {
+    fn open_reader(&self, path: &FsPath, options: ReadOptions) -> FsResult<FileReader> {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
@@ -600,9 +523,8 @@ impl FileSystem for LocalFileSystem {
                     .with_provider(Self::provider_id())
             })?;
         let native_path = Self::native_path(FsOperation::OpenReader, path)?;
-        let reader = read::open(&native_path).map_err(|error| {
-            Self::map_io_error(FsOperation::OpenReader, path, error)
-        })?;
+        let reader = read::open(&native_path)
+            .map_err(|error| Self::map_io_error(FsOperation::OpenReader, path, error))?;
         let location = FileLocation::new(self.info.id().clone(), path.clone());
         let info = OpenedFileInfo::new(location);
         Ok(FileReader::new(reader, info))
@@ -627,11 +549,7 @@ impl FileSystem for LocalFileSystem {
     /// Returns an option or requirement error before side effects when the
     /// requested contract is unsupported. Returns a path-aware filesystem
     /// error when the native path cannot be prepared or opened.
-    fn open_writer(
-        &self,
-        path: &FsPath,
-        options: WriteOptions,
-    ) -> FsResult<FileWriter> {
+    fn open_writer(&self, path: &FsPath, options: WriteOptions) -> FsResult<FileWriter> {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
@@ -665,8 +583,7 @@ impl FileSystem for LocalFileSystem {
         }
 
         let native_path = Self::native_path(FsOperation::OpenWriter, path)?;
-        let session = if options.disposition
-            == WriteDisposition::CreateOrReplace
+        let session = if options.disposition == WriteDisposition::CreateOrReplace
             && options.atomicity != AtomicityRequirement::NotRequired
         {
             let atomic_options = if options.create_parent {
@@ -674,23 +591,17 @@ impl FileSystem for LocalFileSystem {
             } else {
                 atomic::Options::new()
             };
-            let writer = atomic::begin_with(&native_path, atomic_options)
-                .map_err(|error| {
-                    let kind = error.kind();
-                    FsError::from_io(
-                        io::Error::new(kind, error),
-                        FsOperation::OpenWriter,
-                    )
+            let writer = atomic::begin_with(&native_path, atomic_options).map_err(|error| {
+                let kind = error.kind();
+                FsError::from_io(io::Error::new(kind, error), FsOperation::OpenWriter)
                     .with_path(path.clone())
                     .with_provider(Self::provider_id())
-                })?;
+            })?;
             LocalFileWriteSession::atomic(writer, path.clone())
         } else {
             let mode = match options.disposition {
                 WriteDisposition::CreateNew => write::Mode::CreateNew,
-                WriteDisposition::CreateOrReplace => {
-                    write::Mode::CreateOrTruncate
-                }
+                WriteDisposition::CreateOrReplace => write::Mode::CreateOrTruncate,
                 WriteDisposition::Append => write::Mode::AppendExisting,
             };
             let local_options = if options.create_parent {
@@ -698,10 +609,8 @@ impl FileSystem for LocalFileSystem {
             } else {
                 write::OpenOptions::new(mode)
             };
-            let writer =
-                write::open(&native_path, &local_options).map_err(|error| {
-                    Self::map_io_error(FsOperation::OpenWriter, path, error)
-                })?;
+            let writer = write::open(&native_path, &local_options)
+                .map_err(|error| Self::map_io_error(FsOperation::OpenWriter, path, error))?;
             LocalFileWriteSession::direct(writer, path.clone())
         };
         let location = FileLocation::new(self.info.id().clone(), path.clone());
@@ -719,11 +628,7 @@ impl FileSystem for LocalFileSystem {
     ///
     /// Returns an invalid-options error for user metadata, or a path-aware I/O
     /// error when the directory cannot be created.
-    fn create_dir(
-        &self,
-        path: &FsPath,
-        options: CreateDirOptions,
-    ) -> FsResult<()> {
+    fn create_dir(&self, path: &FsPath, options: CreateDirOptions) -> FsResult<()> {
         if options.user_metadata.as_metadata().iter().next().is_some() {
             return Err(FsError::new(
                 FsErrorKind::InvalidOptions,
@@ -735,29 +640,21 @@ impl FileSystem for LocalFileSystem {
         }
         let native_path = Self::native_path(FsOperation::CreateDir, path)?;
         if options.recursive {
-            directory::create_parent(&native_path).map_err(|error| {
-                Self::map_io_error(FsOperation::CreateDir, path, error)
-            })?;
+            directory::create_parent(&native_path)
+                .map_err(|error| Self::map_io_error(FsOperation::CreateDir, path, error))?;
         }
         match directory::create(&native_path) {
             Ok(()) => Ok(()),
-            Err(error)
-                if options.exists_ok
-                    && error.kind() == io::ErrorKind::AlreadyExists =>
-            {
-                let metadata =
-                    fs::symlink_metadata(&native_path).map_err(|error| {
-                        Self::map_io_error(FsOperation::CreateDir, path, error)
-                    })?;
+            Err(error) if options.exists_ok && error.kind() == io::ErrorKind::AlreadyExists => {
+                let metadata = fs::symlink_metadata(&native_path)
+                    .map_err(|error| Self::map_io_error(FsOperation::CreateDir, path, error))?;
                 if metadata.is_dir() {
                     Ok(())
                 } else {
                     Err(Self::map_io_error(FsOperation::CreateDir, path, error))
                 }
             }
-            Err(error) => {
-                Err(Self::map_io_error(FsOperation::CreateDir, path, error))
-            }
+            Err(error) => Err(Self::map_io_error(FsOperation::CreateDir, path, error)),
         }
     }
 
@@ -783,18 +680,11 @@ impl FileSystem for LocalFileSystem {
         let native_path = Self::native_path(FsOperation::Delete, path)?;
         let metadata = match fs::symlink_metadata(&native_path) {
             Ok(metadata) => metadata,
-            Err(error)
-                if options.missing_ok
-                    && error.kind() == io::ErrorKind::NotFound =>
-            {
+            Err(error) if options.missing_ok && error.kind() == io::ErrorKind::NotFound => {
                 return Ok(());
             }
             Err(error) => {
-                return Err(Self::map_io_error(
-                    FsOperation::Delete,
-                    path,
-                    error,
-                ));
+                return Err(Self::map_io_error(FsOperation::Delete, path, error));
             }
         };
         let result = if metadata.is_dir() {
@@ -808,15 +698,8 @@ impl FileSystem for LocalFileSystem {
         };
         match result {
             Ok(()) => Ok(()),
-            Err(error)
-                if options.missing_ok
-                    && error.kind() == io::ErrorKind::NotFound =>
-            {
-                Ok(())
-            }
-            Err(error) => {
-                Err(Self::map_io_error(FsOperation::Delete, path, error))
-            }
+            Err(error) if options.missing_ok && error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(Self::map_io_error(FsOperation::Delete, path, error)),
         }
     }
 
@@ -858,8 +741,7 @@ impl FileSystem for LocalFileSystem {
             rename::move_path_without_replacing(&native_from, &native_to)
         };
         result.map_err(|error| {
-            Self::map_io_error(FsOperation::Rename, from, error)
-                .with_target(to.clone())
+            Self::map_io_error(FsOperation::Rename, from, error).with_target(to.clone())
         })?;
         Ok(RenameOutcome::new(
             AchievedAtomicity::Atomic,
@@ -884,12 +766,7 @@ impl FileSystem for LocalFileSystem {
     /// Returns an option or capability error before destination changes when
     /// requested semantics are unsupported, or a source/target-aware I/O error
     /// when native copying fails.
-    fn copy(
-        &self,
-        from: &FsPath,
-        to: &FsPath,
-        options: CopyOptions,
-    ) -> FsResult<CopyOutcome> {
+    fn copy(&self, from: &FsPath, to: &FsPath, options: CopyOptions) -> FsResult<CopyOutcome> {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
@@ -933,11 +810,9 @@ impl FileSystem for LocalFileSystem {
         }
         let native_from = Self::native_path(FsOperation::Copy, from)?;
         let native_to = Self::native_path(FsOperation::Copy, to)?;
-        let link_metadata =
-            fs::symlink_metadata(&native_from).map_err(|error| {
-                Self::map_io_error(FsOperation::Copy, from, error)
-                    .with_target(to.clone())
-            })?;
+        let link_metadata = fs::symlink_metadata(&native_from).map_err(|error| {
+            Self::map_io_error(FsOperation::Copy, from, error).with_target(to.clone())
+        })?;
         if link_metadata.file_type().is_symlink() && !options.follow_symlinks {
             return Err(FsError::new(
                 FsErrorKind::UnsupportedCapability,
@@ -951,8 +826,7 @@ impl FileSystem for LocalFileSystem {
         }
         let metadata = if link_metadata.file_type().is_symlink() {
             fs::metadata(&native_from).map_err(|error| {
-                Self::map_io_error(FsOperation::Copy, from, error)
-                    .with_target(to.clone())
+                Self::map_io_error(FsOperation::Copy, from, error).with_target(to.clone())
             })?
         } else {
             link_metadata
@@ -974,24 +848,20 @@ impl FileSystem for LocalFileSystem {
         };
         if options.create_parent {
             directory::create_parent(&native_to).map_err(|error| {
-                Self::map_io_error(FsOperation::Copy, to, error)
-                    .with_target(to.clone())
+                Self::map_io_error(FsOperation::Copy, to, error).with_target(to.clone())
             })?;
         }
         if copy_tree {
             let conflict = match options.conflict {
                 CopyConflictPolicy::Fail => copy::ConflictPolicy::Fail,
-                CopyConflictPolicy::Overwrite => {
-                    copy::ConflictPolicy::Overwrite
-                }
+                CopyConflictPolicy::Overwrite => copy::ConflictPolicy::Overwrite,
                 CopyConflictPolicy::Skip => copy::ConflictPolicy::Skip,
             };
-            let type_conflict =
-                if options.conflict == CopyConflictPolicy::Overwrite {
-                    copy::TypeConflictPolicy::Replace
-                } else {
-                    copy::TypeConflictPolicy::Fail
-                };
+            let type_conflict = if options.conflict == CopyConflictPolicy::Overwrite {
+                copy::TypeConflictPolicy::Replace
+            } else {
+                copy::TypeConflictPolicy::Fail
+            };
             let mut local_options = copy::Options::new()
                 .with_conflict(conflict)
                 .with_type_conflict(type_conflict);
@@ -1002,17 +872,13 @@ impl FileSystem for LocalFileSystem {
                 local_options = local_options.preserve_permissions();
             }
             let statistics =
-                copy::directory(&native_from, &native_to, local_options)
-                    .map_err(|error| {
-                        let kind = error.kind();
-                        FsError::from_io(
-                            io::Error::new(kind, error),
-                            FsOperation::Copy,
-                        )
+                copy::directory(&native_from, &native_to, local_options).map_err(|error| {
+                    let kind = error.kind();
+                    FsError::from_io(io::Error::new(kind, error), FsOperation::Copy)
                         .with_path(from.clone())
                         .with_target(to.clone())
                         .with_provider(Self::provider_id())
-                    })?;
+                })?;
             let stats = CopyStats {
                 files: statistics.files(),
                 directories: statistics.directories(),
@@ -1030,14 +896,14 @@ impl FileSystem for LocalFileSystem {
             Ok(metadata) => Some(metadata),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => {
-                return Err(Self::map_io_error(FsOperation::Copy, to, error)
-                    .with_target(to.clone()));
+                return Err(
+                    Self::map_io_error(FsOperation::Copy, to, error).with_target(to.clone())
+                );
             }
         };
         #[cfg(unix)]
         if destination_metadata.as_ref().is_some_and(|destination| {
-            metadata.dev() == destination.dev()
-                && metadata.ino() == destination.ino()
+            metadata.dev() == destination.dev() && metadata.ino() == destination.ino()
         }) {
             return Err(FsError::new(
                 FsErrorKind::InvalidOptions,
@@ -1065,34 +931,74 @@ impl FileSystem for LocalFileSystem {
                 .is_some_and(|metadata| metadata.file_type().is_symlink())
         {
             remove::file(&native_to).map_err(|error| {
-                Self::map_io_error(FsOperation::Copy, to, error)
-                    .with_target(to.clone())
+                Self::map_io_error(FsOperation::Copy, to, error).with_target(to.clone())
             })?;
         }
         let copied = match options.conflict {
-            CopyConflictPolicy::Overwrite => {
-                copy::file(&native_from, &native_to)
-            }
+            CopyConflictPolicy::Overwrite => copy::file(&native_from, &native_to),
             CopyConflictPolicy::Fail | CopyConflictPolicy::Skip => {
                 copy::file_without_replacing(&native_from, &native_to)
             }
         }
         .map_err(|error| {
-            Self::map_io_error(FsOperation::Copy, from, error)
-                .with_target(to.clone())
+            Self::map_io_error(FsOperation::Copy, from, error).with_target(to.clone())
         })?;
         Ok(CopyOutcome::new(
             CopyStats {
                 files: 1,
                 bytes: copied,
                 overwritten: u64::from(
-                    destination_existed
-                        && options.conflict == CopyConflictPolicy::Overwrite,
+                    destination_existed && options.conflict == CopyConflictPolicy::Overwrite,
                 ),
                 ..CopyStats::default()
             },
             CopyMethod::Local,
             AchievedAtomicity::NonAtomic,
+        ))
+    }
+
+    /// Creates a securely named host-local temporary file.
+    fn create_temp_file(&self, options: TempFileOptions) -> FsResult<TempFile> {
+        let parent = match options.parent {
+            Some(parent) => Self::native_path(FsOperation::CreateTemp, &parent)?,
+            None => std::env::temp_dir(),
+        };
+        let named = tempfile::Builder::new()
+            .prefix(&options.prefix)
+            .suffix(&options.suffix)
+            .tempfile_in(parent)
+            .map_err(|error| {
+                FsError::from_io(error, FsOperation::CreateTemp).with_provider(Self::provider_id())
+            })?;
+        let (_file, source) = named.keep().map_err(|error| {
+            FsError::from_io(error.error, FsOperation::CreateTemp)
+                .with_provider(Self::provider_id())
+        })?;
+        let source_path = Self::path_from_native(&source)?;
+        Ok(TempFile::new(
+            qubit_fs::FileResource::new(Arc::new(Self::host()), source_path.clone()),
+            LocalTempResourceSession::new(source, source_path, false),
+        ))
+    }
+
+    /// Creates a securely named host-local temporary directory.
+    fn create_temp_dir(&self, options: TempDirOptions) -> FsResult<TempDir> {
+        let parent = match options.parent {
+            Some(parent) => Self::native_path(FsOperation::CreateTemp, &parent)?,
+            None => std::env::temp_dir(),
+        };
+        let directory = tempfile::Builder::new()
+            .prefix(&options.prefix)
+            .suffix(&options.suffix)
+            .tempdir_in(parent)
+            .map_err(|error| {
+                FsError::from_io(error, FsOperation::CreateTemp).with_provider(Self::provider_id())
+            })?;
+        let source = directory.keep();
+        let source_path = Self::path_from_native(&source)?;
+        Ok(TempDir::new(
+            qubit_fs::FileResource::new(Arc::new(Self::host()), source_path.clone()),
+            LocalTempResourceSession::new(source, source_path, true),
         ))
     }
 

@@ -9,35 +9,13 @@
 use std::path::Path;
 
 #[cfg(unix)]
-use std::os::unix::{
-    ffi::OsStringExt,
-    fs::symlink,
-    net::UnixListener,
-};
+use std::os::unix::{ffi::OsStringExt, fs::symlink, net::UnixListener};
 
 use qubit_fs::{
-    AchievedAtomicity,
-    AtomicityRequirement,
-    CopyConflictPolicy,
-    CopyMethod,
-    CopyMode,
-    CopyOptions,
-    CreateDirOptions,
-    DeleteOptions,
-    FileKind,
-    FileSystem,
-    FileSystemCapabilities,
-    FileSystemCapability,
-    FileSystemExt,
-    FileSystemLimits,
-    FileSystemProperties,
-    FsErrorKind,
-    FsOperation,
-    FsPath,
-    PublicationMethod,
-    ReadOptions,
-    WriteDisposition,
-    WriteOptions,
+    AchievedAtomicity, AtomicityRequirement, CopyConflictPolicy, CopyMethod, CopyMode, CopyOptions,
+    CreateDirOptions, DeleteOptions, FileKind, FileSystem, FileSystemCapabilities,
+    FileSystemCapability, FileSystemExt, FileSystemLimits, FileSystemProperties, FsErrorKind,
+    FsOperation, FsPath, PublicationMethod, ReadOptions, WriteDisposition, WriteOptions,
 };
 use qubit_fs_local::LocalFileSystem;
 use qubit_io::Output;
@@ -86,8 +64,7 @@ fn open_descriptor_count(path: &Path) -> usize {
 /// Confirms canonical percent escapes are decoded before native filesystem I/O.
 #[test]
 fn test_stat_supports_literal_percent_in_native_filename() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("100%ready.txt");
     std::fs::write(&file_path, b"payload").expect("write test file");
     let fs = LocalFileSystem::host();
@@ -103,8 +80,7 @@ fn test_stat_supports_literal_percent_in_native_filename() {
 /// Confirms regular-file metadata is mapped into provider-neutral metadata.
 #[test]
 fn test_stat_maps_regular_file_metadata() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"payload").expect("write test file");
     let fs = LocalFileSystem::host();
@@ -120,8 +96,7 @@ fn test_stat_maps_regular_file_metadata() {
 /// Confirms directory metadata retains the directory kind.
 #[test]
 fn test_stat_maps_directory_metadata() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let fs = LocalFileSystem::host();
 
     let metadata = fs
@@ -135,8 +110,7 @@ fn test_stat_maps_directory_metadata() {
 #[cfg(unix)]
 #[test]
 fn test_stat_maps_final_symbolic_link_metadata() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let target_path = temporary_directory.path().join("target.txt");
     let link_path = temporary_directory.path().join("link.txt");
     std::fs::write(&target_path, b"payload").expect("write symlink target");
@@ -154,8 +128,7 @@ fn test_stat_maps_final_symbolic_link_metadata() {
 #[cfg(unix)]
 #[test]
 fn test_stat_supports_non_utf8_native_filename() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let filename = std::ffi::OsString::from_vec(b"item-\xFF.txt".to_vec());
     let file_path = temporary_directory.path().join(filename);
     std::fs::write(&file_path, b"payload").expect("write non-UTF-8 test file");
@@ -172,8 +145,7 @@ fn test_stat_supports_non_utf8_native_filename() {
 #[cfg(unix)]
 #[test]
 fn test_stat_maps_native_special_file_metadata() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let socket_path = temporary_directory.path().join("service.socket");
     let _listener = UnixListener::bind(&socket_path).expect("bind Unix socket");
     let fs = LocalFileSystem::host();
@@ -203,8 +175,7 @@ fn test_stat_rejects_relative_native_path() {
 /// canonical hierarchical paths.
 #[test]
 fn test_stat_rejects_noncanonical_hierarchical_paths() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     std::fs::create_dir(temporary_directory.path().join("nested"))
         .expect("create nested directory");
     let file_path = temporary_directory.path().join("value.txt");
@@ -236,8 +207,7 @@ fn test_stat_rejects_noncanonical_hierarchical_paths() {
 #[test]
 fn test_stat_rejects_backslash_inside_canonical_component() {
     let fs = LocalFileSystem::host();
-    let path = FsPath::parse("/C:/safe/..\\outside")
-        .expect("parse canonical path text");
+    let path = FsPath::parse("/C:/safe/..\\outside").expect("parse canonical path text");
 
     let error = fs
         .stat(&path)
@@ -267,17 +237,17 @@ fn test_host_advertises_read_and_write_capabilities() {
             .with(FileSystemCapability::Rename)
             .with(FileSystemCapability::AtomicRename)
             .with(FileSystemCapability::AtomicReplace)
-            .with(FileSystemCapability::Copy),
+            .with(FileSystemCapability::Copy)
+            .with(FileSystemCapability::TempFile)
+            .with(FileSystemCapability::TempDirectory),
     );
 }
 
 /// Confirms directory creation honors parent and existing-directory policies.
 #[test]
 fn test_create_dir_honors_recursive_and_exists_ok_options() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
-    let directory_path =
-        temporary_directory.path().join("missing").join("nested");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
+    let directory_path = temporary_directory.path().join("missing").join("nested");
     let path = canonical_path(&directory_path);
     let fs = LocalFileSystem::host();
 
@@ -312,12 +282,10 @@ fn test_create_dir_honors_recursive_and_exists_ok_options() {
 /// Confirms deletion distinguishes empty and recursive directory operations.
 #[test]
 fn test_delete_honors_recursive_and_missing_ok_options() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let directory_path = temporary_directory.path().join("tree");
     std::fs::create_dir(&directory_path).expect("create directory");
-    std::fs::write(directory_path.join("value.txt"), b"value")
-        .expect("write nested file");
+    std::fs::write(directory_path.join("value.txt"), b"value").expect("write nested file");
     let path = canonical_path(&directory_path);
     let fs = LocalFileSystem::host();
 
@@ -350,13 +318,11 @@ fn test_delete_honors_recursive_and_missing_ok_options() {
 /// behavior.
 #[test]
 fn test_copy_supports_file_and_tree_modes() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let source_file = temporary_directory.path().join("source.txt");
     let destination_file = temporary_directory.path().join("destination.txt");
     std::fs::write(&source_file, b"source").expect("write source file");
-    std::fs::write(&destination_file, b"destination")
-        .expect("write destination file");
+    std::fs::write(&destination_file, b"destination").expect("write destination file");
     let source = canonical_path(&source_file);
     let destination = canonical_path(&destination_file);
     let fs = LocalFileSystem::host();
@@ -404,8 +370,7 @@ fn test_copy_supports_file_and_tree_modes() {
     let source_tree = temporary_directory.path().join("source-tree");
     let destination_tree = temporary_directory.path().join("destination-tree");
     std::fs::create_dir(&source_tree).expect("create source tree");
-    std::fs::write(source_tree.join("value.txt"), b"tree")
-        .expect("write tree file");
+    std::fs::write(source_tree.join("value.txt"), b"tree").expect("write tree file");
     let tree_outcome = fs
         .copy(
             &canonical_path(&source_tree),
@@ -433,8 +398,7 @@ fn test_copy_supports_file_and_tree_modes() {
 /// before truncating an overwrite target.
 #[test]
 fn test_copy_rejects_identical_source_and_destination() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("value.txt");
     std::fs::write(&file_path, b"preserved").expect("write source file");
     let path = canonical_path(&file_path);
@@ -464,8 +428,7 @@ fn test_copy_rejects_identical_source_and_destination() {
 #[cfg(unix)]
 #[test]
 fn test_copy_rejects_hard_link_alias_destination() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let source_path = temporary_directory.path().join("source.txt");
     let alias_path = temporary_directory.path().join("alias.txt");
     std::fs::write(&source_path, b"preserved").expect("write source file");
@@ -499,17 +462,14 @@ fn test_copy_rejects_hard_link_alias_destination() {
 #[cfg(unix)]
 #[test]
 fn test_copy_overwrite_does_not_follow_destination_symlink() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
-    let outside_directory =
-        tempfile::tempdir().expect("create outside directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
+    let outside_directory = tempfile::tempdir().expect("create outside directory");
     let source_path = temporary_directory.path().join("source.txt");
     let destination_path = temporary_directory.path().join("destination.txt");
     let outside_path = outside_directory.path().join("outside.txt");
     std::fs::write(&source_path, b"source").expect("write source file");
     std::fs::write(&outside_path, b"outside").expect("write outside file");
-    symlink(&outside_path, &destination_path)
-        .expect("create destination symbolic link");
+    symlink(&outside_path, &destination_path).expect("create destination symbolic link");
     let fs = LocalFileSystem::host();
 
     fs.copy(
@@ -545,8 +505,7 @@ fn test_copy_overwrite_does_not_follow_destination_symlink() {
 /// Confirms the default preferred write uses atomic whole-file publication.
 #[test]
 fn test_write_all_atomically_replaces_local_file() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"old").expect("write old contents");
     let path = canonical_path(&file_path);
@@ -566,8 +525,7 @@ fn test_write_all_atomically_replaces_local_file() {
 /// Confirms failed atomic publication retains its session for explicit abort.
 #[test]
 fn test_atomic_commit_failure_retains_session_for_abort() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"old").expect("write old contents");
     let path = canonical_path(&file_path);
@@ -600,8 +558,7 @@ fn test_atomic_commit_failure_retains_session_for_abort() {
 /// Confirms explicitly non-atomic replacement writes directly to the target.
 #[test]
 fn test_open_writer_supports_direct_replacement() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     let path = canonical_path(&file_path);
     let fs = LocalFileSystem::host();
@@ -610,8 +567,7 @@ fn test_open_writer_supports_direct_replacement() {
         ..WriteOptions::default()
     };
 
-    let mut writer =
-        fs.open_writer(&path, options).expect("open direct writer");
+    let mut writer = fs.open_writer(&path, options).expect("open direct writer");
     writer
         .write_fully(b"direct")
         .expect("write direct contents");
@@ -628,8 +584,7 @@ fn test_open_writer_supports_direct_replacement() {
 #[cfg(target_os = "linux")]
 #[test]
 fn test_direct_commit_releases_native_descriptor() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     let path = canonical_path(&file_path);
     let fs = LocalFileSystem::host();
@@ -637,8 +592,7 @@ fn test_direct_commit_releases_native_descriptor() {
         atomicity: AtomicityRequirement::NotRequired,
         ..WriteOptions::default()
     };
-    let mut writer =
-        fs.open_writer(&path, options).expect("open direct writer");
+    let mut writer = fs.open_writer(&path, options).expect("open direct writer");
     writer
         .write_fully(b"direct")
         .expect("write direct contents");
@@ -652,8 +606,7 @@ fn test_direct_commit_releases_native_descriptor() {
 /// Confirms append sessions preserve existing bytes and report direct output.
 #[test]
 fn test_open_writer_appends_to_existing_file() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"first").expect("write initial contents");
     let path = canonical_path(&file_path);
@@ -664,8 +617,7 @@ fn test_open_writer_appends_to_existing_file() {
         ..WriteOptions::default()
     };
 
-    let mut writer =
-        fs.open_writer(&path, options).expect("open append writer");
+    let mut writer = fs.open_writer(&path, options).expect("open append writer");
     writer.write_fully(b"-second").expect("append contents");
     let outcome = writer.commit().expect("commit append");
 
@@ -680,8 +632,7 @@ fn test_open_writer_appends_to_existing_file() {
 /// Confirms create-new refuses to truncate an existing destination.
 #[test]
 fn test_open_writer_create_new_preserves_existing_file() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"original").expect("write original contents");
     let path = canonical_path(&file_path);
@@ -703,8 +654,7 @@ fn test_open_writer_create_new_preserves_existing_file() {
 /// Confirms parent creation follows the provider-neutral write option.
 #[test]
 fn test_open_writer_respects_create_parent() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let parent = temporary_directory.path().join("missing").join("nested");
     let file_path = parent.join("item.txt");
     let path = canonical_path(&file_path);
@@ -729,8 +679,7 @@ fn test_open_writer_respects_create_parent() {
 /// Confirms required atomic create-new is rejected before filesystem effects.
 #[test]
 fn test_open_writer_rejects_required_atomic_create_new_before_io() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("missing").join("item.txt");
     let path = canonical_path(&file_path);
     let fs = LocalFileSystem::host();
@@ -753,8 +702,7 @@ fn test_open_writer_rejects_required_atomic_create_new_before_io() {
 /// Confirms unsupported content metadata is rejected before opening a file.
 #[test]
 fn test_open_writer_rejects_content_type_before_io() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("missing").join("item.txt");
     let path = canonical_path(&file_path);
     let fs = LocalFileSystem::host();
@@ -783,8 +731,7 @@ fn test_host_reports_unknown_limits() {
 /// Confirms the filesystem extension reads a complete local file.
 #[test]
 fn test_read_all_reads_regular_file() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"payload").expect("write test file");
     let path = canonical_path(&file_path);
@@ -798,8 +745,7 @@ fn test_read_all_reads_regular_file() {
 /// Confirms an opened reader is bound to the requested filesystem location.
 #[test]
 fn test_open_reader_binds_file_location() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let file_path = temporary_directory.path().join("item.txt");
     std::fs::write(&file_path, b"payload").expect("write test file");
     let path = canonical_path(&file_path);
@@ -816,8 +762,7 @@ fn test_open_reader_binds_file_location() {
 /// Confirms unsupported range semantics fail before native file lookup.
 #[test]
 fn test_open_reader_preflights_range_options_before_io() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let path = canonical_path(&temporary_directory.path().join("missing.txt"));
     let fs = LocalFileSystem::host();
     let options = ReadOptions {
@@ -842,8 +787,7 @@ fn test_open_reader_preflights_range_options_before_io() {
 /// Confirms native I/O failures retain operation, path, and provider context.
 #[test]
 fn test_stat_maps_missing_path_with_context() {
-    let temporary_directory =
-        tempfile::tempdir().expect("create temporary directory");
+    let temporary_directory = tempfile::tempdir().expect("create temporary directory");
     let path = canonical_path(&temporary_directory.path().join("missing.txt"));
     let fs = LocalFileSystem::host();
 
