@@ -9,7 +9,7 @@
 
 `qubit-fs-local` 为
 [`qubit-fs`](https://crates.io/crates/qubit-fs) 提供同步的主机本地 `file:`
-文件系统后端。它支持同步读写和命名空间管理，并提供以目录 descriptor 为 authority 的
+文件系统后端。它支持同步读写和命名空间管理，并提供以目录 handle 为 authority 的
 `RootedLocalFileSystem`。通过 `file` provider 别名进行 registry 集成的能力
 位于可选的 `registry` feature 中。
 
@@ -54,11 +54,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - 规范化的 `FsPath` 文本逐 component 通过 `OsStrPathCodec` 转换，能够保留字面
   `%`、Unix 非 UTF-8 字节和 Windows 原生路径代码单元，同时防止解码后的 separator
   穿越 component 边界。
-- `RootedLocalFileSystem` 当前仅支持 Unix。它以一个已打开目录为 descriptor-relative
-  authority，调用方必须提供稳定的 filesystem ID，并且同样按 component 转换原生路径。
+- `RootedLocalFileSystem` 在 Unix 上使用 descriptor-relative authority，在 Windows
+  上使用 handle-relative authority。调用方必须提供稳定的 filesystem ID，并且同样按
+  component 转换原生路径。
 - Rooted `stat` 可在不跟随最终符号链接的前提下查询根目录、目录、特殊文件和最终
   符号链接本身。
-- Rooted 的列举、建目录、删除、重命名与复制始终从已打开的目录 descriptor
+- Rooted 的列举、建目录、删除、重命名与复制始终从已打开的目录 handle
   出发；即使诊断路径随后被重命名，authority 也不会改变。递归删除和复制不会遍历
   符号链接条目。
 - 本地与 Rooted 复制会在打开覆盖目标前拒绝自复制和原生硬链接别名。主机本地覆盖
@@ -75,7 +76,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 两种实现均声明 `List`、`Read`、`Write`、`Append`、`CreateDirectory`、
 `Delete`、`RecursiveDelete`、`Rename`、`AtomicReplace` 和 `Copy`。
 只有平台提供原子 no-replace 原语时才声明 `AtomicRename`；受支持的 Rooted Unix
-平台上的覆盖重命名仍保持原子性。Rooted 的 portable 复制会保留 Unix 权限位。
+和 Windows 平台上的覆盖重命名仍保持原子性。Rooted 的 portable 复制会保留 Unix
+权限模式或 Windows 只读属性。
 `stat` 属于文件系统基础契约，因此不再需要 capability 标记。
 依赖主机的路径和 I/O 限制会明确报告为 `FileSystemLimits::unknown()`。
 

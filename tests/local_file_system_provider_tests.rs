@@ -15,8 +15,8 @@ use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{
     CredentialRef,
     FileSystemConfig,
-    FileSystemRegistryError,
     FileSystemRegistry,
+    FileSystemRegistryError,
 };
 use qubit_spi::{
     ProviderMetadata,
@@ -50,7 +50,10 @@ fn assert_invalid_configuration(
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("registry should preserve the typed provider failure");
     };
-    assert_eq!("local-file", creation.decisive_attempt().provider_id().as_str());
+    assert_eq!(
+        "local-file",
+        creation.decisive_attempt().provider_id().as_str()
+    );
     assert_eq!(
         ProviderFailureKind::InvalidConfiguration,
         creation.decisive_attempt().failure().kind(),
@@ -138,7 +141,10 @@ fn test_provider_rejects_encoded_path_separator() {
     let uri = FsUri::parse("file:///tmp/parent%2Fchild")
         .expect("parse URI containing an encoded separator");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidPath);
+    assert_invalid_configuration(
+        FileSystemConfig::new(uri),
+        FsErrorKind::InvalidPath,
+    );
 }
 
 /// Confirms Windows drive paths round-trip through a percent-encoded file URI.
@@ -197,7 +203,10 @@ fn test_registry_decodes_alphabetic_windows_uri_escape() {
 fn test_provider_rejects_non_file_scheme() {
     let uri = FsUri::parse("memory:///tmp/item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidOptions);
+    assert_invalid_configuration(
+        FileSystemConfig::new(uri),
+        FsErrorKind::InvalidOptions,
+    );
 }
 
 /// Confirms the provider rejects remote file authorities.
@@ -205,7 +214,10 @@ fn test_provider_rejects_non_file_scheme() {
 fn test_provider_rejects_non_empty_authority() {
     let uri = FsUri::parse("file://remote/tmp/item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidOptions);
+    assert_invalid_configuration(
+        FileSystemConfig::new(uri),
+        FsErrorKind::InvalidOptions,
+    );
 }
 
 /// Confirms the provider rejects URI queries.
@@ -214,7 +226,10 @@ fn test_provider_rejects_query() {
     let uri =
         FsUri::parse("file:///tmp/item.txt?version=1").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidOptions);
+    assert_invalid_configuration(
+        FileSystemConfig::new(uri),
+        FsErrorKind::InvalidOptions,
+    );
 }
 
 /// Confirms the provider rejects provider-specific options.
@@ -244,7 +259,10 @@ fn test_provider_rejects_credentials() {
 fn test_provider_rejects_relative_path() {
     let uri = FsUri::parse("file:relative/item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidPath);
+    assert_invalid_configuration(
+        FileSystemConfig::new(uri),
+        FsErrorKind::InvalidPath,
+    );
 }
 
 /// Confirms canonical path validation rejects traversal above the root.
@@ -252,5 +270,8 @@ fn test_provider_rejects_relative_path() {
 fn test_provider_rejects_path_above_root() {
     let uri = FsUri::parse("file:///../item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidPath);
+    assert_invalid_configuration(
+        FileSystemConfig::new(uri),
+        FsErrorKind::InvalidPath,
+    );
 }

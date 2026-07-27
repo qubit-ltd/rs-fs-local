@@ -56,13 +56,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   `OsStrPathCodec`, preserving literal percent characters, Unix non-UTF-8
   bytes, and Windows native path code units without letting decoded separators
   cross a component boundary.
-- `RootedLocalFileSystem` is currently Unix-only. It has descriptor-relative
-  authority below one opened directory, requires a caller-supplied stable
-  filesystem ID, and applies the same component-wise native path conversion.
+- `RootedLocalFileSystem` has descriptor-relative authority on Unix and
+  handle-relative authority on Windows below one opened directory. It requires
+  a caller-supplied stable filesystem ID and applies the same component-wise
+  native path conversion.
 - Rooted `stat` observes the root, directories, special files, and final
   symbolic links without following that final link.
 - Rooted listing, directory creation, deletion, rename, and copy operate from
-  the opened directory descriptor even if its diagnostic path is later
+  the opened directory handle even if its diagnostic path is later
   renamed. Recursive deletion and copy never traverse symbolic-link entries.
 - Local and rooted copy reject self-copies and native hard-link aliases before
   opening an overwrite destination. Host-local overwrite replaces a
@@ -82,7 +83,8 @@ Both implementations advertise `List`, `Read`, `Write`, `Append`,
 `CreateDirectory`, `Delete`, `RecursiveDelete`, `Rename`, `AtomicReplace`, and
 `Copy`. `AtomicRename` is advertised only where the platform provides an
 atomic no-replace primitive; overwrite rename remains atomic on supported
-rooted Unix targets. Rooted portable copy preserves Unix permission bits.
+rooted Unix and Windows targets. Rooted portable copy preserves Unix permission
+modes or the Windows read-only attribute.
 `stat` is part of the base filesystem contract and therefore has no capability
 flag. Host-dependent path and I/O limits are reported explicitly as
 `FileSystemLimits::unknown()`.

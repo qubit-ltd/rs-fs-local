@@ -9,23 +9,70 @@
 
 use std::{
     io,
-    path::{Component, Path, PathBuf},
+    path::{
+        Component,
+        Path,
+        PathBuf,
+    },
 };
 
 use qubit_fs::{
-    AchievedAtomicity, AtomicityRequirement, CopyConflictPolicy, CopyMethod, CopyMode, CopyOptions,
-    CopyOutcome, CopyStats, CreateDirOptions, DeleteOptions, DirectoryStream, FileKind,
-    FileLocation, FileMetadata, FileReader, FileSystem, FileSystemCapabilities,
-    FileSystemCapability, FileSystemId, FileSystemInfo, FileSystemLimits, FileSystemProperties,
-    FileWriter, FsError, FsErrorKind, FsOperation, FsPath, FsResult, ListOptions,
-    MetadataPreservePolicy, NativePathCodec, OpenedFileInfo, OsStrPathCodec, PathSemantics,
-    PublicationMethod, ReadOptions, RenameOptions, RenameOutcome, WriteDisposition, WriteOptions,
+    AchievedAtomicity,
+    AtomicityRequirement,
+    CopyConflictPolicy,
+    CopyMethod,
+    CopyMode,
+    CopyOptions,
+    CopyOutcome,
+    CopyStats,
+    CreateDirOptions,
+    DeleteOptions,
+    DirectoryStream,
+    FileKind,
+    FileLocation,
+    FileMetadata,
+    FileReader,
+    FileSystem,
+    FileSystemCapabilities,
+    FileSystemCapability,
+    FileSystemId,
+    FileSystemInfo,
+    FileSystemLimits,
+    FileSystemProperties,
+    FileWriter,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsPath,
+    FsResult,
+    ListOptions,
+    MetadataPreservePolicy,
+    NativePathCodec,
+    OpenedFileInfo,
+    OsStrPathCodec,
+    PathSemantics,
+    PublicationMethod,
+    ReadOptions,
+    RenameOptions,
+    RenameOutcome,
+    WriteDisposition,
+    WriteOptions,
 };
-use qubit_local_files::{atomic, copy, read, rooted, write};
+use qubit_local_files::{
+    atomic,
+    copy,
+    read,
+    rooted,
+    write,
+};
 
 use crate::{
     LocalFileSystem,
-    internal::{RootedDirectoryStreamSession, RootedFileWriteSession, validate_hierarchical_path},
+    internal::{
+        RootedDirectoryStreamSession,
+        RootedFileWriteSession,
+        validate_hierarchical_path,
+    },
 };
 
 /// A local filesystem whose authority is anchored to an opened directory.
@@ -111,7 +158,10 @@ impl RootedLocalFileSystem {
     /// # Errors
     /// Returns an invalid-path error for a relative/root path or a component
     /// that cannot be decoded without changing its native boundary.
-    pub(crate) fn relative_path(path: &FsPath, operation: FsOperation) -> FsResult<rooted::Path> {
+    pub(crate) fn relative_path(
+        path: &FsPath,
+        operation: FsOperation,
+    ) -> FsResult<rooted::Path> {
         validate_hierarchical_path(operation, path)?;
         let relative = path
             .as_str()
@@ -164,7 +214,9 @@ impl RootedLocalFileSystem {
             rooted::EntryKind::File => FileKind::File,
             rooted::EntryKind::Directory => FileKind::Directory,
             rooted::EntryKind::Symlink => FileKind::Symlink,
-            rooted::EntryKind::Other => FileKind::Other("native-special".to_owned()),
+            rooted::EntryKind::Other => {
+                FileKind::Other("native-special".to_owned())
+            }
         };
         let mut result = FileMetadata::new(kind);
         result.len = Some(metadata.size());
@@ -175,7 +227,11 @@ impl RootedLocalFileSystem {
     }
 
     /// Maps rooted native errors into provider-aware filesystem errors.
-    pub(crate) fn map_io_error(operation: FsOperation, path: &FsPath, error: io::Error) -> FsError {
+    pub(crate) fn map_io_error(
+        operation: FsOperation,
+        path: &FsPath,
+        error: io::Error,
+    ) -> FsError {
         FsError::from_io(error, operation)
             .with_path(path.clone())
             .with_provider(LocalFileSystem::provider_id())
@@ -195,7 +251,11 @@ impl RootedLocalFileSystem {
     }
 
     /// Removes one rooted entry without following symbolic links.
-    fn remove_entry(&self, path: &rooted::Path, recursive: bool) -> io::Result<()> {
+    fn remove_entry(
+        &self,
+        path: &rooted::Path,
+        recursive: bool,
+    ) -> io::Result<()> {
         let metadata = self.root.symlink_metadata(path)?;
         if metadata.kind() != rooted::EntryKind::Directory {
             return self.root.remove_file(path);
@@ -208,7 +268,10 @@ impl RootedLocalFileSystem {
     }
 
     /// Reads destination metadata, returning `None` for a missing entry.
-    fn optional_metadata(&self, path: &rooted::Path) -> io::Result<Option<rooted::Metadata>> {
+    fn optional_metadata(
+        &self,
+        path: &rooted::Path,
+    ) -> io::Result<Option<rooted::Metadata>> {
         match self.root.symlink_metadata(path) {
             Ok(metadata) => Ok(Some(metadata)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -232,13 +295,22 @@ impl FileSystemProperties for RootedLocalFileSystem {
 }
 
 impl FileSystem for RootedLocalFileSystem {
-    fn list(&self, path: &FsPath, options: ListOptions) -> FsResult<DirectoryStream> {
+    fn list(
+        &self,
+        path: &FsPath,
+        options: ListOptions,
+    ) -> FsResult<DirectoryStream> {
         validate_hierarchical_path(FsOperation::List, path)?;
-        let session = RootedDirectoryStreamSession::capture(&self.root, path, options)?;
+        let session =
+            RootedDirectoryStreamSession::capture(&self.root, path, options)?;
         Ok(DirectoryStream::new(session))
     }
 
-    fn create_dir(&self, path: &FsPath, options: CreateDirOptions) -> FsResult<()> {
+    fn create_dir(
+        &self,
+        path: &FsPath,
+        options: CreateDirOptions,
+    ) -> FsResult<()> {
         if options.user_metadata.as_metadata().iter().next().is_some() {
             return Err(FsError::new(
                 FsErrorKind::InvalidOptions,
@@ -262,7 +334,9 @@ impl FileSystem for RootedLocalFileSystem {
                 Err(error) => Err(error),
             },
         };
-        result.map_err(|error| Self::map_io_error(FsOperation::CreateDir, path, error))
+        result.map_err(|error| {
+            Self::map_io_error(FsOperation::CreateDir, path, error)
+        })
     }
 
     fn delete(&self, path: &FsPath, options: DeleteOptions) -> FsResult<()> {
@@ -276,8 +350,15 @@ impl FileSystem for RootedLocalFileSystem {
         let relative = Self::relative_path(path, FsOperation::Delete)?;
         match self.remove_entry(&relative, options.recursive) {
             Ok(()) => Ok(()),
-            Err(error) if options.missing_ok && error.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(Self::map_io_error(FsOperation::Delete, path, error)),
+            Err(error)
+                if options.missing_ok
+                    && error.kind() == io::ErrorKind::NotFound =>
+            {
+                Ok(())
+            }
+            Err(error) => {
+                Err(Self::map_io_error(FsOperation::Delete, path, error))
+            }
         }
     }
 
@@ -303,7 +384,8 @@ impl FileSystem for RootedLocalFileSystem {
             self.root.rename_without_replacing(&source, &destination)
         };
         result.map_err(|error| {
-            Self::map_io_error(FsOperation::Rename, from, error).with_target(to.clone())
+            Self::map_io_error(FsOperation::Rename, from, error)
+                .with_target(to.clone())
         })?;
         Ok(RenameOutcome::new(
             AchievedAtomicity::Atomic,
@@ -311,7 +393,12 @@ impl FileSystem for RootedLocalFileSystem {
         ))
     }
 
-    fn copy(&self, from: &FsPath, to: &FsPath, options: CopyOptions) -> FsResult<CopyOutcome> {
+    fn copy(
+        &self,
+        from: &FsPath,
+        to: &FsPath,
+        options: CopyOptions,
+    ) -> FsResult<CopyOutcome> {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
@@ -366,12 +453,16 @@ impl FileSystem for RootedLocalFileSystem {
             .with_target(to.clone())
             .with_provider(LocalFileSystem::provider_id()));
         }
-        let metadata = self.root.symlink_metadata(&source).map_err(|error| {
-            Self::map_io_error(FsOperation::Copy, from, error).with_target(to.clone())
-        })?;
+        let metadata =
+            self.root.symlink_metadata(&source).map_err(|error| {
+                Self::map_io_error(FsOperation::Copy, from, error)
+                    .with_target(to.clone())
+            })?;
         let copy_tree = match (options.mode, metadata.kind()) {
             (CopyMode::Auto | CopyMode::File, rooted::EntryKind::File) => false,
-            (CopyMode::Auto | CopyMode::Tree, rooted::EntryKind::Directory) => true,
+            (CopyMode::Auto | CopyMode::Tree, rooted::EntryKind::Directory) => {
+                true
+            }
             (_, rooted::EntryKind::Symlink | rooted::EntryKind::Other) => {
                 return Err(FsError::new(
                     FsErrorKind::UnsupportedCapability,
@@ -407,10 +498,13 @@ impl FileSystem for RootedLocalFileSystem {
             && self
                 .optional_metadata(&destination)
                 .map_err(|error| {
-                    Self::map_io_error(FsOperation::Copy, to, error).with_target(to.clone())
+                    Self::map_io_error(FsOperation::Copy, to, error)
+                        .with_target(to.clone())
                 })?
                 .as_ref()
-                .is_some_and(|destination_metadata| metadata.is_same_file(destination_metadata))
+                .is_some_and(|destination_metadata| {
+                    metadata.is_same_file(destination_metadata)
+                })
         {
             return Err(FsError::new(
                 FsErrorKind::InvalidOptions,
@@ -423,7 +517,8 @@ impl FileSystem for RootedLocalFileSystem {
         }
         if options.create_parent {
             self.create_parent(&destination).map_err(|error| {
-                Self::map_io_error(FsOperation::Copy, to, error).with_target(to.clone())
+                Self::map_io_error(FsOperation::Copy, to, error)
+                    .with_target(to.clone())
             })?;
         }
         let conflict = match options.conflict {
@@ -431,7 +526,8 @@ impl FileSystem for RootedLocalFileSystem {
             CopyConflictPolicy::Overwrite => copy::ConflictPolicy::Overwrite,
             CopyConflictPolicy::Skip => copy::ConflictPolicy::Skip,
         };
-        let type_conflict = if options.conflict == CopyConflictPolicy::Overwrite {
+        let type_conflict = if options.conflict == CopyConflictPolicy::Overwrite
+        {
             copy::TypeConflictPolicy::Replace
         } else {
             copy::TypeConflictPolicy::Fail
@@ -447,7 +543,8 @@ impl FileSystem for RootedLocalFileSystem {
             .copy(&source, &destination, rooted_options)
             .map_err(|error| {
                 let error = io::Error::new(error.kind(), error);
-                Self::map_io_error(FsOperation::Copy, from, error).with_target(to.clone())
+                Self::map_io_error(FsOperation::Copy, from, error)
+                    .with_target(to.clone())
             })?;
         let stats = CopyStats {
             files: rooted_stats.files(),
@@ -478,7 +575,11 @@ impl FileSystem for RootedLocalFileSystem {
         })
     }
 
-    fn open_reader(&self, path: &FsPath, options: ReadOptions) -> FsResult<FileReader> {
+    fn open_reader(
+        &self,
+        path: &FsPath,
+        options: ReadOptions,
+    ) -> FsResult<FileReader> {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
@@ -499,7 +600,11 @@ impl FileSystem for RootedLocalFileSystem {
         Ok(FileReader::new(file, OpenedFileInfo::new(location)))
     }
 
-    fn open_writer(&self, path: &FsPath, options: WriteOptions) -> FsResult<FileWriter> {
+    fn open_writer(
+        &self,
+        path: &FsPath,
+        options: WriteOptions,
+    ) -> FsResult<FileWriter> {
         options
             .validate_against(self.capabilities)
             .map_err(|error| {
@@ -532,7 +637,8 @@ impl FileSystem for RootedLocalFileSystem {
             .with_required_capability(FileSystemCapability::AtomicReplace));
         }
         let relative = Self::relative_path(path, FsOperation::OpenWriter)?;
-        let session = if options.disposition == WriteDisposition::CreateOrReplace
+        let session = if options.disposition
+            == WriteDisposition::CreateOrReplace
             && options.atomicity != AtomicityRequirement::NotRequired
         {
             let atomic_options = if options.create_parent {
@@ -545,15 +651,20 @@ impl FileSystem for RootedLocalFileSystem {
                 .begin_atomic_write_with_options(&relative, atomic_options)
                 .map_err(|error| {
                     let kind = error.kind();
-                    FsError::from_io(std::io::Error::new(kind, error), FsOperation::OpenWriter)
-                        .with_path(path.clone())
-                        .with_provider(LocalFileSystem::provider_id())
+                    FsError::from_io(
+                        std::io::Error::new(kind, error),
+                        FsOperation::OpenWriter,
+                    )
+                    .with_path(path.clone())
+                    .with_provider(LocalFileSystem::provider_id())
                 })?;
             RootedFileWriteSession::atomic(writer, path.clone())
         } else {
             let mode = match options.disposition {
                 WriteDisposition::CreateNew => write::Mode::CreateNew,
-                WriteDisposition::CreateOrReplace => write::Mode::CreateOrTruncate,
+                WriteDisposition::CreateOrReplace => {
+                    write::Mode::CreateOrTruncate
+                }
                 WriteDisposition::Append => write::Mode::AppendExisting,
             };
             let local_options = if options.create_parent {

@@ -7,11 +7,23 @@
 // =============================================================================
 //! Local temporary-resource lifecycle session.
 
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::PathBuf,
+};
 
 use qubit_fs::{
-    AchievedAtomicity, FsError, FsOperation, FsPath, FsResult, PersistFailure, PersistFailureState,
-    PersistOptions, PersistOutcome, PublicationMethod, TempResourceSession,
+    AchievedAtomicity,
+    FsError,
+    FsOperation,
+    FsPath,
+    FsResult,
+    PersistFailure,
+    PersistFailureState,
+    PersistOptions,
+    PersistOutcome,
+    PublicationMethod,
+    TempResourceSession,
 };
 use qubit_local_files::rename;
 
@@ -27,7 +39,11 @@ pub(crate) struct LocalTempResourceSession {
 
 impl LocalTempResourceSession {
     /// Creates a session that owns an already-created temporary resource.
-    pub(crate) fn new(source: PathBuf, source_path: FsPath, directory: bool) -> Self {
+    pub(crate) fn new(
+        source: PathBuf,
+        source_path: FsPath,
+        directory: bool,
+    ) -> Self {
         Self {
             source,
             source_path,
@@ -77,15 +93,16 @@ impl TempResourceSession for LocalTempResourceSession {
         target: &FsPath,
         options: PersistOptions,
     ) -> Result<PersistOutcome, PersistFailure> {
-        let target_native = LocalFileSystem::native_path(FsOperation::PersistTemp, target)
-            .map_err(|error| {
-                PersistFailure::new(
-                    error
-                        .with_path(self.source_path.clone())
-                        .with_target(target.clone()),
-                    PersistFailureState::NotPublished,
-                )
-            })?;
+        let target_native =
+            LocalFileSystem::native_path(FsOperation::PersistTemp, target)
+                .map_err(|error| {
+                    PersistFailure::new(
+                        error
+                            .with_path(self.source_path.clone())
+                            .with_target(target.clone()),
+                        PersistFailureState::NotPublished,
+                    )
+                })?;
         let result = if options.overwrite {
             rename::move_path(&self.source, &target_native)
         } else {

@@ -28,6 +28,7 @@ use qubit_fs_registry::{
     FileSystemResolution,
     FileSystemSpec,
 };
+use qubit_spi::provider_descriptor;
 use qubit_spi::{
     ProviderDescriptor,
     ProviderMetadata,
@@ -107,7 +108,9 @@ impl LocalFileSystemProvider {
     ///
     /// Panics only if validated URI text violates the native path codec
     /// invariant.
-    fn decode_path(path: &FsUriPath) -> Result<FsPath, ProviderFailure<FsError>> {
+    fn decode_path(
+        path: &FsUriPath,
+    ) -> Result<FsPath, ProviderFailure<FsError>> {
         let decoded = decode_uri_path_components(path)?;
         let native_text = native_uri_path(&decoded);
         let native_path = Path::new(native_text);
@@ -225,12 +228,7 @@ impl ProviderMetadata for LocalFileSystemProvider {
     /// Panics only if a static provider id or alias violates SPI grammar.
     #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
-        ProviderDescriptor::new(
-            qubit_spi::ProviderId::new(LocalFileSystem::provider_id())
-                .expect("the static local provider ID must be valid"),
-        )
-        .with_aliases(["file"])
-        .expect("static local provider alias must be valid")
+        provider_descriptor!("local-file", aliases: ["file"])
     }
 }
 
@@ -258,7 +256,8 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     fn create_configured(
         &self,
         config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>> {
+    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>>
+    {
         Self::validate_config(config)?;
         let path = Self::decode_path(config.uri().path())?;
         let fs: Arc<dyn FileSystem> = Arc::new(LocalFileSystem::host());
@@ -275,7 +274,8 @@ fn invalid_options(message: &'static str) -> ProviderFailure<FsError> {
     ))
 }
 
-/// Creates an invalid-path provider failure for an unsafe or malformed URI path.
+/// Creates an invalid-path provider failure for an unsafe or malformed URI
+/// path.
 fn invalid_path(message: &'static str) -> ProviderFailure<FsError> {
     ProviderFailure::invalid_configuration(FsError::new(
         FsErrorKind::InvalidPath,

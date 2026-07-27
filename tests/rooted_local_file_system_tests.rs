@@ -10,12 +10,10 @@ use qubit_fs::{
     AchievedAtomicity,
     AtomicityRequirement,
     CopyConflictPolicy,
-    CopyMethod,
     CopyOptions,
     CreateDirOptions,
     DeleteOptions,
     DirectoryStreamExt,
-    FileKind,
     FileSystem,
     FileSystemCapabilities,
     FileSystemCapability,
@@ -30,6 +28,11 @@ use qubit_fs::{
     RenameOptions,
     WriteDisposition,
     WriteOptions,
+};
+#[cfg(unix)]
+use qubit_fs::{
+    CopyMethod,
+    FileKind,
 };
 use qubit_fs_local::RootedLocalFileSystem;
 use qubit_io::Output;
@@ -58,7 +61,7 @@ fn open_descriptor_count(path: &std::path::Path) -> usize {
 }
 
 /// Opens a rooted filesystem with a stable test identity.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn open_rooted_file_system(
     id: &str,
     path: &std::path::Path,
@@ -69,7 +72,7 @@ fn open_rooted_file_system(
 }
 
 /// Verifies rooted writes and reads stay beneath the opened directory.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_local_file_system_round_trips_content() {
     let directory =
@@ -91,7 +94,7 @@ fn test_rooted_local_file_system_round_trips_content() {
 }
 
 /// Verifies rooted filesystems advertise durable atomic replacement.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_local_file_system_advertises_atomic_replace() {
     let directory =
@@ -117,7 +120,7 @@ fn test_rooted_local_file_system_advertises_atomic_replace() {
 }
 
 /// Verifies rooted namespace management stays beneath the opened authority.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_namespace_management_operations() {
     let directory =
@@ -271,7 +274,7 @@ fn test_rooted_copy_supports_file_and_tree_modes() {
 
 /// Verifies rooted copy rejects self-targets and invalid modes before changing
 /// the destination namespace.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_copy_preflights_aliases_and_modes() {
     let directory =
@@ -356,7 +359,7 @@ fn test_rooted_copy_preflights_aliases_and_modes() {
 }
 
 /// Verifies default rooted whole-file writes publish atomically.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_write_all_atomically_replaces_file() {
     let directory =
@@ -382,7 +385,7 @@ fn test_rooted_write_all_atomically_replaces_file() {
 }
 
 /// Verifies rooted callers can explicitly request direct replacement.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_open_writer_supports_direct_replacement() {
     let directory =
@@ -435,7 +438,7 @@ fn test_rooted_direct_commit_releases_native_descriptor() {
 }
 
 /// Verifies required atomic create-new fails before creating parent entries.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_open_writer_rejects_required_atomic_create_new() {
     let directory =
@@ -513,7 +516,7 @@ fn test_stat_reports_root_directory_and_final_symbolic_link() {
 
 /// Verifies rooted operations reject object-key literals that are not
 /// canonical hierarchical paths.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_rooted_stat_rejects_noncanonical_hierarchical_paths() {
     let directory =
@@ -576,7 +579,7 @@ fn test_open_reader_decodes_canonical_native_components() {
 }
 
 /// Verifies unsupported write metadata is rejected before a rooted file opens.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_open_writer_rejects_content_metadata() {
     let directory =
@@ -598,7 +601,7 @@ fn test_open_writer_rejects_content_metadata() {
 }
 
 /// Verifies opened locations distinguish different rooted authorities.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[test]
 fn test_open_reader_distinguishes_rooted_filesystem_ids() {
     let first = tempfile::tempdir().expect("the first root should be created");

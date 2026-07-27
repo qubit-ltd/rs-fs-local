@@ -7,17 +7,23 @@
 // =============================================================================
 
 use qubit_fs::{
-    AtomicityRequirement, FileSystem, FileSystemExt, FsName, PersistOptions, TempFileOptions,
+    AtomicityRequirement,
+    FileSystem,
+    FileSystemExt,
+    FsName,
+    PersistOptions,
+    TempFileOptions,
 };
 use qubit_fs_local::LocalFileSystem;
 
 #[test]
 fn test_local_temp_session_persists_file_content() {
     let fixture = tempfile::tempdir().expect("fixture directory should open");
-    let parent =
-        LocalFileSystem::path_from_native(fixture.path()).expect("fixture path should convert");
-    let target =
-        parent.child(&FsName::parse("persisted.bin").expect("target name should be valid"));
+    let parent = LocalFileSystem::path_from_native(fixture.path())
+        .expect("fixture path should convert");
+    let target = parent.child(
+        &FsName::parse("persisted.bin").expect("target name should be valid"),
+    );
     let file_system = LocalFileSystem::host();
     let mut temporary = file_system
         .create_temp_file(TempFileOptions {
@@ -53,9 +59,11 @@ fn test_local_temp_session_persists_file_content() {
 #[test]
 fn test_local_temp_session_honors_overwrite_policy() {
     let fixture = tempfile::tempdir().expect("fixture directory should open");
-    let parent =
-        LocalFileSystem::path_from_native(fixture.path()).expect("fixture path should convert");
-    let target = parent.child(&FsName::parse("existing.bin").expect("target name should be valid"));
+    let parent = LocalFileSystem::path_from_native(fixture.path())
+        .expect("fixture path should convert");
+    let target = parent.child(
+        &FsName::parse("existing.bin").expect("target name should be valid"),
+    );
     let file_system = LocalFileSystem::host();
     file_system
         .write_all(&target, b"existing")
