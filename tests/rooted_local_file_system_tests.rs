@@ -148,7 +148,7 @@ fn test_rooted_namespace_management_operations() {
             ListOptions {
                 recursive: true,
                 include_metadata: true,
-                prefix: Some("value".to_owned()),
+                prefix: Some("nested/value.txt".to_owned()),
                 ..ListOptions::default()
             },
         )

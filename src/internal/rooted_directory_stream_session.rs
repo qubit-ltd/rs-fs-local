@@ -99,10 +99,11 @@ impl RootedDirectoryStreamSession {
                 let metadata = RootedLocalFileSystem::map_metadata(
                     native_entry.metadata(),
                 );
-                let matches_prefix = options
-                    .prefix
-                    .as_deref()
-                    .is_none_or(|prefix| name.starts_with(prefix));
+                let matches_prefix = matches_relative_prefix(
+                    provider_root,
+                    &provider_path,
+                    options.prefix.as_deref(),
+                );
                 if matches_prefix {
                     entries.push(DirEntry {
                         path: provider_path.clone(),
@@ -142,6 +143,21 @@ fn child_provider_path(parent: &FsPath, name: &str) -> FsResult<FsPath> {
         format!("{}/{name}", parent.as_str())
     };
     FsPath::parse(&text)
+}
+
+/// Checks a list filter against the entry path relative to the requested root.
+fn matches_relative_prefix(
+    root: &FsPath,
+    entry: &FsPath,
+    prefix: Option<&str>,
+) -> bool {
+    prefix.is_none_or(|prefix| {
+        entry
+            .as_str()
+            .strip_prefix(root.as_str())
+            .and_then(|relative| relative.strip_prefix('/').or(Some(relative)))
+            .is_some_and(|relative| relative.starts_with(prefix))
+    })
 }
 
 /// Builds one validated rooted child path.

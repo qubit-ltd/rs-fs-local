@@ -113,10 +113,11 @@ impl LocalDirectoryStreamSession {
                     .file_name()
                     .expect("directory entries must have a final component")
                     .to_owned();
-                let matches_prefix = options
-                    .prefix
-                    .as_deref()
-                    .is_none_or(|prefix| name.starts_with(prefix));
+                let matches_prefix = matches_relative_prefix(
+                    provider_root,
+                    &provider_path,
+                    options.prefix.as_deref(),
+                );
                 if matches_prefix {
                     entries.push(DirEntry {
                         path: provider_path,
@@ -151,6 +152,21 @@ impl LocalDirectoryStreamSession {
             entries: entries.into_iter(),
         })
     }
+}
+
+/// Checks a list filter against the entry path relative to the requested root.
+fn matches_relative_prefix(
+    root: &FsPath,
+    entry: &FsPath,
+    prefix: Option<&str>,
+) -> bool {
+    prefix.is_none_or(|prefix| {
+        entry
+            .as_str()
+            .strip_prefix(root.as_str())
+            .and_then(|relative| relative.strip_prefix('/').or(Some(relative)))
+            .is_some_and(|relative| relative.starts_with(prefix))
+    })
 }
 
 impl DirectoryStreamSession for LocalDirectoryStreamSession {
