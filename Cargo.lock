@@ -114,9 +114,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-collections"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e52fb7b0bbadb0b5ab1227d527c8ab46922338fbc9cdd71480dbdb83cfd472af"
+checksum = "fcb596d37e055a48800f0381926881152612b9171cad3be8e91dee97daee6f5b"
 dependencies = [
  "hashbrown",
 ]
@@ -174,9 +174,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-spi"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16fd0c6e65f2f736d5b3518afcacce6d37e9e3e3243cad0e845e42399152e613"
+version = "0.10.1"
 dependencies = [
  "parking_lot",
  "qubit-collections",

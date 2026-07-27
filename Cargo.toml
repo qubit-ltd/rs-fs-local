@@ -34,7 +34,7 @@ required-features = ["registry"]
 qubit-fs = { path = "../rs-fs", version = "0.2" }
 qubit-local-files = { path = "../rs-local-files", version = "0.7.1" }
 qubit-fs-registry = { path = "../rs-fs-registry", version = "0.1", optional = true }
-qubit-spi = { version = "0.10", optional = true }
+qubit-spi = { path = "../rs-spi", version = "0.10", optional = true }
 
 [features]
 default = []

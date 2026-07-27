@@ -7,6 +7,7 @@
 // =============================================================================
 use qubit_fs::{
     FileKind,
+    FsErrorKind,
     FsUri,
     UserMetadata,
 };
@@ -14,13 +15,13 @@ use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{
     CredentialRef,
     FileSystemConfig,
+    FileSystemRegistryError,
     FileSystemRegistry,
-    FileSystemSpec,
 };
 use qubit_spi::{
     ProviderMetadata,
-    ServiceProvider,
-    error::ProviderErrorKind,
+    ProviderSelection,
+    error::ProviderFailureKind,
 };
 
 /// Asserts that the local provider rejects one unsupported configuration.
@@ -33,16 +34,31 @@ use qubit_spi::{
 ///
 /// Panics when the provider accepts the configuration or reports a different
 /// error kind.
-fn assert_invalid_configuration(config: FileSystemConfig) {
-    let result = ServiceProvider::<FileSystemSpec>::create_configured(
-        &LocalFileSystemProvider,
-        &config,
-    );
-    let error = match result {
-        Ok(_) => panic!("unsupported local configuration should fail"),
-        Err(error) => error,
+fn assert_invalid_configuration(
+    config: FileSystemConfig,
+    expected_error_kind: FsErrorKind,
+) {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider)
+        .expect("register local provider");
+    let selection = ProviderSelection::named("local-file")
+        .expect("local provider selection should parse");
+    let error = registry
+        .resolve_selected_config(&selection, &config)
+        .expect_err("unsupported local configuration should fail");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("registry should preserve the typed provider failure");
     };
-    assert_eq!(error.kind(), ProviderErrorKind::InvalidConfiguration);
+    assert_eq!("local-file", creation.decisive_attempt().provider_id().as_str());
+    assert_eq!(
+        ProviderFailureKind::InvalidConfiguration,
+        creation.decisive_attempt().failure().kind(),
+    );
+    assert_eq!(
+        expected_error_kind,
+        creation.decisive_attempt().failure().error().kind(),
+    );
 }
 
 /// Confirms the provider exposes its canonical id and `file` selector alias.
@@ -122,7 +138,7 @@ fn test_provider_rejects_encoded_path_separator() {
     let uri = FsUri::parse("file:///tmp/parent%2Fchild")
         .expect("parse URI containing an encoded separator");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri));
+    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidPath);
 }
 
 /// Confirms Windows drive paths round-trip through a percent-encoded file URI.
@@ -181,7 +197,7 @@ fn test_registry_decodes_alphabetic_windows_uri_escape() {
 fn test_provider_rejects_non_file_scheme() {
     let uri = FsUri::parse("memory:///tmp/item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri));
+    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidOptions);
 }
 
 /// Confirms the provider rejects remote file authorities.
@@ -189,7 +205,7 @@ fn test_provider_rejects_non_file_scheme() {
 fn test_provider_rejects_non_empty_authority() {
     let uri = FsUri::parse("file://remote/tmp/item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri));
+    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidOptions);
 }
 
 /// Confirms the provider rejects URI queries.
@@ -198,7 +214,7 @@ fn test_provider_rejects_query() {
     let uri =
         FsUri::parse("file:///tmp/item.txt?version=1").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri));
+    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidOptions);
 }
 
 /// Confirms the provider rejects provider-specific options.
@@ -210,7 +226,7 @@ fn test_provider_rejects_options() {
         .expect("the option key should be safe");
     let config = FileSystemConfig::new(uri).with_options(options);
 
-    assert_invalid_configuration(config);
+    assert_invalid_configuration(config, FsErrorKind::InvalidOptions);
 }
 
 /// Confirms the provider rejects credential references.
@@ -220,7 +236,7 @@ fn test_provider_rejects_credentials() {
     let config = FileSystemConfig::new(uri)
         .with_credentials(CredentialRef::DefaultChain);
 
-    assert_invalid_configuration(config);
+    assert_invalid_configuration(config, FsErrorKind::InvalidOptions);
 }
 
 /// Confirms the provider rejects relative native paths.
@@ -228,7 +244,7 @@ fn test_provider_rejects_credentials() {
 fn test_provider_rejects_relative_path() {
     let uri = FsUri::parse("file:relative/item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri));
+    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidPath);
 }
 
 /// Confirms canonical path validation rejects traversal above the root.
@@ -236,5 +252,5 @@ fn test_provider_rejects_relative_path() {
 fn test_provider_rejects_path_above_root() {
     let uri = FsUri::parse("file:///../item.txt").expect("parse URI");
 
-    assert_invalid_configuration(FileSystemConfig::new(uri));
+    assert_invalid_configuration(FileSystemConfig::new(uri), FsErrorKind::InvalidPath);
 }

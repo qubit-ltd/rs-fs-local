@@ -17,6 +17,9 @@ use std::{
 
 use qubit_fs::{
     FileSystem,
+    FsError,
+    FsErrorKind,
+    FsOperation,
     FsPath,
     FsUriPath,
 };
@@ -29,7 +32,7 @@ use qubit_spi::{
     ProviderDescriptor,
     ProviderMetadata,
     ServiceProvider,
-    error::ProviderError,
+    error::ProviderFailure,
 };
 
 use crate::LocalFileSystem;
@@ -53,29 +56,31 @@ impl LocalFileSystemProvider {
     ///
     /// Returns an invalid-configuration error for a non-`file` scheme, remote
     /// authority, query, provider options, or credentials.
-    fn validate_config(config: &FileSystemConfig) -> Result<(), ProviderError> {
+    fn validate_config(
+        config: &FileSystemConfig,
+    ) -> Result<(), ProviderFailure<FsError>> {
         if config.uri().scheme().as_str() != "file" {
-            return Err(ProviderError::invalid_configuration(
+            return Err(invalid_options(
                 "local filesystem provider requires the file URI scheme",
             ));
         }
         if config.uri().authority().is_some() {
-            return Err(ProviderError::invalid_configuration(
+            return Err(invalid_options(
                 "local filesystem provider does not support URI authorities",
             ));
         }
         if !config.uri().query().is_empty() {
-            return Err(ProviderError::invalid_configuration(
+            return Err(invalid_options(
                 "local filesystem provider does not support URI queries",
             ));
         }
         if config.options().iter().next().is_some() {
-            return Err(ProviderError::invalid_configuration(
+            return Err(invalid_options(
                 "local filesystem provider does not support provider options",
             ));
         }
         if config.credentials().is_some() {
-            return Err(ProviderError::invalid_configuration(
+            return Err(invalid_options(
                 "local filesystem provider does not support credentials",
             ));
         }
@@ -102,17 +107,15 @@ impl LocalFileSystemProvider {
     ///
     /// Panics only if validated URI text violates the native path codec
     /// invariant.
-    fn decode_path(path: &FsUriPath) -> Result<FsPath, ProviderError> {
+    fn decode_path(path: &FsUriPath) -> Result<FsPath, ProviderFailure<FsError>> {
         let decoded = decode_uri_path_components(path)?;
         let native_text = native_uri_path(&decoded);
         let native_path = Path::new(native_text);
         if !native_path.is_absolute() {
-            return Err(ProviderError::invalid_configuration(
-                "local file URI path must be absolute",
-            ));
+            return Err(invalid_path("local file URI path must be absolute"));
         }
         LocalFileSystem::path_from_native(native_path).map_err(|error| {
-            ProviderError::invalid_configuration_with_source(
+            invalid_path_with_source(
                 "local file URI path is not a valid filesystem path",
                 error,
             )
@@ -141,12 +144,10 @@ impl LocalFileSystemProvider {
 /// component.
 fn decode_uri_path_components(
     path: &FsUriPath,
-) -> Result<String, ProviderError> {
+) -> Result<String, ProviderFailure<FsError>> {
     let encoded = path.as_encoded();
     if !encoded.starts_with('/') {
-        return Err(ProviderError::invalid_configuration(
-            "local file URI path must be absolute",
-        ));
+        return Err(invalid_path("local file URI path must be absolute"));
     }
     let mut decoded_components = Vec::new();
     for (index, encoded_component) in encoded
@@ -156,14 +157,14 @@ fn decode_uri_path_components(
     {
         let decoded_component = FsUriPath::parse(encoded_component)
             .map_err(|error| {
-                ProviderError::invalid_configuration_with_source(
+                invalid_path_with_source(
                     "local file URI path contains an invalid component",
                     error,
                 )
             })?
             .decode();
         if !is_native_uri_component(&decoded_component, index == 0) {
-            return Err(ProviderError::invalid_configuration(
+            return Err(invalid_path(
                 "local file URI component introduces a native path boundary",
             ));
         }
@@ -257,12 +258,43 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     fn create_configured(
         &self,
         config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderError> {
+    ) -> Result<FileSystemResolution<dyn FileSystem>, ProviderFailure<FsError>> {
         Self::validate_config(config)?;
         let path = Self::decode_path(config.uri().path())?;
         let fs: Arc<dyn FileSystem> = Arc::new(LocalFileSystem::host());
         Ok(FileSystemResolution::new(fs, path, config.uri().clone()))
     }
+}
+
+/// Creates an invalid-options provider failure for unsupported local settings.
+fn invalid_options(message: &'static str) -> ProviderFailure<FsError> {
+    ProviderFailure::invalid_configuration(FsError::new(
+        FsErrorKind::InvalidOptions,
+        FsOperation::Provider,
+        message,
+    ))
+}
+
+/// Creates an invalid-path provider failure for an unsafe or malformed URI path.
+fn invalid_path(message: &'static str) -> ProviderFailure<FsError> {
+    ProviderFailure::invalid_configuration(FsError::new(
+        FsErrorKind::InvalidPath,
+        FsOperation::Provider,
+        message,
+    ))
+}
+
+/// Creates an invalid-path provider failure retaining the path decoding cause.
+fn invalid_path_with_source(
+    message: &'static str,
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> ProviderFailure<FsError> {
+    ProviderFailure::invalid_configuration(FsError::with_source(
+        FsErrorKind::InvalidPath,
+        FsOperation::Provider,
+        message,
+        source,
+    ))
 }
 
 /// Adapts decoded file-URI text to the current platform's native path form.
