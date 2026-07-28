@@ -24,7 +24,7 @@ use qubit_fs::{
     NativePathCodec,
     OsStrPathCodec,
 };
-use qubit_local_files::rooted;
+use qubit_local_files::backend::rooted;
 
 use crate::{
     LocalFileSystem,

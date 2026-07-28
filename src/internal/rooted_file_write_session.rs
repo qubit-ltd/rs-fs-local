@@ -27,7 +27,7 @@ use qubit_fs::{
     WriteFailureState,
     WriteOutcome,
 };
-use qubit_local_files::{
+use qubit_local_files::backend::{
     atomic,
     rooted,
 };

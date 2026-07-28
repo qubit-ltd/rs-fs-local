@@ -28,7 +28,7 @@ use qubit_fs::{
     WriteFailureState,
     WriteOutcome,
 };
-use qubit_local_files::atomic;
+use qubit_local_files::backend::atomic;
 
 use crate::LocalFileSystem;
 

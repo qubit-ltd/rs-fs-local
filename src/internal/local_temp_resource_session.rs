@@ -25,7 +25,7 @@ use qubit_fs::{
     PublicationMethod,
     TempResourceSession,
 };
-use qubit_local_files::rename;
+use qubit_local_files::backend::rename;
 
 use crate::LocalFileSystem;
 

@@ -67,7 +67,7 @@ use qubit_fs::{
     WriteDisposition,
     WriteOptions,
 };
-use qubit_local_files::{
+use qubit_local_files::backend::{
     atomic,
     copy,
     directory,

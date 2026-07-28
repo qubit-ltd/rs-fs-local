@@ -23,7 +23,7 @@ use qubit_fs::{
     FsResult,
     ListOptions,
 };
-use qubit_local_files::directory;
+use qubit_local_files::backend::directory;
 
 use crate::LocalFileSystem;
 
