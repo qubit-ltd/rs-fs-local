@@ -8,10 +8,9 @@
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
 `qubit-fs-local` provides the synchronous host-local `file:` filesystem backend
-for [`qubit-fs`](https://crates.io/crates/qubit-fs). It exposes mandatory
-metadata lookup, synchronous reads and writes, namespace management, and
-`RootedLocalFileSystem` for descriptor-relative authority. Registry integration
-through the `file` provider alias is optional behind the `registry` feature.
+for [`qubit-fs`](https://crates.io/crates/qubit-fs). `LocalFileSystems` creates
+concrete host-wide or descriptor-rooted facades. Registry integration through
+the `file` provider alias is optional behind the `registry` feature.
 
 ## Installation
 
@@ -25,68 +24,63 @@ cargo add qubit-fs-local --features registry
 
 ## Usage
 
-Enable `registry`, register `LocalFileSystemProvider`, then resolve a local
-resource from a validated `file:` URI:
+Create a host-wide facade, or open one rooted authority with an explicit stable
+identity:
 
 ```rust
-use qubit_fs::{FsUri, ReadOptions};
+use std::path::Path;
+
+use qubit_fs::{FileSystemId, Path as LogicalPath};
+use qubit_fs_local::LocalFileSystems;
+
+let file_system = LocalFileSystems::rooted_with_id(
+    FileSystemId::new("app-data")?,
+    Path::new("/srv/app-data"),
+)?;
+let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
+println!("{metadata:?}");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Enable `registry`, register `LocalFileSystemProvider`, then resolve a validated
+`file:` configuration:
+
+```rust
+use qubit_fs::ConnectionUri;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_registry::FileSystemConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider)?;
+    registry.register(LocalFileSystemProvider::new())?;
 
-    let uri = FsUri::parse("file:///tmp/example.txt")?;
-    let resource = registry.resource_uri(&uri)?;
-    let metadata = resource.stat()?;
-    let content = resource.read_all(1024 * 1024)?;
-    let _streaming_reader = resource.open_reader(ReadOptions::default())?;
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
+    let resolution = registry.resolve_config(&config)?;
+    let metadata = resolution
+        .file_system()
+        .stat(resolution.path())?;
     println!("{metadata:?}");
-    println!("read {} bytes", content.len());
     Ok(())
 }
 ```
 
 ## Path Semantics
 
-- `LocalFileSystem` has host-wide authority and accepts native absolute paths
-  only.
-- Canonical `FsPath` text is converted component by component through
-  `OsStrPathCodec`, preserving literal percent characters, Unix non-UTF-8
-  bytes, and Windows native path code units without letting decoded separators
-  cross a component boundary.
-- `RootedLocalFileSystem` has descriptor-relative authority on Unix and
-  handle-relative authority on Windows below one opened directory. It requires
-  a caller-supplied stable filesystem ID and applies the same component-wise
-  native path conversion.
-- Rooted `stat` observes the root, directories, special files, and final
-  symbolic links without following that final link.
-- Rooted listing, directory creation, deletion, rename, and copy operate from
-  the opened directory handle even if its diagnostic path is later
-  renamed. Recursive deletion and copy never traverse symbolic-link entries.
-- Local and rooted copy reject self-copies and native hard-link aliases before
-  opening an overwrite destination. Host-local overwrite replaces a
-  destination symbolic-link entry instead of following it.
-- `stat` uses `symlink_metadata`, so it reports the final symbolic link itself
-  instead of following it.
-- `open_reader` performs blocking local I/O and accepts `ReadOptions` by value.
-  The current backend supports sequential whole-file reads only; range,
-  conditional, and required-checksum requests fail during preflight.
-- The provider accepts `file:` URIs with no authority or an empty authority. It
-  rejects remote authorities, queries, provider options, credentials, and URI
-  components whose decoding would introduce native path boundaries.
+- Both facades use absolute, hierarchical `qubit_fs::Path` values.
+- `LocalFileSystems::host()` maps to the process host namespace;
+  `rooted_with_id()` retains one native root authority and requires the caller's
+  stable `FileSystemId`.
+- The adapter delegates canonical component conversion, rooted containment, and
+  native filesystem operations to `qubit-local-files`.
+- The optional provider accepts only absolute `file:` URIs with no remote
+  authority, query, options, metadata, or credentials.
 
 ## Properties
 
-Both implementations advertise `List`, `Read`, `Write`, `Append`,
-`CreateDirectory`, `Delete`, `RecursiveDelete`, `Rename`, `AtomicReplace`, and
-`Copy`. `AtomicRename` is advertised only where the platform provides an
-atomic no-replace primitive; overwrite rename remains atomic on supported
-rooted Unix and Windows targets. Rooted portable copy preserves Unix permission
-modes or the Windows read-only attribute.
-`stat` is part of the base filesystem contract and therefore has no capability
-flag. Host-dependent path and I/O limits are reported explicitly as
+Both facades advertise `List`, `Read`, `Write`, `Append`, `CreateDirectory`,
+`Delete`, `RecursiveDelete`, `Rename`, `Copy`, temporary resources,
+`AtomicReplace`, and `AtomicTempPersist`. Host-dependent limits are reported as
 `FileSystemLimits::unknown()`.
 
 This release is synchronous only. If asynchronous support is added later, it

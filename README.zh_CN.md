@@ -9,9 +9,9 @@
 
 `qubit-fs-local` 为
 [`qubit-fs`](https://crates.io/crates/qubit-fs) 提供同步的主机本地 `file:`
-文件系统后端。它支持同步读写和命名空间管理，并提供以目录 handle 为 authority 的
-`RootedLocalFileSystem`。通过 `file` provider 别名进行 registry 集成的能力
-位于可选的 `registry` feature 中。
+文件系统后端。`LocalFileSystems` 可创建具体的主机范围或目录 authority 受限的
+文件系统门面。通过 `file` provider 别名进行 registry 集成的能力位于可选的
+`registry` feature 中。
 
 ## 安装
 
@@ -25,61 +25,60 @@ cargo add qubit-fs-local --features registry
 
 ## 使用方法
 
-启用 `registry` 后注册 `LocalFileSystemProvider`，再通过经过校验的 `file:` URI
-解析本地资源：
+创建主机范围门面，或使用显式稳定 identity 打开一个 rooted authority：
 
 ```rust
-use qubit_fs::{FsUri, ReadOptions};
+use std::path::Path;
+
+use qubit_fs::{FileSystemId, Path as LogicalPath};
+use qubit_fs_local::LocalFileSystems;
+
+let file_system = LocalFileSystems::rooted_with_id(
+    FileSystemId::new("app-data")?,
+    Path::new("/srv/app-data"),
+)?;
+let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
+println!("{metadata:?}");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+启用 `registry` 后注册 `LocalFileSystemProvider`，再解析经过校验的 `file:` 配置：
+
+```rust
+use qubit_fs::ConnectionUri;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_registry::FileSystemConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider)?;
+    registry.register(LocalFileSystemProvider::new())?;
 
-    let uri = FsUri::parse("file:///tmp/example.txt")?;
-    let resource = registry.resource_uri(&uri)?;
-    let metadata = resource.stat()?;
-    let content = resource.read_all(1024 * 1024)?;
-    let _streaming_reader = resource.open_reader(ReadOptions::default())?;
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
+    let resolution = registry.resolve_config(&config)?;
+    let metadata = resolution
+        .file_system()
+        .stat(resolution.path())?;
     println!("{metadata:?}");
-    println!("读取了 {} 字节", content.len());
     Ok(())
 }
 ```
 
 ## 路径语义
 
-- `LocalFileSystem` 拥有主机范围权限，只接受本机绝对路径。
-- 规范化的 `FsPath` 文本逐 component 通过 `OsStrPathCodec` 转换，能够保留字面
-  `%`、Unix 非 UTF-8 字节和 Windows 原生路径代码单元，同时防止解码后的 separator
-  穿越 component 边界。
-- `RootedLocalFileSystem` 在 Unix 上使用 descriptor-relative authority，在 Windows
-  上使用 handle-relative authority。调用方必须提供稳定的 filesystem ID，并且同样按
-  component 转换原生路径。
-- Rooted `stat` 可在不跟随最终符号链接的前提下查询根目录、目录、特殊文件和最终
-  符号链接本身。
-- Rooted 的列举、建目录、删除、重命名与复制始终从已打开的目录 handle
-  出发；即使诊断路径随后被重命名，authority 也不会改变。递归删除和复制不会遍历
-  符号链接条目。
-- 本地与 Rooted 复制会在打开覆盖目标前拒绝自复制和原生硬链接别名。主机本地覆盖
-  会替换目标符号链接条目，而不是跟随该链接。
-- `stat` 使用 `symlink_metadata`，因此返回最终符号链接本身的信息而不会跟随它。
-- `open_reader` 执行阻塞式本地 I/O，并按值接收 `ReadOptions`。当前后端只支持
-  顺序整文件读取；range、conditional 和 required-checksum 请求会在预检阶段失败。
-- provider 接受无 authority 或空 authority 的 `file:` URI，并拒绝远程
-  authority、query、provider options、credentials，以及解码后会引入原生路径边界的
-  URI component。
+- 两种门面都使用绝对、层级化的 `qubit_fs::Path`。
+- `LocalFileSystems::host()` 映射到进程主机命名空间；`rooted_with_id()` 保留一个
+  native root authority，并要求调用方提供稳定的 `FileSystemId`。
+- adapter 将 canonical component 转换、rooted containment 与 native 文件操作委托给
+  `qubit-local-files`。
+- 可选 provider 仅接受无远程 authority、query、options、metadata 或 credentials 的
+  绝对 `file:` URI。
 
 ## 属性
 
-两种实现均声明 `List`、`Read`、`Write`、`Append`、`CreateDirectory`、
-`Delete`、`RecursiveDelete`、`Rename`、`AtomicReplace` 和 `Copy`。
-只有平台提供原子 no-replace 原语时才声明 `AtomicRename`；受支持的 Rooted Unix
-和 Windows 平台上的覆盖重命名仍保持原子性。Rooted 的 portable 复制会保留 Unix
-权限模式或 Windows 只读属性。
-`stat` 属于文件系统基础契约，因此不再需要 capability 标记。
-依赖主机的路径和 I/O 限制会明确报告为 `FileSystemLimits::unknown()`。
+两种门面均声明 `List`、`Read`、`Write`、`Append`、`CreateDirectory`、
+`Delete`、`RecursiveDelete`、`Rename`、`Copy`、临时资源、`AtomicReplace` 与
+`AtomicTempPersist`。依赖主机的限制会报告为 `FileSystemLimits::unknown()`。
 
 当前版本仅提供同步 API。若后续增加异步支持，将以可选 feature 发布，不增加默认
 依赖面。
