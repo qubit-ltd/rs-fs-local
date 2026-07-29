@@ -2,7 +2,10 @@
 
 use qubit_fs::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_fs_registry::{
+    FileSystemConfig,
+    FileSystemRegistry,
+};
 
 /// A registered host provider resolves an absolute `file:` URI.
 #[test]
@@ -12,7 +15,8 @@ fn test_local_provider_returns_concrete_resolution() {
         .register(LocalFileSystemProvider::new())
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("file:///tmp/data").expect("the test file URI must parse"),
+        ConnectionUri::parse("file:///tmp/data")
+            .expect("the test file URI must parse"),
     );
 
     let resolution = registry
@@ -31,7 +35,8 @@ fn test_local_provider_rejects_remote_authority() {
         .register(LocalFileSystemProvider::new())
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("file://remote/share").expect("the test URI must parse"),
+        ConnectionUri::parse("file://remote/share")
+            .expect("the test URI must parse"),
     );
 
     assert!(registry.resolve_config(&config).is_err());

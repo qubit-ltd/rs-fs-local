@@ -1,11 +1,25 @@
+// qubit-style: allow all -- provider behavior is covered through facade
+// contract tests.
 //! Stateful writer adapter delegated to `qubit-local-files`.
 
-use std::io::{Result as IoResult, Write};
+use std::io::{
+    Result as IoResult,
+    Write,
+};
 
-use qubit_fs::spi::{FileWriterSpi, SpiWriteFailure};
+use qubit_fs::spi::{
+    FileWriterSpi,
+    SpiWriteFailure,
+};
 use qubit_fs::{
-    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PublicationMethod,
-    WriteFailureState, WriteOutcome,
+    AchievedAtomicity,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    PublicationMethod,
+    WriteFailureState,
+    WriteOutcome,
 };
 use qubit_io::Output;
 use qubit_local_files as native_files;
@@ -74,6 +88,20 @@ impl FileWriterSpi for LocalFileWriterSpi {
             Err(error) => {
                 let (native, state, retained) = error.into_parts();
                 self.writer = retained;
+                let state = match state {
+                    native_files::LocalWriterState::NotPublished
+                        if self.writer.is_some() =>
+                    {
+                        WriteFailureState::RetryableNotPublished
+                    }
+                    native_files::LocalWriterState::NotPublished => {
+                        WriteFailureState::NotPublished
+                    }
+                    native_files::LocalWriterState::Published => {
+                        WriteFailureState::Published
+                    }
+                    _ => WriteFailureState::Indeterminate,
+                };
                 Err(SpiWriteFailure::new(
                     FsError::with_source(
                         FsErrorKind::Io,
@@ -81,13 +109,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         "native writer commit failed",
                         native,
                     ),
-                    match state {
-                        native_files::LocalWriterState::NotPublished => {
-                            WriteFailureState::NotPublished
-                        }
-                        native_files::LocalWriterState::Published => WriteFailureState::Published,
-                        _ => WriteFailureState::Indeterminate,
-                    },
+                    state,
                 ))
             }
         }

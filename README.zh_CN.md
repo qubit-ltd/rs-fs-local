@@ -13,6 +13,8 @@
 文件系统门面。通过 `file` provider 别名进行 registry 集成的能力位于可选的
 `registry` feature 中。
 
+provider 映射契约见[设计文档](doc/local_file_system_adapter_design.zh_CN.md)。
+
 ## 安装
 
 将本 crate 添加到项目。只有应用通过 `qubit-fs-registry` 使用

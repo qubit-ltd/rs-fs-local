@@ -12,6 +12,9 @@ for [`qubit-fs`](https://crates.io/crates/qubit-fs). `LocalFileSystems` creates
 concrete host-wide or descriptor-rooted facades. Registry integration through
 the `file` provider alias is optional behind the `registry` feature.
 
+The provider mapping contract is documented in the
+[Chinese design document](doc/local_file_system_adapter_design.zh_CN.md).
+
 ## Installation
 
 Add the crate to your project. Enable `registry` when the application uses

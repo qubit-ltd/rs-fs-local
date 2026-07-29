@@ -15,6 +15,7 @@ include = [
   "/LICENSE",
   "/README.md",
   "/README.zh_CN.md",
+  "/doc/local_file_system_adapter_design.zh_CN.md",
   "/src/**",
   "/tests/**",
 ]
