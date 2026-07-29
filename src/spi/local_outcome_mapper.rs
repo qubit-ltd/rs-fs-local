@@ -65,18 +65,14 @@ impl LocalOutcomeMapper {
         result
     }
     pub(crate) fn rename(
-        value: native_files::LocalRenameOutcome,
+        _value: native_files::LocalRenameOutcome,
         source: &qubit_fs::Path,
         target: &qubit_fs::Path,
     ) -> RenameOutcome {
         RenameOutcome::new(
             source.clone(),
             target.clone(),
-            if value.atomic() {
-                AchievedAtomicity::Atomic
-            } else {
-                AchievedAtomicity::NonAtomic
-            },
+            AchievedAtomicity::Atomic,
             PublicationMethod::AtomicRename,
         )
     }

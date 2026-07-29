@@ -236,24 +236,19 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = match LocalOptionsMapper::copy(request.options()) {
             Ok(options) => options,
             Err(_) => {
-                return Ok(CopyAttempt::Declined(
-                    CopyDeclineReason::NotApplicable,
-                ));
+                return Ok(declined_copy());
             }
         };
         let (source, target) =
             LocalPathMapper::host_pair(request.source(), request.target())
-                .map_err(|error| {
-                    SpiCopyFailure::new(
-                        error,
-                        qubit_fs::CopyFailureState::Unchanged,
-                        qubit_fs::CopyStats::default(),
-                    )
-                })?;
+                .map_err(copy_path_error)?;
         native_files::LocalFileSystem::copy(&source, &target, &options)
-            .map(|value| CopyAttempt::Completed(LocalOutcomeMapper::copy(value)))
+            .map(|value| {
+                CopyAttempt::Completed(LocalOutcomeMapper::copy(value))
+            })
             .map_err(|error| {
-                let (error, state, stats, _staging, _cleanup) = error.into_parts();
+                let (error, state, stats, _staging, _cleanup) =
+                    error.into_parts();
                 SpiCopyFailure::new(
                     LocalFileErrorMapper::map(
                         error,
@@ -261,20 +256,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         request.source(),
                         Some(request.target()),
                     ),
-                    match state {
-                        native_files::LocalCopyFailureState::Unchanged => {
-                            qubit_fs::CopyFailureState::Unchanged
-                        }
-                        native_files::LocalCopyFailureState::PartiallyPublished => {
-                            qubit_fs::CopyFailureState::PartiallyPublished
-                        }
-                        native_files::LocalCopyFailureState::Published => {
-                            qubit_fs::CopyFailureState::Published
-                        }
-                        native_files::LocalCopyFailureState::Indeterminate => {
-                            qubit_fs::CopyFailureState::Indeterminate
-                        }
-                    },
+                    copy_failure_state(state),
                     qubit_fs::CopyStats {
                         files: stats.files(),
                         directories: stats.directories(),
@@ -292,12 +274,16 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ) -> Result<qubit_fs::RenameOutcome, SpiRenameFailure> {
         let (source, target) =
             LocalPathMapper::host_pair(request.source(), request.target())
-                .map_err(|error| {
-                    SpiRenameFailure::new(error, RenameFailureState::Unchanged)
-                })?;
+                .map_err(rename_path_error)?;
         let options = LocalOptionsMapper::rename(request.options());
         native_files::LocalFileSystem::rename(&source, &target, &options)
-            .map(|value| LocalOutcomeMapper::rename(value, request.source(), request.target()))
+            .map(|value| {
+                LocalOutcomeMapper::rename(
+                    value,
+                    request.source(),
+                    request.target(),
+                )
+            })
             .map_err(|error| {
                 let (error, state) = error.into_parts();
                 SpiRenameFailure::new(
@@ -307,17 +293,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         request.source(),
                         Some(request.target()),
                     ),
-                    match state {
-                        native_files::LocalRenameFailureState::Unchanged => {
-                            RenameFailureState::Unchanged
-                        }
-                        native_files::LocalRenameFailureState::Renamed => {
-                            RenameFailureState::Renamed
-                        }
-                        native_files::LocalRenameFailureState::Indeterminate => {
-                            RenameFailureState::Indeterminate
-                        }
-                    },
+                    rename_failure_state(state),
                 )
             })
     }
@@ -383,5 +359,155 @@ impl FileSystemSpi for LocalFileSystemSpi {
             self.info(path),
             Box::new(LocalTempResourceSpi::directory(value, false)),
         ))
+    }
+}
+
+fn copy_failure_state(
+    state: native_files::LocalCopyFailureState,
+) -> qubit_fs::CopyFailureState {
+    match state {
+        native_files::LocalCopyFailureState::Unchanged => {
+            qubit_fs::CopyFailureState::Unchanged
+        }
+        native_files::LocalCopyFailureState::PartiallyPublished => {
+            qubit_fs::CopyFailureState::PartiallyPublished
+        }
+        native_files::LocalCopyFailureState::Published => {
+            qubit_fs::CopyFailureState::Published
+        }
+        native_files::LocalCopyFailureState::Indeterminate => {
+            qubit_fs::CopyFailureState::Indeterminate
+        }
+    }
+}
+
+fn declined_copy() -> CopyAttempt {
+    CopyAttempt::Declined(CopyDeclineReason::NotApplicable)
+}
+
+fn copy_path_error(error: FsError) -> SpiCopyFailure {
+    SpiCopyFailure::new(
+        error,
+        qubit_fs::CopyFailureState::Unchanged,
+        qubit_fs::CopyStats::default(),
+    )
+}
+
+fn rename_path_error(error: FsError) -> SpiRenameFailure {
+    SpiRenameFailure::new(error, RenameFailureState::Unchanged)
+}
+
+fn rename_failure_state(
+    state: native_files::LocalRenameFailureState,
+) -> RenameFailureState {
+    match state {
+        native_files::LocalRenameFailureState::Unchanged => {
+            RenameFailureState::Unchanged
+        }
+        native_files::LocalRenameFailureState::Renamed => {
+            RenameFailureState::Renamed
+        }
+        native_files::LocalRenameFailureState::Indeterminate => {
+            RenameFailureState::Indeterminate
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::spi::FileSystemSpi;
+    use qubit_local_files::{
+        LocalCopyFailureState,
+        LocalRenameFailureState,
+    };
+
+    use super::{
+        LocalFileSystemSpi,
+        copy_failure_state,
+        copy_path_error,
+        declined_copy,
+        rename_failure_state,
+        rename_path_error,
+    };
+
+    #[test]
+    fn maps_all_native_copy_failure_states() {
+        assert_eq!(
+            qubit_fs::CopyFailureState::Unchanged,
+            copy_failure_state(LocalCopyFailureState::Unchanged)
+        );
+        assert_eq!(
+            qubit_fs::CopyFailureState::PartiallyPublished,
+            copy_failure_state(LocalCopyFailureState::PartiallyPublished)
+        );
+        assert_eq!(
+            qubit_fs::CopyFailureState::Published,
+            copy_failure_state(LocalCopyFailureState::Published)
+        );
+        assert_eq!(
+            qubit_fs::CopyFailureState::Indeterminate,
+            copy_failure_state(LocalCopyFailureState::Indeterminate)
+        );
+    }
+
+    #[test]
+    fn maps_all_native_rename_failure_states() {
+        assert_eq!(
+            qubit_fs::RenameFailureState::Unchanged,
+            rename_failure_state(LocalRenameFailureState::Unchanged)
+        );
+        assert_eq!(
+            qubit_fs::RenameFailureState::Renamed,
+            rename_failure_state(LocalRenameFailureState::Renamed)
+        );
+        assert_eq!(
+            qubit_fs::RenameFailureState::Indeterminate,
+            rename_failure_state(LocalRenameFailureState::Indeterminate)
+        );
+    }
+
+    #[test]
+    fn default_spi_exposes_the_static_host_identity_and_maps_native_errors() {
+        let spi = LocalFileSystemSpi::default();
+        assert_eq!("local-host", spi.properties().info().id().as_str());
+        let path =
+            qubit_fs::Path::parse("/test").expect("test path must parse");
+        let error = LocalFileSystemSpi::map(
+            qubit_local_files::LocalFileError::new(
+                qubit_local_files::LocalFileErrorKind::NotFound,
+                qubit_local_files::LocalFileOperation::Metadata,
+            ),
+            qubit_fs::FsOperation::Stat,
+            &path,
+        );
+        assert_eq!(qubit_fs::FsErrorKind::NotFound, error.kind());
+    }
+
+    #[test]
+    fn maps_preflight_copy_and_rename_outcomes() {
+        assert!(matches!(
+            declined_copy(),
+            qubit_fs::spi::CopyAttempt::Declined(
+                qubit_fs::spi::CopyDeclineReason::NotApplicable
+            )
+        ));
+        let error = qubit_fs::FsError::new(
+            qubit_fs::FsErrorKind::InvalidPath,
+            qubit_fs::FsOperation::Copy,
+            "test",
+        );
+        assert_eq!(
+            qubit_fs::CopyFailureState::Unchanged,
+            copy_path_error(error).state()
+        );
+        let error = qubit_fs::FsError::new(
+            qubit_fs::FsErrorKind::InvalidPath,
+            qubit_fs::FsOperation::Rename,
+            "test",
+        );
+        assert_eq!(
+            qubit_fs::RenameFailureState::Unchanged,
+            rename_path_error(error).state()
+        );
     }
 }

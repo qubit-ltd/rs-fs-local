@@ -69,6 +69,23 @@ fn test_rooted_with_id_preserves_explicit_identity() {
     assert_eq!(file_system.properties().info().id(), &id);
 }
 
+/// Verifies automatic rooted identities are valid and distinct per facade.
+#[test]
+fn test_rooted_factory_assigns_distinct_process_local_identities() {
+    let first_root = tempfile::tempdir().expect("first root should exist");
+    let second_root = tempfile::tempdir().expect("second root should exist");
+
+    let first = LocalFileSystems::rooted(first_root.path())
+        .expect("first rooted filesystem should construct");
+    let second = LocalFileSystems::rooted(second_root.path())
+        .expect("second rooted filesystem should construct");
+
+    assert_ne!(
+        first.properties().info().id(),
+        second.properties().info().id()
+    );
+}
+
 /// Host temporary files honor the requested logical parent and name affixes.
 #[cfg(unix)]
 #[test]

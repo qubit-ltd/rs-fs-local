@@ -9,6 +9,8 @@
 // contract tests.
 //! Lazy directory walker adapter.
 
+use std::path::Path as NativePath;
+
 use qubit_fs::spi::{
     DirectoryStreamSpi,
     ResolvedListOptions,
@@ -87,51 +89,16 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let Some(entry) = entry else {
                 return Ok(None);
             };
-            let entry = entry.map_err(|error| {
-                FsError::with_source(
-                    FsErrorKind::Io,
-                    FsOperation::List,
-                    "native directory walk failed",
-                    error,
-                )
-            })?;
+            let entry = entry.map_err(entry_error)?;
             let logical_relative =
                 LocalPathMapper::rooted_logical(entry.relative_path())?;
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = if let Some(root) = rooted {
-                if logical_relative == Path::root() {
-                    root
-                } else if root == Path::root() {
-                    logical_relative
-                } else {
-                    Path::parse(&format!(
-                        "{}/{}",
-                        root.as_str(),
-                        &logical_relative.as_str()[1..]
-                    ))?
-                }
-            } else {
-                LocalPathMapper::host_logical(entry.path())?
-            };
-            let mut result = DirEntry::new(
-                path,
-                match entry.metadata().kind() {
-                    native_files::LocalFileKind::File => {
-                        qubit_fs::FileKind::File
-                    }
-                    native_files::LocalFileKind::Directory => {
-                        qubit_fs::FileKind::Directory
-                    }
-                    native_files::LocalFileKind::Symlink => {
-                        qubit_fs::FileKind::Symlink
-                    }
-                    native_files::LocalFileKind::Other => {
-                        qubit_fs::FileKind::Other("local".to_owned())
-                    }
-                },
-            );
+            let path =
+                output_path(rooted.as_ref(), &logical_relative, entry.path())?;
+            let mut result =
+                DirEntry::new(path, output_kind(entry.metadata().kind()));
             if options.include_metadata {
                 result.metadata = Some(
                     super::local_outcome_mapper::LocalOutcomeMapper::metadata(
@@ -141,5 +108,147 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             }
             return Ok(Some(result));
         }
+    }
+}
+
+fn entry_error(error: native_files::LocalFileError) -> FsError {
+    FsError::with_source(
+        FsErrorKind::Io,
+        FsOperation::List,
+        "native directory walk failed",
+        error,
+    )
+}
+
+fn output_path(
+    root: Option<&Path>,
+    relative: &Path,
+    native: &NativePath,
+) -> FsResult<Path> {
+    match root {
+        Some(root) if relative == &Path::root() => Ok(root.clone()),
+        Some(root) if root == &Path::root() => Ok(relative.clone()),
+        Some(root) => Path::parse(&format!(
+            "{}/{}",
+            root.as_str(),
+            &relative.as_str()[1..]
+        )),
+        None => LocalPathMapper::host_logical(native),
+    }
+}
+
+fn output_kind(kind: native_files::LocalFileKind) -> qubit_fs::FileKind {
+    match kind {
+        native_files::LocalFileKind::File => qubit_fs::FileKind::File,
+        native_files::LocalFileKind::Directory => qubit_fs::FileKind::Directory,
+        native_files::LocalFileKind::Symlink => qubit_fs::FileKind::Symlink,
+        native_files::LocalFileKind::Other => {
+            qubit_fs::FileKind::Other("local".to_owned())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path as NativePath;
+
+    use qubit_fs::{
+        FileKind,
+        FsErrorKind,
+        Path,
+    };
+    use qubit_local_files::{
+        LocalFileError,
+        LocalFileErrorKind,
+        LocalFileKind,
+        LocalFileOperation,
+    };
+
+    use super::{
+        ListingOptions,
+        entry_error,
+        output_kind,
+        output_path,
+    };
+
+    #[test]
+    fn listing_options_apply_exact_and_descendant_prefixes() {
+        let options = ListingOptions {
+            include_metadata: true,
+            prefix: Some("nested/item".to_owned()),
+        };
+        assert!(options.include_metadata);
+        for path in ["/nested/item", "/nested/item/child"] {
+            assert!(
+                options
+                    .matches(&Path::parse(path).expect("test path must parse"))
+            );
+        }
+        for path in ["/nested/items", "/other"] {
+            assert!(
+                !options
+                    .matches(&Path::parse(path).expect("test path must parse"))
+            );
+        }
+    }
+
+    #[test]
+    fn listing_options_without_prefix_match_every_entry() {
+        let options = ListingOptions {
+            include_metadata: false,
+            prefix: None,
+        };
+        assert!(!options.include_metadata);
+        assert!(
+            options.matches(
+                &Path::parse("/anything").expect("test path must parse")
+            )
+        );
+    }
+
+    #[test]
+    fn maps_host_and_rooted_entry_paths() {
+        let relative = Path::parse("/child").expect("test path must parse");
+        let root = Path::parse("/root").expect("test path must parse");
+        assert_eq!(
+            root,
+            output_path(Some(&root), &Path::root(), NativePath::new("ignored"))
+                .expect("root relative path must select request root")
+        );
+        assert_eq!(
+            relative,
+            output_path(
+                Some(&Path::root()),
+                &relative,
+                NativePath::new("ignored")
+            )
+            .expect("rooted root must preserve logical relative path")
+        );
+        assert_eq!(
+            Path::parse("/root/child").expect("test path must parse"),
+            output_path(Some(&root), &relative, NativePath::new("ignored"))
+                .expect("nested rooted path must join request root")
+        );
+        assert_eq!(
+            Path::parse("/tmp/child").expect("test path must parse"),
+            output_path(None, &relative, NativePath::new("/tmp/child"))
+                .expect("host path must map from native path")
+        );
+    }
+
+    #[test]
+    fn maps_entry_kinds_and_walk_errors() {
+        assert_eq!(FileKind::File, output_kind(LocalFileKind::File));
+        assert_eq!(FileKind::Directory, output_kind(LocalFileKind::Directory));
+        assert_eq!(FileKind::Symlink, output_kind(LocalFileKind::Symlink));
+        assert_eq!(
+            FileKind::Other("local".to_owned()),
+            output_kind(LocalFileKind::Other)
+        );
+        let error = entry_error(LocalFileError::new(
+            LocalFileErrorKind::Io,
+            LocalFileOperation::List,
+        ));
+        assert_eq!(FsErrorKind::Io, error.kind());
     }
 }

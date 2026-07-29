@@ -72,3 +72,48 @@ impl LocalFileErrorMapper {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::{
+        FsErrorKind,
+        FsOperation,
+        Path,
+    };
+    use qubit_local_files::{
+        LocalFileError,
+        LocalFileErrorKind as Kind,
+        LocalFileOperation,
+    };
+
+    use super::LocalFileErrorMapper;
+
+    #[test]
+    fn maps_native_error_kinds_with_paths() {
+        let path = Path::parse("/source").expect("test path must parse");
+        let target = Path::parse("/target").expect("test path must parse");
+        for (native, expected) in [
+            (Kind::InvalidInput, FsErrorKind::InvalidPath),
+            (Kind::NotFound, FsErrorKind::NotFound),
+            (Kind::AlreadyExists, FsErrorKind::AlreadyExists),
+            (Kind::TypeConflict, FsErrorKind::Conflict),
+            (Kind::PermissionDenied, FsErrorKind::PermissionDenied),
+            (Kind::Unsupported, FsErrorKind::UnsupportedOperation),
+            (Kind::RequirementNotMet, FsErrorKind::RequirementNotMet),
+            (Kind::ResourceLimit, FsErrorKind::ResourceLimitExceeded),
+            (Kind::PublicationIncomplete, FsErrorKind::Conflict),
+            (Kind::Indeterminate, FsErrorKind::Indeterminate),
+            (Kind::Io, FsErrorKind::Io),
+        ] {
+            let error = LocalFileErrorMapper::map(
+                LocalFileError::new(native, LocalFileOperation::Metadata),
+                FsOperation::Stat,
+                &path,
+                Some(&target),
+            );
+            assert_eq!(expected, error.kind());
+            assert_eq!(Some(&path), error.path());
+            assert_eq!(Some(&target), error.target());
+        }
+    }
+}

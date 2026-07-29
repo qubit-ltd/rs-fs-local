@@ -43,8 +43,10 @@ impl LocalFileSystems {
                 std::process::id(),
                 ROOTED_COUNTER.fetch_add(1, Ordering::Relaxed)
             );
-            FileSystemId::new(&value)
-        }?;
+            FileSystemId::new(&value).expect(
+                "process id and monotonic counter form a valid filesystem id",
+            )
+        };
         Self::rooted_with_id(id, root)
     }
     /// Opens `root` with caller-specified stable identity.
