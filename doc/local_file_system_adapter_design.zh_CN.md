@@ -406,7 +406,8 @@ Host 与 rooted SPI 共享 `LocalFileErrorMapper`，但不把 mapper 暴露为�
 - native kind 映射到最精确的 `FsErrorKind`；
 - `InvalidPath`/`InvalidOptions` 与 `NotDirectory`/`IsDirectory` 保持各自分类，不折叠为
   `Conflict` 或普通 I/O；
-- public operation、provider id、source path 和 target path 取自 request/属性快照；
+- public operation、source path 和 target path 取自 request；provider id 固定使用
+  adapter 属性声明的 canonical `local-file`；
 - native path 仅在确认不会越过安全边界时进入 message；
 - `std::io::Error` 保留为 source，不自动格式化；
 - native requirement failure 映射为 `RequirementNotMet`；
@@ -419,7 +420,7 @@ Host 与 rooted SPI 共享 `LocalFileErrorMapper`，但不把 mapper 暴露为�
 
 `registry` feature 提供 `LocalFileSystemProvider`。它负责：
 
-- 声明 `file` provider identity 和 aliases；
+- 声明 canonical `local-file` provider identity，并注册 `file` scheme alias；
 - 从受控 `ConnectionUri` 配置边界读取原始输入；
 - 接受无 authority 或空 authority 的 `file:` URI；
 - 拒绝 remote authority、未支持 query 和 secret；

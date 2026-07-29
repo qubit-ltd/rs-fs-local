@@ -104,7 +104,14 @@ cargo test --all-features
 
 # Check code coverage
 ./coverage.sh
+
+# Enforce the configured per-source coverage thresholds
+COVERAGE_ENFORCE_THRESHOLDS=1 ./coverage.sh
 ```
+
+Coverage is reported by default during early adoption. Set
+`COVERAGE_ENFORCE_THRESHOLDS=1` to make the coverage command and project CI
+checks enforce the configured per-source thresholds.
 
 ## License
 

@@ -1,12 +1,24 @@
 //! Stateful contract coverage for the rooted local adapter.
 
 use qubit_fs::{
-    CopyOptions, CreateDirectoryOptions, FileSystem, FileSystemId, FsErrorKind, ListOptions, Path,
-    TempDirectoryOptions, TempFileOptions, WriteOptions,
+    CopyOptions,
+    CreateDirectoryOptions,
+    FileSystem,
+    FileSystemId,
+    FsErrorKind,
+    ListOptions,
+    Path,
+    TempDirectoryOptions,
+    TempFileOptions,
+    WriteOptions,
 };
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_testkit::{
-    FileSystemContractSuite, FileSystemFixture, FixtureError, FixtureResult, FixtureSupport,
+    FileSystemContractSuite,
+    FileSystemFixture,
+    FixtureError,
+    FixtureResult,
+    FixtureSupport,
 };
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.
@@ -23,7 +35,8 @@ impl RootedFixture {
             .expect("fixture filesystem identity must be valid");
         let file_system = LocalFileSystems::rooted_with_id(id, root.path())
             .expect("rooted fixture filesystem must open");
-        let fixture_dir = Path::parse("/fixture").expect("fixture path must be valid");
+        let fixture_dir =
+            Path::parse("/fixture").expect("fixture path must be valid");
         file_system
             .create_directory(&fixture_dir, CreateDirectoryOptions::default())
             .expect("fixture directory must be created");
@@ -41,29 +54,46 @@ impl FileSystemFixture for RootedFixture {
 
     fn path(&self, relative: &str) -> FixtureResult<Path> {
         if relative == "list-root" {
-            return Path::parse("/")
-                .map_err(|error| FixtureError::with_source("fixture path is invalid", error));
+            return Path::parse("/").map_err(|error| {
+                FixtureError::with_source("fixture path is invalid", error)
+            });
         }
-        Path::parse(&format!("/fixture/{relative}"))
-            .map_err(|error| FixtureError::with_source("fixture path is invalid", error))
+        Path::parse(&format!("/fixture/{relative}")).map_err(|error| {
+            FixtureError::with_source("fixture path is invalid", error)
+        })
     }
 
     fn list_prefix(&self, _: &Path, relative: &str) -> FixtureResult<String> {
         Ok(relative.to_owned())
     }
 
-    fn seed_file(&self, relative: &str, bytes: &[u8]) -> FixtureResult<FixtureSupport<Path>> {
+    fn seed_file(
+        &self,
+        relative: &str,
+        bytes: &[u8],
+    ) -> FixtureResult<FixtureSupport<Path>> {
         if let Some((parent, _)) = relative.rsplit_once('/') {
-            let parent = Path::parse(&format!("/fixture/{parent}")).map_err(|error| {
-                FixtureError::with_source("fixture parent path is invalid", error)
-            })?;
+            let parent = Path::parse(&format!("/fixture/{parent}")).map_err(
+                |error| {
+                    FixtureError::with_source(
+                        "fixture parent path is invalid",
+                        error,
+                    )
+                },
+            )?;
             match self.file_system.stat(&parent) {
                 Ok(_) => {}
                 Err(error) if error.kind() == FsErrorKind::NotFound => {
                     self.file_system
-                        .create_directory(&parent, CreateDirectoryOptions::default())
+                        .create_directory(
+                            &parent,
+                            CreateDirectoryOptions::default(),
+                        )
                         .map_err(|error| {
-                            FixtureError::with_source("fixture seed parent directory failed", error)
+                            FixtureError::with_source(
+                                "fixture seed parent directory failed",
+                                error,
+                            )
                         })?;
                 }
                 Err(error) => {
@@ -78,7 +108,9 @@ impl FileSystemFixture for RootedFixture {
         self.file_system
             .write_all(&path, bytes, WriteOptions::default())
             .map_err(|failure| {
-                FixtureError::new(format!("fixture seed write failed: {failure}"))
+                FixtureError::new(format!(
+                    "fixture seed write failed: {failure}"
+                ))
             })?;
         Ok(FixtureSupport::Supported(path))
     }
@@ -87,7 +119,105 @@ impl FileSystemFixture for RootedFixture {
         self.file_system
             .read_all(path, Default::default(), 1024 * 1024)
             .map(FixtureSupport::Supported)
-            .map_err(|error| FixtureError::with_source("fixture read failed", error))
+            .map_err(|error| {
+                FixtureError::with_source("fixture read failed", error)
+            })
+    }
+}
+
+/// Isolated host filesystem fixture used to exercise the host SPI path.
+#[cfg(unix)]
+struct HostFixture {
+    root: tempfile::TempDir,
+    file_system: FileSystem,
+}
+
+#[cfg(unix)]
+impl HostFixture {
+    /// Creates a fresh host facade rooted at an isolated native directory.
+    fn new() -> Self {
+        let root = tempfile::tempdir().expect("fixture root must be created");
+        let file_system =
+            LocalFileSystems::host().expect("host filesystem must open");
+        Self { root, file_system }
+    }
+
+    /// Converts a fixture-relative path into the host facade's logical path.
+    fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
+        let native = self.root.path().join(relative);
+        Path::parse(
+            native
+                .to_str()
+                .expect("test fixture paths must be valid UTF-8"),
+        )
+        .map_err(|error| {
+            FixtureError::with_source("fixture path is invalid", error)
+        })
+    }
+}
+
+#[cfg(unix)]
+impl FileSystemFixture for HostFixture {
+    fn file_system(&self) -> &FileSystem {
+        &self.file_system
+    }
+
+    fn path(&self, relative: &str) -> FixtureResult<Path> {
+        self.logical_path(relative)
+    }
+
+    fn list_prefix(&self, _: &Path, relative: &str) -> FixtureResult<String> {
+        Ok(relative.to_owned())
+    }
+
+    fn seed_file(
+        &self,
+        relative: &str,
+        bytes: &[u8],
+    ) -> FixtureResult<FixtureSupport<Path>> {
+        if let Some((parent, _)) = relative.rsplit_once('/') {
+            let parent = self.logical_path(parent)?;
+            match self.file_system.stat(&parent) {
+                Ok(_) => {}
+                Err(error) if error.kind() == FsErrorKind::NotFound => {
+                    self.file_system
+                        .create_directory(
+                            &parent,
+                            CreateDirectoryOptions::default(),
+                        )
+                        .map_err(|error| {
+                            FixtureError::with_source(
+                                "fixture seed parent directory failed",
+                                error,
+                            )
+                        })?;
+                }
+                Err(error) => {
+                    return Err(FixtureError::with_source(
+                        "fixture seed parent lookup failed",
+                        error,
+                    ));
+                }
+            }
+        }
+        let path = self.logical_path(relative)?;
+        self.file_system
+            .write_all(&path, bytes, WriteOptions::default())
+            .map_err(|failure| {
+                FixtureError::new(format!(
+                    "fixture seed write failed: {failure}"
+                ))
+            })?;
+        Ok(FixtureSupport::Supported(path))
+    }
+
+    fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
+        self.file_system
+            .read_all(path, Default::default(), 1024 * 1024)
+            .map(FixtureSupport::Supported)
+            .map_err(|error| {
+                FixtureError::with_source("fixture read failed", error)
+            })
     }
 }
 
@@ -98,13 +228,22 @@ fn test_rooted_local_adapter_passes_provider_contract() {
     FileSystemContractSuite::new(&fixture).assert_all();
 }
 
+/// The host adapter satisfies the synchronous provider-neutral contract.
+#[cfg(unix)]
+#[test]
+fn test_host_local_adapter_passes_provider_contract() {
+    let fixture = HostFixture::new();
+    FileSystemContractSuite::new(&fixture).assert_all();
+}
+
 /// Rooted listings preserve the namespace of a non-root request path.
 #[test]
 fn test_rooted_list_keeps_entry_paths_below_requested_root() {
     let fixture = RootedFixture::new();
-    let requested_root =
-        Path::parse("/fixture/listed").expect("requested listing root must be valid");
-    let child = Path::parse("/fixture/listed/child").expect("listed child path must be valid");
+    let requested_root = Path::parse("/fixture/listed")
+        .expect("requested listing root must be valid");
+    let child = Path::parse("/fixture/listed/child")
+        .expect("listed child path must be valid");
     fixture
         .file_system()
         .create_directory(&requested_root, CreateDirectoryOptions::default())
@@ -124,12 +263,10 @@ fn test_rooted_list_keeps_entry_paths_below_requested_root() {
         .expect("listing must return the child");
 
     assert_eq!(child, entry.path);
-    assert!(
-        stream
-            .next_entry()
-            .expect("listing must complete without failure")
-            .is_none()
-    );
+    assert!(stream
+        .next_entry()
+        .expect("listing must complete without failure")
+        .is_none());
 }
 
 /// Root listings report child paths beneath the rooted logical namespace.
@@ -151,12 +288,10 @@ fn test_rooted_list_keeps_entry_paths_below_root_request() {
         Path::parse("/fixture").expect("fixture path must be valid"),
         entry.path
     );
-    assert!(
-        stream
-            .next_entry()
-            .expect("listing must complete without failure")
-            .is_none()
-    );
+    assert!(stream
+        .next_entry()
+        .expect("listing must complete without failure")
+        .is_none());
 }
 
 /// Auto copy treats a local directory source as a tree instead of rejecting it.
@@ -186,7 +321,8 @@ fn test_rooted_copy_auto_detects_directory_sources() {
         .copy(&source, &target, CopyOptions::default())
         .expect("automatic copy must handle directory sources");
 
-    let copied = Path::parse("/fixture/copy-target/child.txt").expect("copied path must be valid");
+    let copied = Path::parse("/fixture/copy-target/child.txt")
+        .expect("copied path must be valid");
     assert_eq!(
         fixture
             .file_system()
@@ -214,12 +350,10 @@ fn test_rooted_write_rejects_unrepresentable_metadata_options() {
         .expect_err("local adapter must reject metadata it cannot retain");
 
     assert_eq!(error.error().kind(), FsErrorKind::RequirementNotMet);
-    assert!(
-        !fixture
-            .file_system()
-            .exists(&path)
-            .expect("rejected writer must not create a file")
-    );
+    assert!(!fixture
+        .file_system()
+        .exists(&path)
+        .expect("rejected writer must not create a file"));
 }
 
 /// Prefix and eager-entry metadata are applied to a local directory stream.
@@ -267,12 +401,10 @@ fn test_rooted_list_applies_prefix_and_metadata_options() {
         entry.metadata.expect("metadata must be requested").len,
         Some(5)
     );
-    assert!(
-        stream
-            .next_entry()
-            .expect("listing must complete")
-            .is_none()
-    );
+    assert!(stream
+        .next_entry()
+        .expect("listing must complete")
+        .is_none());
 }
 
 /// Verifies list prefixes use canonical logical escaping rather than lossy
@@ -337,7 +469,8 @@ fn test_rooted_create_directory_accepts_existing_directory_when_requested() {
 #[test]
 fn test_rooted_temp_file_applies_parent_and_affixes() {
     let fixture = RootedFixture::new();
-    let parent = Path::parse("/fixture/temp-files").expect("temporary parent must be valid");
+    let parent = Path::parse("/fixture/temp-files")
+        .expect("temporary parent must be valid");
     fixture
         .file_system()
         .create_directory(&parent, CreateDirectoryOptions::default())
@@ -352,12 +485,10 @@ fn test_rooted_temp_file_applies_parent_and_affixes() {
         })
         .expect("temporary file must be created");
 
-    assert!(
-        temporary
-            .path()
-            .as_str()
-            .starts_with("/fixture/temp-files/upload-")
-    );
+    assert!(temporary
+        .path()
+        .as_str()
+        .starts_with("/fixture/temp-files/upload-"));
     assert!(temporary.path().as_str().ends_with(".part"));
 }
 
@@ -365,7 +496,8 @@ fn test_rooted_temp_file_applies_parent_and_affixes() {
 #[test]
 fn test_rooted_temp_directory_applies_parent_and_affixes() {
     let fixture = RootedFixture::new();
-    let parent = Path::parse("/fixture/temp-directories").expect("temporary parent must be valid");
+    let parent = Path::parse("/fixture/temp-directories")
+        .expect("temporary parent must be valid");
     fixture
         .file_system()
         .create_directory(&parent, CreateDirectoryOptions::default())
@@ -380,11 +512,9 @@ fn test_rooted_temp_directory_applies_parent_and_affixes() {
         })
         .expect("temporary directory must be created");
 
-    assert!(
-        temporary
-            .path()
-            .as_str()
-            .starts_with("/fixture/temp-directories/work-")
-    );
+    assert!(temporary
+        .path()
+        .as_str()
+        .starts_with("/fixture/temp-directories/work-"));
     assert!(temporary.path().as_str().ends_with(".tmp"));
 }
