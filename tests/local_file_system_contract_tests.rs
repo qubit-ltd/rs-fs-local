@@ -1,3 +1,10 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Stateful contract coverage for the rooted local adapter.
 
 use qubit_fs::{
@@ -263,10 +270,12 @@ fn test_rooted_list_keeps_entry_paths_below_requested_root() {
         .expect("listing must return the child");
 
     assert_eq!(child, entry.path);
-    assert!(stream
-        .next_entry()
-        .expect("listing must complete without failure")
-        .is_none());
+    assert!(
+        stream
+            .next_entry()
+            .expect("listing must complete without failure")
+            .is_none()
+    );
 }
 
 /// Root listings report child paths beneath the rooted logical namespace.
@@ -288,10 +297,12 @@ fn test_rooted_list_keeps_entry_paths_below_root_request() {
         Path::parse("/fixture").expect("fixture path must be valid"),
         entry.path
     );
-    assert!(stream
-        .next_entry()
-        .expect("listing must complete without failure")
-        .is_none());
+    assert!(
+        stream
+            .next_entry()
+            .expect("listing must complete without failure")
+            .is_none()
+    );
 }
 
 /// Auto copy treats a local directory source as a tree instead of rejecting it.
@@ -350,10 +361,12 @@ fn test_rooted_write_rejects_unrepresentable_metadata_options() {
         .expect_err("local adapter must reject metadata it cannot retain");
 
     assert_eq!(error.error().kind(), FsErrorKind::RequirementNotMet);
-    assert!(!fixture
-        .file_system()
-        .exists(&path)
-        .expect("rejected writer must not create a file"));
+    assert!(
+        !fixture
+            .file_system()
+            .exists(&path)
+            .expect("rejected writer must not create a file")
+    );
 }
 
 /// Prefix and eager-entry metadata are applied to a local directory stream.
@@ -401,10 +414,12 @@ fn test_rooted_list_applies_prefix_and_metadata_options() {
         entry.metadata.expect("metadata must be requested").len,
         Some(5)
     );
-    assert!(stream
-        .next_entry()
-        .expect("listing must complete")
-        .is_none());
+    assert!(
+        stream
+            .next_entry()
+            .expect("listing must complete")
+            .is_none()
+    );
 }
 
 /// Verifies list prefixes use canonical logical escaping rather than lossy
@@ -485,10 +500,12 @@ fn test_rooted_temp_file_applies_parent_and_affixes() {
         })
         .expect("temporary file must be created");
 
-    assert!(temporary
-        .path()
-        .as_str()
-        .starts_with("/fixture/temp-files/upload-"));
+    assert!(
+        temporary
+            .path()
+            .as_str()
+            .starts_with("/fixture/temp-files/upload-")
+    );
     assert!(temporary.path().as_str().ends_with(".part"));
 }
 
@@ -512,9 +529,11 @@ fn test_rooted_temp_directory_applies_parent_and_affixes() {
         })
         .expect("temporary directory must be created");
 
-    assert!(temporary
-        .path()
-        .as_str()
-        .starts_with("/fixture/temp-directories/work-"));
+    assert!(
+        temporary
+            .path()
+            .as_str()
+            .starts_with("/fixture/temp-directories/work-")
+    );
     assert!(temporary.path().as_str().ends_with(".tmp"));
 }

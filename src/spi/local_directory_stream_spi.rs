@@ -1,9 +1,26 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 // qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Lazy directory walker adapter.
 
-use qubit_fs::spi::{DirectoryStreamSpi, ResolvedListOptions};
-use qubit_fs::{DirEntry, FsError, FsErrorKind, FsOperation, FsResult, Path};
+use qubit_fs::spi::{
+    DirectoryStreamSpi,
+    ResolvedListOptions,
+};
+use qubit_fs::{
+    DirEntry,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    Path,
+};
 use qubit_local_files as native_files;
 
 use crate::path::LocalPathMapper;
@@ -33,7 +50,8 @@ impl ListingOptions {
     /// Reports whether a canonical logical relative path passes the prefix.
     fn matches(&self, relative: &Path) -> bool {
         self.prefix.as_ref().is_none_or(|prefix| {
-            let relative = relative.as_str().strip_prefix('/').unwrap_or_default();
+            let relative =
+                relative.as_str().strip_prefix('/').unwrap_or_default();
             relative == *prefix
                 || relative
                     .strip_prefix(prefix)
@@ -62,7 +80,9 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
         loop {
             let (entry, rooted, options) = match self {
                 Self::Host(walker, options) => (walker.next(), None, options),
-                Self::Rooted(walker, root, options) => (walker.next(), Some(root.clone()), options),
+                Self::Rooted(walker, root, options) => {
+                    (walker.next(), Some(root.clone()), options)
+                }
             };
             let Some(entry) = entry else {
                 return Ok(None);
@@ -75,7 +95,8 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                     error,
                 )
             })?;
-            let logical_relative = LocalPathMapper::rooted_logical(entry.relative_path())?;
+            let logical_relative =
+                LocalPathMapper::rooted_logical(entry.relative_path())?;
             if !options.matches(&logical_relative) {
                 continue;
             }
@@ -97,18 +118,26 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let mut result = DirEntry::new(
                 path,
                 match entry.metadata().kind() {
-                    native_files::LocalFileKind::File => qubit_fs::FileKind::File,
-                    native_files::LocalFileKind::Directory => qubit_fs::FileKind::Directory,
-                    native_files::LocalFileKind::Symlink => qubit_fs::FileKind::Symlink,
+                    native_files::LocalFileKind::File => {
+                        qubit_fs::FileKind::File
+                    }
+                    native_files::LocalFileKind::Directory => {
+                        qubit_fs::FileKind::Directory
+                    }
+                    native_files::LocalFileKind::Symlink => {
+                        qubit_fs::FileKind::Symlink
+                    }
                     native_files::LocalFileKind::Other => {
                         qubit_fs::FileKind::Other("local".to_owned())
                     }
                 },
             );
             if options.include_metadata {
-                result.metadata = Some(super::local_outcome_mapper::LocalOutcomeMapper::metadata(
-                    entry.metadata().clone(),
-                ));
+                result.metadata = Some(
+                    super::local_outcome_mapper::LocalOutcomeMapper::metadata(
+                        entry.metadata().clone(),
+                    ),
+                );
             }
             return Ok(Some(result));
         }

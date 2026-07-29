@@ -1,21 +1,42 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 // qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Conversion of resolved core options to native local-files options.
 
 use qubit_fs::spi::{
-    ResolvedCreateDirectoryOptions, ResolvedDeleteOptions, ResolvedListOptions,
-    ResolvedReadOptions, ResolvedRenameOptions, ResolvedWriteOptions,
+    ResolvedCreateDirectoryOptions,
+    ResolvedDeleteOptions,
+    ResolvedListOptions,
+    ResolvedReadOptions,
+    ResolvedRenameOptions,
+    ResolvedWriteOptions,
 };
 use qubit_fs::{
-    AtomicityRequirement, CopyConflictPolicy, CopyMode, DurabilityRequirement, FsError,
-    FsErrorKind, FsOperation, MetadataPreservePolicy, WriteDisposition, WritePrecondition,
+    AtomicityRequirement,
+    CopyConflictPolicy,
+    CopyMode,
+    DurabilityRequirement,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    MetadataPreservePolicy,
+    WriteDisposition,
+    WritePrecondition,
 };
 use qubit_local_files as native_files;
 
 pub(crate) enum LocalOptionsMapper {}
 
 impl LocalOptionsMapper {
-    pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::LocalReadOptions {
+    pub(crate) fn read(
+        _: &ResolvedReadOptions,
+    ) -> native_files::LocalReadOptions {
         native_files::LocalReadOptions::new()
     }
     pub(crate) fn list(
@@ -35,8 +56,12 @@ impl LocalOptionsMapper {
     ) -> Result<native_files::LocalWriteOptions, FsError> {
         let options = options.options();
         let mode = match options.disposition {
-            WriteDisposition::CreateNew => native_files::LocalWriteMode::CreateNew,
-            WriteDisposition::CreateOrReplace => native_files::LocalWriteMode::CreateOrReplace,
+            WriteDisposition::CreateNew => {
+                native_files::LocalWriteMode::CreateNew
+            }
+            WriteDisposition::CreateOrReplace => {
+                native_files::LocalWriteMode::CreateOrReplace
+            }
             WriteDisposition::Append => native_files::LocalWriteMode::Append,
         };
         let mut native = native_files::LocalWriteOptions::new(mode)
@@ -68,7 +93,9 @@ impl LocalOptionsMapper {
         }
         Ok(native)
     }
-    pub(crate) fn delete(options: &ResolvedDeleteOptions) -> native_files::LocalDeleteOptions {
+    pub(crate) fn delete(
+        options: &ResolvedDeleteOptions,
+    ) -> native_files::LocalDeleteOptions {
         let mut native = native_files::LocalDeleteOptions::new();
         if options.options().recursive {
             native = native.with_recursive();
@@ -78,7 +105,9 @@ impl LocalOptionsMapper {
         }
         native
     }
-    pub(crate) fn rename(options: &ResolvedRenameOptions) -> native_files::LocalRenameOptions {
+    pub(crate) fn rename(
+        options: &ResolvedRenameOptions,
+    ) -> native_files::LocalRenameOptions {
         let mut native = native_files::LocalRenameOptions::new()
             .with_atomicity(Self::atomicity(options.options().atomicity));
         if options.options().overwrite {
@@ -98,12 +127,20 @@ impl LocalOptionsMapper {
         }
         let mut native = native_files::LocalCopyOptions::new()
             .with_conflict(match options.conflict {
-                CopyConflictPolicy::Fail => native_files::LocalCopyConflictPolicy::Fail,
-                CopyConflictPolicy::Overwrite => native_files::LocalCopyConflictPolicy::Overwrite,
-                CopyConflictPolicy::Skip => native_files::LocalCopyConflictPolicy::Skip,
+                CopyConflictPolicy::Fail => {
+                    native_files::LocalCopyConflictPolicy::Fail
+                }
+                CopyConflictPolicy::Overwrite => {
+                    native_files::LocalCopyConflictPolicy::Overwrite
+                }
+                CopyConflictPolicy::Skip => {
+                    native_files::LocalCopyConflictPolicy::Skip
+                }
             })
             .with_metadata_preservation(match options.preserve_metadata {
-                MetadataPreservePolicy::None => native_files::LocalMetadataPreservePolicy::None,
+                MetadataPreservePolicy::None => {
+                    native_files::LocalMetadataPreservePolicy::None
+                }
                 MetadataPreservePolicy::Portable => {
                     native_files::LocalMetadataPreservePolicy::Permissions
                 }
@@ -125,19 +162,31 @@ impl LocalOptionsMapper {
         }
         Ok(native)
     }
-    fn atomicity(value: AtomicityRequirement) -> native_files::LocalAtomicityRequirement {
+    fn atomicity(
+        value: AtomicityRequirement,
+    ) -> native_files::LocalAtomicityRequirement {
         match value {
-            AtomicityRequirement::Required => native_files::LocalAtomicityRequirement::Required,
-            AtomicityRequirement::Preferred => native_files::LocalAtomicityRequirement::Preferred,
+            AtomicityRequirement::Required => {
+                native_files::LocalAtomicityRequirement::Required
+            }
+            AtomicityRequirement::Preferred => {
+                native_files::LocalAtomicityRequirement::Preferred
+            }
             AtomicityRequirement::NotRequired => {
                 native_files::LocalAtomicityRequirement::NotRequired
             }
         }
     }
-    fn durability(value: DurabilityRequirement) -> native_files::LocalDurabilityRequirement {
+    fn durability(
+        value: DurabilityRequirement,
+    ) -> native_files::LocalDurabilityRequirement {
         match value {
-            DurabilityRequirement::Required => native_files::LocalDurabilityRequirement::Required,
-            DurabilityRequirement::Preferred => native_files::LocalDurabilityRequirement::Preferred,
+            DurabilityRequirement::Required => {
+                native_files::LocalDurabilityRequirement::Required
+            }
+            DurabilityRequirement::Preferred => {
+                native_files::LocalDurabilityRequirement::Preferred
+            }
             DurabilityRequirement::NotRequired => {
                 native_files::LocalDurabilityRequirement::NotRequired
             }

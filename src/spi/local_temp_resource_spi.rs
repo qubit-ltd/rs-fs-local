@@ -1,9 +1,26 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Temporary-resource lifecycle adapter retaining native authority.
 
-use qubit_fs::spi::{PersistRequest, SpiPersistFailure, TempResourceSpi};
+use qubit_fs::spi::{
+    PersistRequest,
+    SpiPersistFailure,
+    TempResourceSpi,
+};
 use qubit_fs::{
-    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PersistFailureState,
-    PersistOutcome, PublicationMethod,
+    AchievedAtomicity,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    PersistFailureState,
+    PersistOutcome,
+    PublicationMethod,
 };
 use qubit_local_files as native_files;
 
@@ -14,10 +31,16 @@ pub(crate) enum LocalTempResourceSpi {
     Directory(Option<native_files::LocalTempDirectory>, bool),
 }
 impl LocalTempResourceSpi {
-    pub(crate) const fn file(value: native_files::LocalTempFile, rooted: bool) -> Self {
+    pub(crate) const fn file(
+        value: native_files::LocalTempFile,
+        rooted: bool,
+    ) -> Self {
         Self::File(Some(value), rooted)
     }
-    pub(crate) const fn directory(value: native_files::LocalTempDirectory, rooted: bool) -> Self {
+    pub(crate) const fn directory(
+        value: native_files::LocalTempDirectory,
+        rooted: bool,
+    ) -> Self {
         Self::Directory(Some(value), rooted)
     }
 }
@@ -36,8 +59,9 @@ impl TempResourceSpi for LocalTempResourceSpi {
                 *rooted,
             ),
         };
-        let target = target
-            .map_err(|error| SpiPersistFailure::new(error, PersistFailureState::NotPublished))?;
+        let target = target.map_err(|error| {
+            SpiPersistFailure::new(error, PersistFailureState::NotPublished)
+        })?;
         let options = if request.options().overwrite {
             native_files::LocalPersistOptions::new().with_overwrite()
         } else {
@@ -108,7 +132,9 @@ impl TempResourceSpi for LocalTempResourceSpi {
         } else {
             LocalPathMapper::host_logical(&result)
         }
-        .map_err(|error| SpiPersistFailure::new(error, PersistFailureState::Indeterminate))?;
+        .map_err(|error| {
+            SpiPersistFailure::new(error, PersistFailureState::Indeterminate)
+        })?;
         Ok(PersistOutcome::new(
             logical,
             AchievedAtomicity::Atomic,
@@ -197,13 +223,17 @@ fn native_persist_failure_state<T>(
 ) -> PersistFailureState {
     match error.stage() {
         native_files::LocalPersistStage::ResolveTarget
-        | native_files::LocalPersistStage::PrepareParent => PersistFailureState::NotPublished,
+        | native_files::LocalPersistStage::PrepareParent => {
+            PersistFailureState::NotPublished
+        }
         native_files::LocalPersistStage::InstallDestination
             if error.kind() == std::io::ErrorKind::AlreadyExists =>
         {
             PersistFailureState::NotPublished
         }
-        native_files::LocalPersistStage::InstallDestination => PersistFailureState::Indeterminate,
+        native_files::LocalPersistStage::InstallDestination => {
+            PersistFailureState::Indeterminate
+        }
         _ => PersistFailureState::Indeterminate,
     }
 }

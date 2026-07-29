@@ -1,18 +1,55 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 // qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Host namespace synchronous SPI delegated to `qubit-local-files`.
 
 use qubit_fs::spi::{
-    CopyAttempt, CopyDeclineReason, CopyRequest, CreateDirectoryRequest,
-    CreateTempDirectoryRequest, CreateTempFileRequest, DeleteDirectoryRequest, DeleteFileRequest,
-    FileSystemSpi, ListRequest, OpenReaderRequest, OpenWriterRequest, OpenedDirectoryStream,
-    OpenedReader, OpenedTempDirectory, OpenedTempFile, OpenedWriter, RenameRequest, SpiCopyFailure,
-    SpiRenameFailure, StatRequest, StatResponse,
+    CopyAttempt,
+    CopyDeclineReason,
+    CopyRequest,
+    CreateDirectoryRequest,
+    CreateTempDirectoryRequest,
+    CreateTempFileRequest,
+    DeleteDirectoryRequest,
+    DeleteFileRequest,
+    FileSystemSpi,
+    ListRequest,
+    OpenReaderRequest,
+    OpenWriterRequest,
+    OpenedDirectoryStream,
+    OpenedReader,
+    OpenedTempDirectory,
+    OpenedTempFile,
+    OpenedWriter,
+    RenameRequest,
+    SpiCopyFailure,
+    SpiRenameFailure,
+    StatRequest,
+    StatResponse,
 };
 use qubit_fs::{
-    CreateDirectoryOutcome, DeleteOutcome, FileSystemCapabilities, FileSystemCapability,
-    FileSystemId, FileSystemInfo, FileSystemLimits, FileSystemProperties, FsError, FsErrorKind,
-    FsOperation, FsResult, OpenedFileInfo, PathConstraints, PathSemantics, RenameFailureState,
+    CreateDirectoryOutcome,
+    DeleteOutcome,
+    FileSystemCapabilities,
+    FileSystemCapability,
+    FileSystemId,
+    FileSystemInfo,
+    FileSystemLimits,
+    FileSystemProperties,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    OpenedFileInfo,
+    PathConstraints,
+    PathSemantics,
+    RenameFailureState,
 };
 use qubit_local_files as native_files;
 
@@ -60,7 +97,8 @@ impl LocalFileSystemSpi {
         }
         FileSystemProperties::new(
             FileSystemInfo::new(
-                FileSystemId::new("local-host").expect("static filesystem identity is valid"),
+                FileSystemId::new("local-host")
+                    .expect("static filesystem identity is valid"),
                 "local-file",
                 PathSemantics::Hierarchical,
             )
@@ -96,30 +134,52 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let path = LocalPathMapper::host(request.path())?;
         native_files::LocalFileSystem::metadata(&path)
             .map(|value| {
-                StatResponse::new(request.path().clone(), LocalOutcomeMapper::metadata(value))
+                StatResponse::new(
+                    request.path().clone(),
+                    LocalOutcomeMapper::metadata(value),
+                )
             })
-            .map_err(|error| Self::map(error, FsOperation::Stat, request.path()))
+            .map_err(|error| {
+                Self::map(error, FsOperation::Stat, request.path())
+            })
     }
-    fn list(&self, request: ListRequest<'_>) -> FsResult<OpenedDirectoryStream> {
+    fn list(
+        &self,
+        request: ListRequest<'_>,
+    ) -> FsResult<OpenedDirectoryStream> {
         let path = LocalPathMapper::host(request.path())?;
         let options = LocalOptionsMapper::list(request.options())?;
         native_files::LocalFileSystem::list(&path, &options)
             .map(|value| {
-                OpenedDirectoryStream::new(Box::new(LocalDirectoryStreamSpi::host(
-                    value,
-                    request.options(),
-                )))
+                OpenedDirectoryStream::new(Box::new(
+                    LocalDirectoryStreamSpi::host(value, request.options()),
+                ))
             })
-            .map_err(|error| Self::map(error, FsOperation::List, request.path()))
+            .map_err(|error| {
+                Self::map(error, FsOperation::List, request.path())
+            })
     }
-    fn open_reader(&self, request: OpenReaderRequest<'_>) -> FsResult<OpenedReader> {
+    fn open_reader(
+        &self,
+        request: OpenReaderRequest<'_>,
+    ) -> FsResult<OpenedReader> {
         let path = LocalPathMapper::host(request.path())?;
         let options = LocalOptionsMapper::read(request.options());
         native_files::LocalFileSystem::open_reader(&path, &options)
-            .map(|value| OpenedReader::new(self.info(request.path().clone()), Box::new(value)))
-            .map_err(|error| Self::map(error, FsOperation::OpenReader, request.path()))
+            .map(|value| {
+                OpenedReader::new(
+                    self.info(request.path().clone()),
+                    Box::new(value),
+                )
+            })
+            .map_err(|error| {
+                Self::map(error, FsOperation::OpenReader, request.path())
+            })
     }
-    fn open_writer(&self, request: OpenWriterRequest<'_>) -> FsResult<OpenedWriter> {
+    fn open_writer(
+        &self,
+        request: OpenWriterRequest<'_>,
+    ) -> FsResult<OpenedWriter> {
         let path = LocalPathMapper::host(request.path())?;
         let options = LocalOptionsMapper::write(request.options())?;
         native_files::LocalFileSystem::open_writer(&path, &options)
@@ -129,7 +189,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
                     Box::new(LocalFileWriterSpi::new(value)),
                 )
             })
-            .map_err(|error| Self::map(error, FsOperation::OpenWriter, request.path()))
+            .map_err(|error| {
+                Self::map(error, FsOperation::OpenWriter, request.path())
+            })
     }
     fn create_directory(
         &self,
@@ -139,37 +201,55 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = LocalOptionsMapper::create_directory(request.options())?;
         native_files::LocalFileSystem::create_directory(&path, &options)
             .map(|value| CreateDirectoryOutcome::new(!value.created()))
-            .map_err(|error| Self::map(error, FsOperation::CreateDir, request.path()))
+            .map_err(|error| {
+                Self::map(error, FsOperation::CreateDir, request.path())
+            })
     }
-    fn delete_file(&self, request: DeleteFileRequest<'_>) -> FsResult<DeleteOutcome> {
+    fn delete_file(
+        &self,
+        request: DeleteFileRequest<'_>,
+    ) -> FsResult<DeleteOutcome> {
         let path = LocalPathMapper::host(request.path())?;
         let options = LocalOptionsMapper::delete(request.options());
         native_files::LocalFileSystem::delete_file(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
-            .map_err(|error| Self::map(error, FsOperation::Delete, request.path()))
+            .map_err(|error| {
+                Self::map(error, FsOperation::Delete, request.path())
+            })
     }
-    fn delete_directory(&self, request: DeleteDirectoryRequest<'_>) -> FsResult<DeleteOutcome> {
+    fn delete_directory(
+        &self,
+        request: DeleteDirectoryRequest<'_>,
+    ) -> FsResult<DeleteOutcome> {
         let path = LocalPathMapper::host(request.path())?;
         let options = LocalOptionsMapper::delete(request.options());
         native_files::LocalFileSystem::delete_directory(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
-            .map_err(|error| Self::map(error, FsOperation::Delete, request.path()))
+            .map_err(|error| {
+                Self::map(error, FsOperation::Delete, request.path())
+            })
     }
-    fn try_copy(&self, request: CopyRequest<'_>) -> Result<CopyAttempt, SpiCopyFailure> {
+    fn try_copy(
+        &self,
+        request: CopyRequest<'_>,
+    ) -> Result<CopyAttempt, SpiCopyFailure> {
         let options = match LocalOptionsMapper::copy(request.options()) {
             Ok(options) => options,
             Err(_) => {
-                return Ok(CopyAttempt::Declined(CopyDeclineReason::NotApplicable));
+                return Ok(CopyAttempt::Declined(
+                    CopyDeclineReason::NotApplicable,
+                ));
             }
         };
-        let (source, target) = LocalPathMapper::host_pair(request.source(), request.target())
-            .map_err(|error| {
-                SpiCopyFailure::new(
-                    error,
-                    qubit_fs::CopyFailureState::Unchanged,
-                    qubit_fs::CopyStats::default(),
-                )
-            })?;
+        let (source, target) =
+            LocalPathMapper::host_pair(request.source(), request.target())
+                .map_err(|error| {
+                    SpiCopyFailure::new(
+                        error,
+                        qubit_fs::CopyFailureState::Unchanged,
+                        qubit_fs::CopyStats::default(),
+                    )
+                })?;
         native_files::LocalFileSystem::copy(&source, &target, &options)
             .map(|value| CopyAttempt::Completed(LocalOutcomeMapper::copy(value)))
             .map_err(|error| {
@@ -210,8 +290,11 @@ impl FileSystemSpi for LocalFileSystemSpi {
         &self,
         request: RenameRequest<'_>,
     ) -> Result<qubit_fs::RenameOutcome, SpiRenameFailure> {
-        let (source, target) = LocalPathMapper::host_pair(request.source(), request.target())
-            .map_err(|error| SpiRenameFailure::new(error, RenameFailureState::Unchanged))?;
+        let (source, target) =
+            LocalPathMapper::host_pair(request.source(), request.target())
+                .map_err(|error| {
+                    SpiRenameFailure::new(error, RenameFailureState::Unchanged)
+                })?;
         let options = LocalOptionsMapper::rename(request.options());
         native_files::LocalFileSystem::rename(&source, &target, &options)
             .map(|value| LocalOutcomeMapper::rename(value, request.source(), request.target()))
@@ -238,7 +321,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 )
             })
     }
-    fn create_temp_file(&self, request: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
+    fn create_temp_file(
+        &self,
+        request: CreateTempFileRequest,
+    ) -> FsResult<OpenedTempFile> {
         let parent = request
             .options()
             .parent
@@ -251,7 +337,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
         }
-        let value = native_files::LocalFileSystem::create_temp_file(&options).map_err(|error| {
+        let value = native_files::LocalFileSystem::create_temp_file(&options)
+            .map_err(|error| {
             FsError::with_source(
                 FsErrorKind::Io,
                 FsOperation::CreateTemp,
@@ -282,14 +369,15 @@ impl FileSystemSpi for LocalFileSystemSpi {
             options = options.with_parent(parent);
         }
         let value =
-            native_files::LocalFileSystem::create_temp_directory(&options).map_err(|error| {
-                FsError::with_source(
-                    FsErrorKind::Io,
-                    FsOperation::CreateTemp,
-                    "native temporary directory creation failed",
-                    error,
-                )
-            })?;
+            native_files::LocalFileSystem::create_temp_directory(&options)
+                .map_err(|error| {
+                    FsError::with_source(
+                        FsErrorKind::Io,
+                        FsOperation::CreateTemp,
+                        "native temporary directory creation failed",
+                        error,
+                    )
+                })?;
         let path = LocalPathMapper::host_logical(value.path())?;
         Ok(OpenedTempDirectory::new(
             self.info(path),

@@ -1,10 +1,26 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 // qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Canonical conversion between public logical paths and native paths.
 
-use std::path::{Path as NativePath, PathBuf};
+use std::path::{
+    Path as NativePath,
+    PathBuf,
+};
 
-use qubit_fs::{FsError, FsErrorKind, FsOperation, FsResult, Path};
+use qubit_fs::{
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    Path,
+};
 use qubit_local_files as native_files;
 
 pub(crate) enum LocalPathMapper {}
@@ -24,22 +40,31 @@ impl LocalPathMapper {
         if components.is_empty() {
             Ok(PathBuf::new())
         } else {
-            native_files::LocalPaths::from_canonical_relative_components(components)
-                .map_err(|error| Self::map(error, path, FsOperation::ParsePath))
+            native_files::LocalPaths::from_canonical_relative_components(
+                components,
+            )
+            .map_err(|error| Self::map(error, path, FsOperation::ParsePath))
         }
     }
 
-    pub(crate) fn host_pair(source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
+    pub(crate) fn host_pair(
+        source: &Path,
+        target: &Path,
+    ) -> FsResult<(PathBuf, PathBuf)> {
         Ok((Self::host(source)?, Self::host(target)?))
     }
 
-    pub(crate) fn rooted_pair(source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
+    pub(crate) fn rooted_pair(
+        source: &Path,
+        target: &Path,
+    ) -> FsResult<(PathBuf, PathBuf)> {
         Ok((Self::rooted(source)?, Self::rooted(target)?))
     }
 
     pub(crate) fn host_logical(path: &NativePath) -> FsResult<Path> {
-        let components = native_files::LocalPaths::to_canonical_absolute_components(path)
-            .map_err(|error| Self::map_native(error, FsOperation::List))?;
+        let components =
+            native_files::LocalPaths::to_canonical_absolute_components(path)
+                .map_err(|error| Self::map_native(error, FsOperation::List))?;
         let Some((root, rest)) = components.split_first() else {
             return Err(Self::invalid());
         };
@@ -53,8 +78,9 @@ impl LocalPathMapper {
         if path.as_os_str().is_empty() {
             return Ok(Path::root());
         }
-        let components = native_files::LocalPaths::to_canonical_relative_components(path)
-            .map_err(|error| Self::map_native(error, FsOperation::List))?;
+        let components =
+            native_files::LocalPaths::to_canonical_relative_components(path)
+                .map_err(|error| Self::map_native(error, FsOperation::List))?;
         Self::logical(&components)
     }
 
@@ -81,11 +107,18 @@ impl LocalPathMapper {
         )
     }
 
-    fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation) -> FsError {
+    fn map(
+        error: native_files::LocalFileError,
+        path: &Path,
+        operation: FsOperation,
+    ) -> FsError {
         Self::map_native(error, operation).with_path(path.clone())
     }
 
-    fn map_native(error: native_files::LocalFileError, operation: FsOperation) -> FsError {
+    fn map_native(
+        error: native_files::LocalFileError,
+        operation: FsOperation,
+    ) -> FsError {
         FsError::with_source(
             FsErrorKind::InvalidPath,
             operation,

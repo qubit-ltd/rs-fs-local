@@ -1,13 +1,32 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 // qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Stateful writer adapter delegated to `qubit-local-files`.
 
-use std::io::{Result as IoResult, Write};
+use std::io::{
+    Result as IoResult,
+    Write,
+};
 
-use qubit_fs::spi::{FileWriterSpi, SpiWriteFailure};
+use qubit_fs::spi::{
+    FileWriterSpi,
+    SpiWriteFailure,
+};
 use qubit_fs::{
-    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PublicationMethod,
-    WriteFailureState, WriteOutcome,
+    AchievedAtomicity,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    PublicationMethod,
+    WriteFailureState,
+    WriteOutcome,
 };
 use qubit_io::Output;
 use qubit_local_files as native_files;
@@ -77,11 +96,17 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 let (native, state, retained) = error.into_parts();
                 self.writer = retained;
                 let state = match state {
-                    native_files::LocalWriterState::NotPublished if self.writer.is_some() => {
+                    native_files::LocalWriterState::NotPublished
+                        if self.writer.is_some() =>
+                    {
                         WriteFailureState::RetryableNotPublished
                     }
-                    native_files::LocalWriterState::NotPublished => WriteFailureState::NotPublished,
-                    native_files::LocalWriterState::Published => WriteFailureState::Published,
+                    native_files::LocalWriterState::NotPublished => {
+                        WriteFailureState::NotPublished
+                    }
+                    native_files::LocalWriterState::Published => {
+                        WriteFailureState::Published
+                    }
                     _ => WriteFailureState::Indeterminate,
                 };
                 Err(SpiWriteFailure::new(

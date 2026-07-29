@@ -1,3 +1,11 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+
 use qubit_fs::{
     FileSystemCapability,
     FileSystemId,
@@ -43,10 +51,12 @@ fn test_host_factory_advertises_atomic_rename() {
     let file_system =
         LocalFileSystems::host().expect("host filesystem should construct");
 
-    assert!(file_system
-        .properties()
-        .capabilities()
-        .contains(FileSystemCapability::AtomicRename));
+    assert!(
+        file_system
+            .properties()
+            .capabilities()
+            .contains(FileSystemCapability::AtomicRename)
+    );
 }
 
 #[test]
@@ -82,9 +92,11 @@ fn test_host_temp_file_applies_parent_and_affixes() {
         })
         .expect("temporary file should be created");
 
-    assert!(temporary
-        .path()
-        .as_str()
-        .starts_with(&format!("{}/host-upload-", parent.as_str())));
+    assert!(
+        temporary
+            .path()
+            .as_str()
+            .starts_with(&format!("{}/host-upload-", parent.as_str()))
+    );
     assert!(temporary.path().as_str().ends_with(".part"));
 }
