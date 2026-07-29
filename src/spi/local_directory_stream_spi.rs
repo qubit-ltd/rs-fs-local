@@ -2,18 +2,8 @@
 // contract tests.
 //! Lazy directory walker adapter.
 
-use qubit_fs::spi::{
-    DirectoryStreamSpi,
-    ResolvedListOptions,
-};
-use qubit_fs::{
-    DirEntry,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsResult,
-    Path,
-};
+use qubit_fs::spi::{DirectoryStreamSpi, ResolvedListOptions};
+use qubit_fs::{DirEntry, FsError, FsErrorKind, FsOperation, FsResult, Path};
 use qubit_local_files as native_files;
 
 use crate::path::LocalPathMapper;
@@ -40,10 +30,10 @@ impl ListingOptions {
         }
     }
 
-    /// Reports whether a native root-relative entry path passes the prefix.
-    fn matches(&self, relative: &std::path::Path) -> bool {
+    /// Reports whether a canonical logical relative path passes the prefix.
+    fn matches(&self, relative: &Path) -> bool {
         self.prefix.as_ref().is_none_or(|prefix| {
-            let relative = relative.to_string_lossy().replace('\\', "/");
+            let relative = relative.as_str().strip_prefix('/').unwrap_or_default();
             relative == *prefix
                 || relative
                     .strip_prefix(prefix)
@@ -72,9 +62,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
         loop {
             let (entry, rooted, options) = match self {
                 Self::Host(walker, options) => (walker.next(), None, options),
-                Self::Rooted(walker, root, options) => {
-                    (walker.next(), Some(root.clone()), options)
-                }
+                Self::Rooted(walker, root, options) => (walker.next(), Some(root.clone()), options),
             };
             let Some(entry) = entry else {
                 return Ok(None);
@@ -87,21 +75,20 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                     error,
                 )
             })?;
-            if !options.matches(entry.relative_path()) {
+            let logical_relative = LocalPathMapper::rooted_logical(entry.relative_path())?;
+            if !options.matches(&logical_relative) {
                 continue;
             }
             let path = if let Some(root) = rooted {
-                let relative =
-                    LocalPathMapper::rooted_logical(entry.relative_path())?;
-                if relative == Path::root() {
+                if logical_relative == Path::root() {
                     root
                 } else if root == Path::root() {
-                    relative
+                    logical_relative
                 } else {
                     Path::parse(&format!(
                         "{}/{}",
                         root.as_str(),
-                        &relative.as_str()[1..]
+                        &logical_relative.as_str()[1..]
                     ))?
                 }
             } else {
@@ -110,26 +97,18 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let mut result = DirEntry::new(
                 path,
                 match entry.metadata().kind() {
-                    native_files::LocalFileKind::File => {
-                        qubit_fs::FileKind::File
-                    }
-                    native_files::LocalFileKind::Directory => {
-                        qubit_fs::FileKind::Directory
-                    }
-                    native_files::LocalFileKind::Symlink => {
-                        qubit_fs::FileKind::Symlink
-                    }
+                    native_files::LocalFileKind::File => qubit_fs::FileKind::File,
+                    native_files::LocalFileKind::Directory => qubit_fs::FileKind::Directory,
+                    native_files::LocalFileKind::Symlink => qubit_fs::FileKind::Symlink,
                     native_files::LocalFileKind::Other => {
                         qubit_fs::FileKind::Other("local".to_owned())
                     }
                 },
             );
             if options.include_metadata {
-                result.metadata = Some(
-                    super::local_outcome_mapper::LocalOutcomeMapper::metadata(
-                        entry.metadata().clone(),
-                    ),
-                );
+                result.metadata = Some(super::local_outcome_mapper::LocalOutcomeMapper::metadata(
+                    entry.metadata().clone(),
+                ));
             }
             return Ok(Some(result));
         }

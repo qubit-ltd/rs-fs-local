@@ -1,30 +1,11 @@
 //! Registry provider for host and rooted local filesystems.
 
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::{Path, PathBuf};
 
-use qubit_fs::{
-    FileSystemId,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    Path as FsPath,
-    Uri,
-};
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use qubit_fs::{FileSystemId, FsError, FsErrorKind, FsOperation, Path as FsPath, Uri};
+use qubit_fs_registry::{FileSystemConfig, FileSystemResolution, FileSystemSpec};
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderMetadata,
-    ServiceProvider,
-    provider_descriptor,
-};
+use qubit_spi::{ProviderDescriptor, ProviderMetadata, ServiceProvider, provider_descriptor};
 
 use crate::LocalFileSystems;
 
@@ -64,9 +45,7 @@ impl LocalFileSystemProvider {
 
     /// Validates and decodes a registry configuration into a logical path and
     /// URI.
-    fn decode_config(
-        config: &FileSystemConfig,
-    ) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
+    fn decode_config(config: &FileSystemConfig) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
         if !config.options().is_empty()
             || !config.metadata().is_empty()
             || config.credential().is_some()
@@ -97,8 +76,7 @@ impl LocalFileSystemProvider {
                 "local filesystem provider does not support URI queries",
             ));
         }
-        let path = FsPath::parse(uri.path())
-            .map_err(ProviderFailure::invalid_configuration)?;
+        let path = FsPath::parse(uri.path()).map_err(ProviderFailure::invalid_configuration)?;
         if !path.is_absolute() {
             return Err(invalid_path("local file URI path must be absolute"));
         }

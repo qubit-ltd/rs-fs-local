@@ -3,29 +3,19 @@
 //! Native outcome conversion helpers.
 
 use qubit_fs::{
-    AchievedAtomicity,
-    CopyMethod,
-    CopyOutcome,
-    CopyStats,
-    FileKind,
-    FileMetadata,
-    PublicationMethod,
-    RenameOutcome,
+    AchievedAtomicity, CopyMethod, CopyOutcome, CopyStats, FileKind, FileMetadata,
+    PublicationMethod, RenameOutcome,
 };
 use qubit_local_files as native_files;
 
 pub(crate) enum LocalOutcomeMapper {}
 impl LocalOutcomeMapper {
-    pub(crate) fn metadata(
-        value: native_files::LocalFileMetadata,
-    ) -> FileMetadata {
+    pub(crate) fn metadata(value: native_files::LocalFileMetadata) -> FileMetadata {
         let mut result = FileMetadata::new(match value.kind() {
             native_files::LocalFileKind::File => FileKind::File,
             native_files::LocalFileKind::Directory => FileKind::Directory,
             native_files::LocalFileKind::Symlink => FileKind::Symlink,
-            native_files::LocalFileKind::Other => {
-                FileKind::Other("local".to_owned())
-            }
+            native_files::LocalFileKind::Other => FileKind::Other("local".to_owned()),
         });
         result.len = Some(value.len());
         result.accessed_at = value.accessed_at();
@@ -59,8 +49,12 @@ impl LocalOutcomeMapper {
     }
     pub(crate) fn rename(
         value: native_files::LocalRenameOutcome,
+        source: &qubit_fs::Path,
+        target: &qubit_fs::Path,
     ) -> RenameOutcome {
         RenameOutcome::new(
+            source.clone(),
+            target.clone(),
             if value.atomic() {
                 AchievedAtomicity::Atomic
             } else {

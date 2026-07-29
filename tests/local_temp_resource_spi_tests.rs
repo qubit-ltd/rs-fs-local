@@ -1,16 +1,8 @@
 //! Regression coverage for temporary-resource SPI recovery.
 
 use qubit_fs::{
-    CreateDirectoryOptions,
-    DeleteOptions,
-    FileSystemId,
-    Path,
-    PersistFailureState,
-    PersistOptions,
-    TempDirectoryOptions,
-    TempFileOptions,
-    TempResourceState,
-    WriteOptions,
+    CreateDirectoryOptions, DeleteOptions, FileSystemId, Path, PersistFailureState, PersistOptions,
+    TempDirectoryOptions, TempFileOptions, TempResourceState, WriteOptions,
 };
 use qubit_fs_local::LocalFileSystems;
 
@@ -19,12 +11,10 @@ use qubit_fs_local::LocalFileSystems;
 #[test]
 fn test_temp_file_persist_conflict_retains_resource_for_retry() {
     let root = tempfile::tempdir().expect("test root must be created");
-    let id = FileSystemId::new("persist-recovery-root")
-        .expect("test identity must be valid");
+    let id = FileSystemId::new("persist-recovery-root").expect("test identity must be valid");
     let file_system = LocalFileSystems::rooted_with_id(id, root.path())
         .expect("rooted filesystem must be created");
-    let target =
-        Path::parse("/published.txt").expect("target path must be valid");
+    let target = Path::parse("/published.txt").expect("target path must be valid");
 
     file_system
         .write_all(&target, b"existing", WriteOptions::default())
@@ -54,12 +44,11 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
 #[test]
 fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
     let root = tempfile::tempdir().expect("test root must be created");
-    let id = FileSystemId::new("persist-directory-recovery-root")
-        .expect("test identity must be valid");
+    let id =
+        FileSystemId::new("persist-directory-recovery-root").expect("test identity must be valid");
     let file_system = LocalFileSystems::rooted_with_id(id, root.path())
         .expect("rooted filesystem must be created");
-    let target =
-        Path::parse("/published-directory").expect("target path must be valid");
+    let target = Path::parse("/published-directory").expect("target path must be valid");
 
     file_system
         .create_directory(&target, CreateDirectoryOptions::default())

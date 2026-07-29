@@ -1,21 +1,11 @@
 //! Concrete facade factories for local filesystem adapters.
 
 use std::path::Path;
-use std::sync::atomic::{
-    AtomicU64,
-    Ordering,
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use qubit_fs::{
-    FileSystem,
-    FileSystemId,
-    FsResult,
-};
+use qubit_fs::{FileSystem, FileSystemId, FsResult};
 
-use crate::spi::{
-    LocalFileSystemSpi,
-    RootedLocalFileSystemSpi,
-};
+use crate::spi::{LocalFileSystemSpi, RootedLocalFileSystemSpi};
 
 static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -41,10 +31,7 @@ impl LocalFileSystems {
         Self::rooted_with_id(id, root)
     }
     /// Opens `root` with caller-specified stable identity.
-    pub fn rooted_with_id(
-        id: FileSystemId,
-        root: &Path,
-    ) -> FsResult<FileSystem> {
+    pub fn rooted_with_id(id: FileSystemId, root: &Path) -> FsResult<FileSystem> {
         FileSystem::from_spi(RootedLocalFileSystemSpi::open(id, root)?)
     }
 }
