@@ -7,28 +7,29 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
-`qubit-fs-local` provides the synchronous host-local `file:` filesystem backend
-for [`qubit-fs`](https://crates.io/crates/qubit-fs). `LocalFileSystems` creates
-concrete host-wide or descriptor-rooted facades. Registry integration through
-the `file` provider alias is optional behind the `registry` feature.
-
-The provider mapping contract is documented in the
-[Chinese design document](doc/local_file_system_adapter_design.zh_CN.md).
+`qubit-fs-local` gives a `qubit-fs` application a synchronous local `file:`
+backend. Use it when the application needs the process host filesystem or one
+native directory retained as a rooted filesystem authority, without making URI
+parsing and native-path conversion part of application code.
 
 ## Installation
 
-Add the crate to your project. Enable `registry` when the application uses
-`LocalFileSystemProvider` with `qubit-fs-registry`:
-
 ```bash
 cargo add qubit-fs-local
+```
+
+Enable registry integration only when registering the optional `file`
+provider with `qubit-fs-registry`:
+
+```bash
 cargo add qubit-fs-local --features registry
 ```
 
-## Usage
+## Quick Start
 
-Create a host-wide facade, or open one rooted authority with an explicit stable
-identity:
+For an application that must keep reports below `/srv/app-data`, create a
+rooted facade with the application's stable filesystem identity, then use
+absolute logical paths inside that authority:
 
 ```rust
 use std::path::Path;
@@ -45,50 +46,31 @@ println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Enable `registry`, register `LocalFileSystemProvider`, then resolve a validated
-`file:` configuration:
+`LocalFileSystems::host()` opens the process host namespace. `rooted(root)`
+generates a process-local identity, while `rooted_with_id(id, root)` preserves
+the caller-provided identity. The latter is the appropriate choice when that
+identity must be stable outside the process.
 
-```rust
-use qubit_fs::ConnectionUri;
-use qubit_fs_registry::FileSystemRegistry;
-use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::FileSystemConfig;
+## What It Provides
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider::new())?;
+- A concrete synchronous `FileSystem` facade over local files, with host and
+  rooted construction paths.
+- Optional `LocalFileSystemProvider` registration behind the `registry`
+  feature; it resolves supported `file:` configurations to a filesystem, path,
+  and canonical URI.
+- The provider accepts absolute `file:` URIs only. It rejects a remote
+  authority, query, relative path, non-`file` scheme, and configuration options
+  or credentials.
 
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
-    let resolution = registry.resolve_config(&config)?;
-    let metadata = resolution
-        .file_system()
-        .stat(resolution.path())?;
-    println!("{metadata:?}");
-    Ok(())
-}
-```
+This crate is synchronous today. It does not provide an asynchronous local
+filesystem facade.
 
-## Path Semantics
+## Learn More
 
-- Both facades use absolute, hierarchical `qubit_fs::Path` values.
-- `LocalFileSystems::host()` maps to the process host namespace;
-  `rooted_with_id()` retains one native root authority and requires the caller's
-  stable `FileSystemId`.
-- The adapter delegates canonical component conversion, rooted containment, and
-  native filesystem operations to `qubit-local-files`.
-- The optional provider accepts only absolute `file:` URIs with no remote
-  authority, query, options, metadata, or credentials.
-
-## Properties
-
-Both facades advertise `List`, `Read`, `Write`, `Append`, `CreateDirectory`,
-`Delete`, `RecursiveDelete`, `Rename`, `Copy`, temporary resources,
-`AtomicReplace`, and `AtomicTempPersist`. Host-dependent limits are reported as
-`FileSystemLimits::unknown()`.
-
-This release is synchronous only. If asynchronous support is added later, it
-will be published as an opt-in feature rather than increasing the default
-dependency surface.
+- [English user guide](doc/user_guide.md)
+- [中文用户手册](doc/user_guide.zh_CN.md)
+- [API documentation](https://docs.rs/qubit-fs-local)
+- [中文 README](README.zh_CN.md)
 
 ## Testing
 

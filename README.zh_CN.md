@@ -7,27 +7,26 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-`qubit-fs-local` 为
-[`qubit-fs`](https://crates.io/crates/qubit-fs) 提供同步的主机本地 `file:`
-文件系统后端。`LocalFileSystems` 可创建具体的主机范围或目录 authority 受限的
-文件系统门面。通过 `file` provider 别名进行 registry 集成的能力位于可选的
-`registry` feature 中。
-
-provider 映射契约见[设计文档](doc/local_file_system_adapter_design.zh_CN.md)。
+`qubit-fs-local` 为 `qubit-fs` 应用提供同步的本地 `file:` 后端。当应用需要访问进程
+主机文件系统，或将一个原生目录保留为 rooted 文件系统 authority，同时不希望在应用代码中
+处理 URI 解析和原生路径转换时，可使用本 crate。
 
 ## 安装
 
-将本 crate 添加到项目。只有应用通过 `qubit-fs-registry` 使用
-`LocalFileSystemProvider` 时才启用 `registry`：
-
 ```bash
 cargo add qubit-fs-local
+```
+
+仅当需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才启用 registry 集成：
+
+```bash
 cargo add qubit-fs-local --features registry
 ```
 
-## 使用方法
+## 快速开始
 
-创建主机范围门面，或使用显式稳定 identity 打开一个 rooted authority：
+如果应用必须将报表保留在 `/srv/app-data` 下，请以应用的稳定文件系统标识创建 rooted
+门面，并在该 authority 内使用绝对逻辑路径：
 
 ```rust
 use std::path::Path;
@@ -44,46 +43,25 @@ println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-启用 `registry` 后注册 `LocalFileSystemProvider`，再解析经过校验的 `file:` 配置：
+`LocalFileSystems::host()` 打开进程主机命名空间。`rooted(root)` 生成进程本地标识；
+`rooted_with_id(id, root)` 保留调用方提供的标识。若该标识必须在进程之外保持稳定，应使用后者。
 
-```rust
-use qubit_fs::ConnectionUri;
-use qubit_fs_registry::FileSystemRegistry;
-use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::FileSystemConfig;
+## 提供的能力
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let registry = FileSystemRegistry::default();
-    registry.register(LocalFileSystemProvider::new())?;
+- 通过 host 和 rooted 构造路径提供本地文件的具体同步 `FileSystem` 门面。
+- 可选的 `LocalFileSystemProvider` 位于 `registry` feature 后；它将支持的 `file:` 配置
+  解析为文件系统、路径和 canonical URI。
+- provider 仅接受绝对 `file:` URI；会拒绝远程 authority、query、相对路径、非 `file`
+  scheme，以及配置 options 或 credentials。
 
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/example.txt")?);
-    let resolution = registry.resolve_config(&config)?;
-    let metadata = resolution
-        .file_system()
-        .stat(resolution.path())?;
-    println!("{metadata:?}");
-    Ok(())
-}
-```
+当前版本仅提供同步本地文件系统门面，不提供异步本地文件系统门面。
 
-## 路径语义
+## 延伸阅读
 
-- 两种门面都使用绝对、层级化的 `qubit_fs::Path`。
-- `LocalFileSystems::host()` 映射到进程主机命名空间；`rooted_with_id()` 保留一个
-  native root authority，并要求调用方提供稳定的 `FileSystemId`。
-- adapter 将 canonical component 转换、rooted containment 与 native 文件操作委托给
-  `qubit-local-files`。
-- 可选 provider 仅接受无远程 authority、query、options、metadata 或 credentials 的
-  绝对 `file:` URI。
-
-## 属性
-
-两种门面均声明 `List`、`Read`、`Write`、`Append`、`CreateDirectory`、
-`Delete`、`RecursiveDelete`、`Rename`、`Copy`、临时资源、`AtomicReplace` 与
-`AtomicTempPersist`。依赖主机的限制会报告为 `FileSystemLimits::unknown()`。
-
-当前版本仅提供同步 API。若后续增加异步支持，将以可选 feature 发布，不增加默认
-依赖面。
+- [English user guide](doc/user_guide.md)
+- [中文用户手册](doc/user_guide.zh_CN.md)
+- [API 文档](https://docs.rs/qubit-fs-local)
+- [English README](README.md)
 
 ## 测试
 
