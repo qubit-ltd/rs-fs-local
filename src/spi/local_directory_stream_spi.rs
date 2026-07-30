@@ -18,13 +18,13 @@ use qubit_fs::spi::{
 use qubit_fs::{
     DirEntry,
     FsError,
-    FsErrorKind,
     FsOperation,
     FsResult,
     Path,
 };
 use qubit_local_files as native_files;
 
+use super::error_mapper::LocalFileErrorMapper;
 use crate::path::LocalPathMapper;
 
 pub(crate) enum LocalDirectoryStreamSpi {
@@ -112,11 +112,10 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 }
 
 fn entry_error(error: native_files::LocalFileError) -> FsError {
-    FsError::with_source(
-        FsErrorKind::Io,
+    LocalFileErrorMapper::map_without_path(
+        error,
         FsOperation::List,
         "native directory walk failed",
-        error,
     )
 }
 

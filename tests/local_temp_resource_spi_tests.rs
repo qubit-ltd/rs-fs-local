@@ -45,6 +45,7 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
         .persist(&target, PersistOptions::default())
         .expect_err("persist must report the existing destination");
     assert_eq!(failure.state(), PersistFailureState::NotPublished);
+    assert_eq!(failure.error().kind(), FsErrorKind::AlreadyExists);
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
     file_system
@@ -82,6 +83,7 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         .persist(&target, PersistOptions::default())
         .expect_err("persist must report the existing destination");
     assert_eq!(failure.state(), PersistFailureState::NotPublished);
+    assert_eq!(failure.error().kind(), FsErrorKind::AlreadyExists);
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
     file_system
@@ -280,7 +282,7 @@ fn test_temp_directory_cleanup_failure_retains_resource_for_retry() {
     let error = temporary
         .cleanup()
         .expect_err("missing temporary directory must make cleanup fail");
-    assert_eq!(error.kind(), FsErrorKind::Io);
+    assert_eq!(error.kind(), FsErrorKind::NotFound);
     assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
 
     file_system

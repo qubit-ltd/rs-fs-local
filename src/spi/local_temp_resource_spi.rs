@@ -27,6 +27,7 @@ use qubit_fs::{
 use qubit_local_files as native_files;
 
 use crate::path::LocalPathMapper;
+use crate::spi::error_mapper::LocalFileErrorMapper;
 
 /// Adapts one native temporary resource while retaining its authority mode.
 pub(crate) enum LocalTempResourceSpi {
@@ -103,11 +104,10 @@ impl TempResourceSpi for LocalTempResourceSpi {
                         let (io, resource, _, _, _) = error.into_parts();
                         *slot = Some(resource);
                         Err(SpiPersistFailure::new(
-                            FsError::with_source(
-                                FsErrorKind::Io,
+                            LocalFileErrorMapper::map_io(
+                                io,
                                 FsOperation::PersistTemp,
                                 "temporary file persistence failed",
-                                io,
                             ),
                             state,
                         ))
@@ -124,11 +124,10 @@ impl TempResourceSpi for LocalTempResourceSpi {
                         let (io, resource, _, _, _) = error.into_parts();
                         *slot = Some(resource);
                         Err(SpiPersistFailure::new(
-                            FsError::with_source(
-                                FsErrorKind::Io,
+                            LocalFileErrorMapper::map_io(
+                                io,
                                 FsOperation::PersistTemp,
                                 "temporary directory persistence failed",
-                                io,
                             ),
                             state,
                         ))
@@ -269,12 +268,7 @@ fn logical_persist_error(error: FsError) -> SpiPersistFailure {
 }
 
 fn cleanup_error(error: std::io::Error, message: &'static str) -> FsError {
-    FsError::with_source(
-        FsErrorKind::Io,
-        FsOperation::CleanupTemp,
-        message,
-        error,
-    )
+    LocalFileErrorMapper::map_io(error, FsOperation::CleanupTemp, message)
 }
 
 fn file_cleanup_error(error: std::io::Error) -> FsError {

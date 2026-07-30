@@ -306,11 +306,10 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
             options = options.with_parent(parent);
         }
         let v = self.native.create_temp_file(&options).map_err(|e| {
-            FsError::with_source(
-                qubit_fs::FsErrorKind::Io,
+            LocalFileErrorMapper::map_without_path(
+                e,
                 FsOperation::CreateTemp,
                 "native temporary file creation failed",
-                e,
             )
         })?;
         let p = LocalPathMapper::rooted_logical(v.path())?;
@@ -336,11 +335,10 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
             options = options.with_parent(parent);
         }
         let v = self.native.create_temp_directory(&options).map_err(|e| {
-            FsError::with_source(
-                qubit_fs::FsErrorKind::Io,
+            LocalFileErrorMapper::map_without_path(
+                e,
                 FsOperation::CreateTemp,
                 "native temporary directory creation failed",
-                e,
             )
         })?;
         let p = LocalPathMapper::rooted_logical(v.path())?;

@@ -26,7 +26,54 @@ impl LocalFileErrorMapper {
         path: &Path,
         target: Option<&Path>,
     ) -> FsError {
-        let kind = match error.kind() {
+        let kind = Self::native_kind(error.kind());
+        let error = FsError::with_source(
+            kind,
+            operation,
+            "local filesystem operation failed",
+            error,
+        )
+        .with_path(path.clone())
+        .with_provider("local-file");
+        match target {
+            Some(target) => error.with_target(target.clone()),
+            None => error,
+        }
+    }
+
+    /// Maps an I/O failure that has no caller-visible logical path.
+    pub(crate) fn map_io(
+        error: std::io::Error,
+        operation: FsOperation,
+        message: &'static str,
+    ) -> FsError {
+        FsError::with_source(
+            Self::io_kind(error.kind()),
+            operation,
+            message,
+            error,
+        )
+        .with_provider("local-file")
+    }
+
+    /// Maps a native local-files failure without inventing a logical path.
+    pub(crate) fn map_without_path(
+        error: native_files::LocalFileError,
+        operation: FsOperation,
+        message: &'static str,
+    ) -> FsError {
+        FsError::with_source(
+            Self::native_kind(error.kind()),
+            operation,
+            message,
+            error,
+        )
+        .with_provider("local-file")
+    }
+
+    /// Converts native local-files error kinds to facade error kinds.
+    fn native_kind(kind: native_files::LocalFileErrorKind) -> FsErrorKind {
+        match kind {
             native_files::LocalFileErrorKind::InvalidInput => {
                 FsErrorKind::InvalidPath
             }
@@ -50,25 +97,37 @@ impl LocalFileErrorMapper {
                 FsErrorKind::ResourceLimitExceeded
             }
             native_files::LocalFileErrorKind::PublicationIncomplete => {
-                FsErrorKind::Conflict
+                FsErrorKind::Io
             }
             native_files::LocalFileErrorKind::Indeterminate => {
                 FsErrorKind::Indeterminate
             }
             native_files::LocalFileErrorKind::Io => FsErrorKind::Io,
             _ => FsErrorKind::Other,
-        };
-        let error = FsError::with_source(
-            kind,
-            operation,
-            "local filesystem operation failed",
-            error,
-        )
-        .with_path(path.clone())
-        .with_provider("local-file");
-        match target {
-            Some(target) => error.with_target(target.clone()),
-            None => error,
+        }
+    }
+
+    /// Converts standard I/O error kinds to facade error kinds.
+    fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
+        match kind {
+            std::io::ErrorKind::NotFound => FsErrorKind::NotFound,
+            std::io::ErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
+            std::io::ErrorKind::PermissionDenied => {
+                FsErrorKind::PermissionDenied
+            }
+            std::io::ErrorKind::InvalidInput => FsErrorKind::InvalidPath,
+            std::io::ErrorKind::InvalidData => FsErrorKind::DataCorruption,
+            std::io::ErrorKind::Interrupted => FsErrorKind::Interrupted,
+            std::io::ErrorKind::TimedOut => FsErrorKind::Timeout,
+            std::io::ErrorKind::Unsupported => {
+                FsErrorKind::UnsupportedOperation
+            }
+            std::io::ErrorKind::OutOfMemory
+            | std::io::ErrorKind::StorageFull
+            | std::io::ErrorKind::QuotaExceeded => {
+                FsErrorKind::ResourceLimitExceeded
+            }
+            _ => FsErrorKind::Io,
         }
     }
 }
@@ -101,7 +160,7 @@ mod tests {
             (Kind::Unsupported, FsErrorKind::UnsupportedOperation),
             (Kind::RequirementNotMet, FsErrorKind::RequirementNotMet),
             (Kind::ResourceLimit, FsErrorKind::ResourceLimitExceeded),
-            (Kind::PublicationIncomplete, FsErrorKind::Conflict),
+            (Kind::PublicationIncomplete, FsErrorKind::Io),
             (Kind::Indeterminate, FsErrorKind::Indeterminate),
             (Kind::Io, FsErrorKind::Io),
         ] {
