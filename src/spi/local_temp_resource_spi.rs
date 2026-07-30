@@ -96,7 +96,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
             Self::File { resource: slot, .. } => {
                 let resource =
                     slot.take().ok_or_else(terminal_persist_error)?;
-                match resource.persist_with(&target, options) {
+                match resource.persist_with_outcome(&target, options) {
                     Ok(result) => Ok(result),
                     Err(error) => {
                         let state = native_persist_failure_state(&error);
@@ -117,7 +117,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
             Self::Directory { resource: slot, .. } => {
                 let resource =
                     slot.take().ok_or_else(terminal_persist_error)?;
-                match resource.persist_with(&target, options) {
+                match resource.persist_with_outcome(&target, options) {
                     Ok(result) => Ok(result),
                     Err(error) => {
                         let state = native_persist_failure_state(&error);
@@ -137,15 +137,24 @@ impl TempResourceSpi for LocalTempResourceSpi {
             }
         }?;
         let logical = if rooted {
-            LocalPathMapper::rooted_logical(&result)
+            LocalPathMapper::rooted_logical(result.path())
         } else {
-            LocalPathMapper::host_logical(&result)
+            LocalPathMapper::host_logical(result.path())
         }
         .map_err(logical_persist_error)?;
         Ok(PersistOutcome::new(
             logical,
-            AchievedAtomicity::Atomic,
-            PublicationMethod::AtomicRename,
+            if result.atomic() {
+                AchievedAtomicity::Atomic
+            } else {
+                AchievedAtomicity::NonAtomic
+            },
+            match result.method() {
+                native_files::LocalPersistMethod::AtomicRename => {
+                    PublicationMethod::AtomicRename
+                }
+                _ => PublicationMethod::Direct,
+            },
         ))
     }
     /// Releases cleanup ownership without publishing the native resource.
@@ -217,31 +226,23 @@ impl TempResourceSpi for LocalTempResourceSpi {
 }
 
 /// Maps native persistence context to the facade recovery state.
-///
-/// Target resolution and parent preparation fail before publication. An
-/// installation conflict also proves that the source remains unpublished;
-/// every other installation error leaves the native namespace indeterminate.
 fn native_persist_failure_state<T>(
     error: &native_files::LocalPersistError<T>,
 ) -> PersistFailureState {
-    persist_failure_state(error.stage(), error.kind())
+    persist_failure_state(error.state())
 }
 
 fn persist_failure_state(
-    stage: native_files::LocalPersistStage,
-    kind: std::io::ErrorKind,
+    state: native_files::LocalPersistFailureState,
 ) -> PersistFailureState {
-    match stage {
-        native_files::LocalPersistStage::ResolveTarget
-        | native_files::LocalPersistStage::PrepareParent => {
+    match state {
+        native_files::LocalPersistFailureState::NotPublished => {
             PersistFailureState::NotPublished
         }
-        native_files::LocalPersistStage::InstallDestination
-            if kind == std::io::ErrorKind::AlreadyExists =>
-        {
-            PersistFailureState::NotPublished
+        native_files::LocalPersistFailureState::PublishedSourceRetained => {
+            PersistFailureState::PublishedSourceRetained
         }
-        native_files::LocalPersistStage::InstallDestination => {
+        native_files::LocalPersistFailureState::Indeterminate => {
             PersistFailureState::Indeterminate
         }
         _ => PersistFailureState::Indeterminate,
@@ -291,7 +292,7 @@ mod tests {
         FsOperation,
         spi::TempResourceSpi,
     };
-    use qubit_local_files::LocalPersistStage;
+    use qubit_local_files::LocalPersistFailureState;
 
     use super::{
         LocalTempResourceSpi,
@@ -305,34 +306,20 @@ mod tests {
     };
 
     #[test]
-    fn classifies_persistence_stages_and_helper_errors() {
+    fn maps_persistence_failure_states_and_helper_errors() {
         assert_eq!(
             qubit_fs::PersistFailureState::NotPublished,
-            persist_failure_state(
-                LocalPersistStage::ResolveTarget,
-                std::io::ErrorKind::Other
-            )
+            persist_failure_state(LocalPersistFailureState::NotPublished)
         );
         assert_eq!(
-            qubit_fs::PersistFailureState::NotPublished,
+            qubit_fs::PersistFailureState::PublishedSourceRetained,
             persist_failure_state(
-                LocalPersistStage::PrepareParent,
-                std::io::ErrorKind::Other
-            )
-        );
-        assert_eq!(
-            qubit_fs::PersistFailureState::NotPublished,
-            persist_failure_state(
-                LocalPersistStage::InstallDestination,
-                std::io::ErrorKind::AlreadyExists
+                LocalPersistFailureState::PublishedSourceRetained
             )
         );
         assert_eq!(
             qubit_fs::PersistFailureState::Indeterminate,
-            persist_failure_state(
-                LocalPersistStage::InstallDestination,
-                std::io::ErrorKind::Other
-            )
+            persist_failure_state(LocalPersistFailureState::Indeterminate)
         );
         assert_eq!(
             FsErrorKind::InvalidState,

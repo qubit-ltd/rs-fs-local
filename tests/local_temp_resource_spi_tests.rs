@@ -207,15 +207,11 @@ fn test_temp_file_persist_install_failure_is_indeterminate() {
         )
         .expect_err("file persistence cannot replace a directory");
 
-    assert_eq!(failure.state(), PersistFailureState::Indeterminate);
-    assert_eq!(temporary.state(), TempResourceState::Indeterminate);
-    assert_eq!(
-        temporary
-            .cleanup()
-            .expect_err("indeterminate temporary file must reject cleanup")
-            .kind(),
-        FsErrorKind::InvalidState
-    );
+    assert_eq!(failure.state(), PersistFailureState::NotPublished);
+    assert_eq!(temporary.state(), TempResourceState::Owned);
+    temporary
+        .cleanup()
+        .expect("known-unpublished temporary file should remain recoverable");
 }
 
 /// Keeping a temporary directory preserves it and releases automatic cleanup.

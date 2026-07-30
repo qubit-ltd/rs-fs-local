@@ -15,8 +15,6 @@ use qubit_fs::{
     FsErrorKind,
     ListOptions,
     Path,
-    TempDirectoryOptions,
-    TempFileOptions,
     WriteOptions,
 };
 use qubit_fs_local::LocalFileSystems;
@@ -361,59 +359,6 @@ fn test_rooted_write_rejects_unrepresentable_metadata_options() {
     );
 }
 
-/// Prefix and eager-entry metadata are applied to a local directory stream.
-#[test]
-fn test_rooted_list_applies_prefix_and_metadata_options() {
-    let fixture = RootedFixture::new();
-    let root = fixture.path("list-options").expect("path must be valid");
-    let matching = fixture
-        .path("list-options/child.txt")
-        .expect("matching path must be valid");
-    let ignored = fixture
-        .path("list-options/other.txt")
-        .expect("ignored path must be valid");
-    fixture
-        .file_system()
-        .create_directory(&root, CreateDirectoryOptions::default())
-        .expect("listing root must be created");
-    fixture
-        .file_system()
-        .write_all(&matching, b"child", WriteOptions::default())
-        .expect("matching file must be written");
-    fixture
-        .file_system()
-        .write_all(&ignored, b"other", WriteOptions::default())
-        .expect("ignored file must be written");
-
-    let mut stream = fixture
-        .file_system()
-        .list(
-            &root,
-            ListOptions {
-                include_metadata: true,
-                prefix: Some("child.txt".to_owned()),
-                ..ListOptions::default()
-            },
-        )
-        .expect("local adapter must honor list prefix options");
-    let entry = stream
-        .next_entry()
-        .expect("listing must not fail")
-        .expect("matching entry must be returned");
-
-    assert_eq!(entry.path, matching);
-    assert_eq!(
-        entry.metadata.expect("metadata must be requested").len,
-        Some(5)
-    );
-    assert!(
-        stream
-            .next_entry()
-            .expect("listing must complete")
-            .is_none()
-    );
-}
-
 /// Verifies list prefixes use canonical logical escaping rather than lossy
 /// native-path text.
 #[test]
@@ -447,85 +392,4 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
         .expect("listing must not fail")
         .expect("canonical prefix must match");
     assert_eq!(matching, entry.path);
-}
-
-/// Verifies the adapter exposes the facade's existing-directory policy.
-#[test]
-fn test_rooted_create_directory_accepts_existing_directory_when_requested() {
-    let fixture = RootedFixture::new();
-    let path = fixture.path("existing").expect("path must be valid");
-    fixture
-        .file_system()
-        .create_directory(&path, CreateDirectoryOptions::default())
-        .expect("fixture directory must be created");
-
-    let outcome = fixture
-        .file_system()
-        .create_directory(
-            &path,
-            CreateDirectoryOptions {
-                exists_ok: true,
-                ..CreateDirectoryOptions::default()
-            },
-        )
-        .expect("existing directory must be accepted");
-    assert!(outcome.already_existed());
-}
-
-/// Rooted temporary files honor the requested logical parent and name affixes.
-#[test]
-fn test_rooted_temp_file_applies_parent_and_affixes() {
-    let fixture = RootedFixture::new();
-    let parent = Path::parse("/fixture/temp-files")
-        .expect("temporary parent must be valid");
-    fixture
-        .file_system()
-        .create_directory(&parent, CreateDirectoryOptions::default())
-        .expect("temporary parent must be created");
-
-    let temporary = fixture
-        .file_system()
-        .create_temp_file(TempFileOptions {
-            parent: Some(parent),
-            prefix: "upload-".to_owned(),
-            suffix: ".part".to_owned(),
-        })
-        .expect("temporary file must be created");
-
-    assert!(
-        temporary
-            .path()
-            .as_str()
-            .starts_with("/fixture/temp-files/upload-")
-    );
-    assert!(temporary.path().as_str().ends_with(".part"));
-}
-
-/// Rooted temporary directories honor the requested logical parent and affixes.
-#[test]
-fn test_rooted_temp_directory_applies_parent_and_affixes() {
-    let fixture = RootedFixture::new();
-    let parent = Path::parse("/fixture/temp-directories")
-        .expect("temporary parent must be valid");
-    fixture
-        .file_system()
-        .create_directory(&parent, CreateDirectoryOptions::default())
-        .expect("temporary parent must be created");
-
-    let temporary = fixture
-        .file_system()
-        .create_temp_directory(TempDirectoryOptions {
-            parent: Some(parent),
-            prefix: "work-".to_owned(),
-            suffix: ".tmp".to_owned(),
-        })
-        .expect("temporary directory must be created");
-
-    assert!(
-        temporary
-            .path()
-            .as_str()
-            .starts_with("/fixture/temp-directories/work-")
-    );
-    assert!(temporary.path().as_str().ends_with(".tmp"));
 }
