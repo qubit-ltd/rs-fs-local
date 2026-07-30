@@ -5,6 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Logical-to-native path conversion used by the local adapter.
+//! Private support types for registry integration.
 
-pub(crate) mod local_path_mapper;
+mod local_provider_mode;
+
+pub(super) use local_provider_mode::LocalProviderMode;

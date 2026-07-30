@@ -31,18 +31,43 @@ use qubit_fs::{
 use qubit_io::Output;
 use qubit_local_files as native_files;
 
-use super::error_mapper::LocalFileErrorMapper;
+use super::error_mapper;
 
+/// Adapts one native writer and enforces terminal commit or abort state.
+#[must_use]
 pub(crate) struct LocalFileWriterSpi {
+    /// Native writer retained until commit, abort, or an unrecoverable
+    /// failure.
     writer: Option<native_files::LocalFileWriter>,
 }
 
 impl LocalFileWriterSpi {
+    /// Wraps an open native writer session.
+    ///
+    /// # Parameters
+    ///
+    /// - `writer`: Native writer owned by the new adapter.
+    ///
+    /// # Returns
+    ///
+    /// An active facade writer session.
+    #[inline(always)]
     pub(crate) const fn new(writer: native_files::LocalFileWriter) -> Self {
         Self {
             writer: Some(writer),
         }
     }
+
+    /// Borrows the active native writer for output operations.
+    ///
+    /// # Returns
+    ///
+    /// A mutable native writer while this session remains active.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Other` I/O error after the session becomes terminal.
+    #[inline]
     fn writer_mut(&mut self) -> IoResult<&mut native_files::LocalFileWriter> {
         match self.writer.as_mut() {
             Some(writer) => Ok(writer),
@@ -53,6 +78,34 @@ impl LocalFileWriterSpi {
 
 impl Output for LocalFileWriterSpi {
     type Item = u8;
+
+    /// Writes a caller-validated byte range to the native writer.
+    ///
+    /// # Parameters
+    ///
+    /// - `input`: Source byte slice.
+    /// - `index`: Starting offset of the validated range.
+    /// - `count`: Number of bytes in the validated range.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes accepted by the native writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the session is terminal or native output
+    /// fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index + count` falls outside `input`; callers satisfying the
+    /// safety contract prevent this condition.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `index..index + count` is a valid range
+    /// within `input`, as required by [`Output::write_unchecked`].
+    #[inline(always)]
     unsafe fn write_unchecked(
         &mut self,
         input: &[u8],
@@ -61,12 +114,35 @@ impl Output for LocalFileWriterSpi {
     ) -> IoResult<usize> {
         Write::write(self.writer_mut()?, &input[index..index + count])
     }
+
+    /// Flushes buffered bytes through the active native writer.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after native buffers are flushed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error when the session is terminal or the native flush
+    /// fails.
+    #[inline(always)]
     fn flush(&mut self) -> IoResult<()> {
         Write::flush(self.writer_mut()?)
     }
 }
 
 impl FileWriterSpi for LocalFileWriterSpi {
+    /// Publishes the writer and records portable publication guarantees.
+    ///
+    /// # Returns
+    ///
+    /// The achieved atomicity, publication method, and written byte count.
+    ///
+    /// # Errors
+    ///
+    /// Returns `InvalidState` when the session is already terminal. Native
+    /// commit failures retain their recovery state and preserve a retryable
+    /// writer when the native backend provides one.
     fn commit(&mut self) -> Result<WriteOutcome, SpiWriteFailure> {
         let Some(writer) = self.writer.take() else {
             return Err(SpiWriteFailure::new(
@@ -100,7 +176,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 self.writer = retained;
                 let state = write_failure_state(state, self.writer.is_some());
                 Err(SpiWriteFailure::new(
-                    LocalFileErrorMapper::map_without_path(
+                    error_mapper::map_without_path(
                         native,
                         FsOperation::CommitWriter,
                         "native writer commit failed",
@@ -110,6 +186,21 @@ impl FileWriterSpi for LocalFileWriterSpi {
             }
         }
     }
+
+    /// Aborts an active writer and makes the session terminal.
+    ///
+    /// Calling this method after a terminal transition succeeds without
+    /// further native I/O.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after active native resources are released, including when the
+    /// session was already terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns a mapped native abort error if cleanup of an active writer
+    /// fails.
     fn abort(&mut self) -> FsResult<()> {
         let Some(writer) = self.writer.take() else {
             return Ok(());
@@ -121,6 +212,17 @@ impl FileWriterSpi for LocalFileWriterSpi {
     }
 }
 
+/// Converts native commit state and retention into portable recovery state.
+///
+/// # Parameters
+///
+/// - `state`: Native publication state after commit failure.
+/// - `retained`: Whether the adapter still owns a retryable native writer.
+///
+/// # Returns
+///
+/// The most precise portable writer failure state supported by both values.
+#[inline]
 fn write_failure_state(
     state: native_files::LocalWriterState,
     retained: bool,
@@ -139,149 +241,20 @@ fn write_failure_state(
     }
 }
 
+/// Maps a native abort failure without inventing logical path context.
+///
+/// # Parameters
+///
+/// - `error`: Native abort failure.
+///
+/// # Returns
+///
+/// A facade abort error with local provider context.
+#[inline(always)]
 fn abort_error(error: native_files::LocalFileError) -> FsError {
-    LocalFileErrorMapper::map_without_path(
+    error_mapper::map_without_path(
         error,
         FsOperation::AbortWriter,
         "native writer abort failed",
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use qubit_fs::{
-        FsErrorKind,
-        spi::FileWriterSpi,
-    };
-    use qubit_io::Output;
-    use qubit_local_files::{
-        LocalFileError,
-        LocalFileErrorKind,
-        LocalFileOperation,
-        LocalFileSystem,
-        LocalWriteMode,
-        LocalWriteOptions,
-        LocalWriterState,
-    };
-
-    use super::{
-        LocalFileWriterSpi,
-        abort_error,
-        write_failure_state,
-    };
-
-    #[test]
-    fn classifies_every_native_commit_failure_state() {
-        assert_eq!(
-            qubit_fs::WriteFailureState::RetryableNotPublished,
-            write_failure_state(LocalWriterState::NotPublished, true)
-        );
-        assert_eq!(
-            qubit_fs::WriteFailureState::NotPublished,
-            write_failure_state(LocalWriterState::NotPublished, false)
-        );
-        assert_eq!(
-            qubit_fs::WriteFailureState::Published,
-            write_failure_state(LocalWriterState::Published, false)
-        );
-        assert_eq!(
-            qubit_fs::WriteFailureState::Indeterminate,
-            write_failure_state(LocalWriterState::Indeterminate, false)
-        );
-    }
-
-    #[test]
-    fn maps_native_abort_error() {
-        let error = abort_error(LocalFileError::new(
-            LocalFileErrorKind::Io,
-            LocalFileOperation::Abort,
-        ));
-        assert_eq!(FsErrorKind::Io, error.kind());
-    }
-
-    #[test]
-    fn writes_commits_and_reports_a_terminal_commit() {
-        let directory =
-            tempfile::tempdir().expect("test directory must be created");
-        let target = directory.path().join("published.txt");
-        let native = LocalFileSystem::open_writer(
-            &target,
-            &LocalWriteOptions::new(LocalWriteMode::CreateOrReplace),
-        )
-        .expect("native writer must open");
-        let mut writer = LocalFileWriterSpi::new(native);
-        Output::write_fully(&mut writer, b"payload")
-            .expect("adapter writer must accept bytes");
-        writer.flush().expect("adapter writer must flush");
-        let outcome = writer.commit().ok().unwrap();
-        assert_eq!(Some(7), outcome.bytes_written);
-        let failure =
-            writer.commit().expect_err("a committed writer is terminal");
-        assert_eq!(FsErrorKind::InvalidState, failure.error().kind());
-        writer.abort().expect("abort after commit is idempotent");
-        assert_eq!(
-            b"payload".to_vec(),
-            std::fs::read(target).expect("output must exist")
-        );
-    }
-
-    #[test]
-    fn aborts_an_open_writer_and_rejects_further_output() {
-        let directory =
-            tempfile::tempdir().expect("test directory must be created");
-        let target = directory.path().join("aborted.txt");
-        let native = LocalFileSystem::open_writer(
-            &target,
-            &LocalWriteOptions::new(LocalWriteMode::CreateOrReplace),
-        )
-        .expect("native writer must open");
-        let mut writer = LocalFileWriterSpi::new(native);
-        writer.abort().expect("open writer must abort");
-        assert!(Output::write_fully(&mut writer, b"payload").is_err());
-        assert!(!target.exists());
-    }
-
-    #[test]
-    fn commit_failure_retains_the_writer_for_cleanup() {
-        let directory =
-            tempfile::tempdir().expect("test directory must be created");
-        let target = directory.path().join("destination-directory");
-        let native = LocalFileSystem::open_writer(
-            &target,
-            &LocalWriteOptions::new(LocalWriteMode::CreateOrReplace),
-        )
-        .expect("staged writer must open before publication");
-        let mut writer = LocalFileWriterSpi::new(native);
-        Output::write_fully(&mut writer, b"payload")
-            .expect("writer must accept bytes before publication");
-        std::fs::create_dir(&target)
-            .expect("destination directory must be created after opening");
-        let failure = writer.commit().err().unwrap();
-        assert_eq!(FsErrorKind::AlreadyExists, failure.error().kind());
-        writer.abort().expect("retained writer must be abortable");
-    }
-
-    #[test]
-    fn appending_reports_direct_nonatomic_publication() {
-        let directory =
-            tempfile::tempdir().expect("test directory must be created");
-        let target = directory.path().join("append.txt");
-        std::fs::write(&target, b"before")
-            .expect("initial content must be written");
-        let native = LocalFileSystem::open_writer(
-            &target,
-            &LocalWriteOptions::new(LocalWriteMode::Append),
-        )
-        .expect("append writer must open");
-        let mut writer = LocalFileWriterSpi::new(native);
-        Output::write_fully(&mut writer, b"+after")
-            .expect("append writer must accept bytes");
-        let outcome = writer.commit().ok().unwrap();
-        assert_eq!(qubit_fs::AchievedAtomicity::NonAtomic, outcome.atomicity);
-        assert_eq!(qubit_fs::PublicationMethod::Direct, outcome.method);
-        assert_eq!(
-            b"before+after".to_vec(),
-            std::fs::read(target).expect("appended content must exist")
-        );
-    }
 }

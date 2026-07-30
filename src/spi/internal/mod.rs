@@ -5,6 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Logical-to-native path conversion used by the local adapter.
+//! Private support types shared by local SPI adapters.
 
-pub(crate) mod local_path_mapper;
+mod listing_options;
+
+pub(super) use listing_options::ListingOptions;

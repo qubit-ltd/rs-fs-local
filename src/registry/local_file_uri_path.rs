@@ -16,6 +16,19 @@ use super::local_file_system_provider::invalid_path;
 /// URI percent escapes represent native path bytes, whereas local logical path
 /// components use canonical escaped-byte text. Decoding each URI component
 /// independently prevents an encoded separator from changing path structure.
+///
+/// # Parameters
+///
+/// - `raw`: Raw URI path text, including slash separators.
+///
+/// # Returns
+///
+/// A canonical logical path preserving native bytes as uppercase escapes.
+///
+/// # Errors
+///
+/// Returns an invalid-configuration failure for malformed percent escapes,
+/// NUL bytes, encoded separators, or canonical text rejected by `Path`.
 pub(super) fn decode(
     raw: &str,
 ) -> Result<Path, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
@@ -31,6 +44,19 @@ pub(super) fn decode(
 }
 
 /// Decodes one URI segment and encodes it in the local canonical text form.
+///
+/// # Parameters
+///
+/// - `component`: Raw URI segment without slash separators.
+///
+/// # Returns
+///
+/// Canonical escaped-byte text for the decoded native bytes.
+///
+/// # Errors
+///
+/// Returns an invalid-path failure for malformed percent escapes, NUL bytes,
+/// or bytes decoding to a slash or backslash.
 fn decode_component(
     component: &str,
 ) -> Result<String, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
@@ -48,6 +74,19 @@ fn decode_component(
 
 /// Strictly percent-decodes one URI path segment without treating `+` as a
 /// space.
+///
+/// # Parameters
+///
+/// - `component`: Raw URI segment to decode.
+///
+/// # Returns
+///
+/// Decoded native path bytes.
+///
+/// # Errors
+///
+/// Returns an invalid-path failure for a truncated or non-hexadecimal percent
+/// escape.
 fn percent_decode(
     component: &str,
 ) -> Result<Vec<u8>, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
@@ -82,6 +121,15 @@ fn percent_decode(
 }
 
 /// Converts one ASCII hexadecimal digit to its numeric value.
+///
+/// # Parameters
+///
+/// - `value`: Candidate ASCII hexadecimal byte.
+///
+/// # Returns
+///
+/// `Some(0..=15)` for an ASCII hexadecimal digit or `None` otherwise.
+#[inline]
 fn hex_value(value: u8) -> Option<u8> {
     match value {
         b'0'..=b'9' => Some(value - b'0'),
@@ -92,6 +140,20 @@ fn hex_value(value: u8) -> Option<u8> {
 }
 
 /// Converts decoded native bytes to local canonical escaped-byte text.
+///
+/// # Parameters
+///
+/// - `bytes`: Native path bytes for one URI component.
+///
+/// # Returns
+///
+/// Valid Unicode scalars with percent and control characters escaped, plus
+/// uppercase percent escapes for invalid UTF-8 bytes.
+///
+/// # Panics
+///
+/// Panics only if `Utf8Error::valid_up_to` identifies a prefix that the UTF-8
+/// decoder then rejects, which would violate the standard-library contract.
 fn canonicalize_bytes(bytes: &[u8]) -> String {
     let mut canonical = String::with_capacity(bytes.len());
     let mut remaining = bytes;
@@ -118,6 +180,11 @@ fn canonicalize_bytes(bytes: &[u8]) -> String {
 }
 
 /// Appends UTF-8 scalars using the local canonical escaped-byte policy.
+///
+/// # Parameters
+///
+/// - `canonical`: Destination canonical path text.
+/// - `text`: Valid UTF-8 text to append.
 fn push_scalars(canonical: &mut String, text: &str) {
     for scalar in text.chars() {
         if scalar == '%' || scalar.is_control() {
@@ -131,6 +198,12 @@ fn push_scalars(canonical: &mut String, text: &str) {
 }
 
 /// Appends one uppercase percent escape.
+///
+/// # Parameters
+///
+/// - `canonical`: Destination canonical path text.
+/// - `byte`: Native byte to encode.
+#[inline(always)]
 fn push_escaped_byte(canonical: &mut String, byte: u8) {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     canonical.push('%');
