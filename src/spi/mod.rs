@@ -8,6 +8,7 @@
 //! Public synchronous local filesystem SPI implementations.
 
 mod error_mapper;
+mod internal;
 mod local_directory_stream_spi;
 mod local_file_system_spi;
 mod local_file_writer_spi;
