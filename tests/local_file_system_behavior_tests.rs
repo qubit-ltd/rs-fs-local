@@ -106,10 +106,6 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
 
     for options in [
         CopyOptions {
-            create_parent: true,
-            ..CopyOptions::file()
-        },
-        CopyOptions {
             continue_on_error: true,
             ..CopyOptions::file()
         },
@@ -322,6 +318,24 @@ fn test_rooted_mutation_operations_cover_conflict_and_recursive_policies() {
     file_system
         .write_all(&source, b"source", WriteOptions::default())
         .expect("source file must be written");
+
+    let created_parent_target = path("/created/parent/target.txt");
+    file_system
+        .copy(
+            &source,
+            &created_parent_target,
+            CopyOptions {
+                create_parent: true,
+                ..CopyOptions::file()
+            },
+        )
+        .expect("copy must create missing target parents");
+    assert_eq!(
+        file_system
+            .read_all(&created_parent_target, Default::default(), 1024)
+            .expect("copied bytes must be readable"),
+        b"source"
+    );
 
     let target = path("/tree/child/target.txt");
     file_system

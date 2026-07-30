@@ -119,8 +119,7 @@ impl LocalOptionsMapper {
         options: &qubit_fs::spi::ResolvedCopyOptions,
     ) -> Result<native_files::LocalCopyOptions, FsError> {
         let options = options.options();
-        if options.create_parent
-            || options.continue_on_error
+        if options.continue_on_error
             || options.server_side == qubit_fs::ServerSidePreference::Require
         {
             return Err(Self::unsupported(FsOperation::Copy));
@@ -159,6 +158,9 @@ impl LocalOptionsMapper {
             .with_durability(Self::durability(options.durability));
         if matches!(options.mode, CopyMode::Tree | CopyMode::Auto) {
             native = native.with_recursive();
+        }
+        if options.create_parent {
+            native = native.with_parent();
         }
         Ok(native)
     }
