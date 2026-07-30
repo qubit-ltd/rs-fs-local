@@ -70,10 +70,6 @@ impl FileSystemFixture for RootedFixture {
         })
     }
 
-    fn list_prefix(&self, _: &Path, relative: &str) -> FixtureResult<String> {
-        Ok(relative.to_owned())
-    }
-
     fn seed_file(
         &self,
         relative: &str,
@@ -171,10 +167,6 @@ impl FileSystemFixture for HostFixture {
 
     fn path(&self, relative: &str) -> FixtureResult<Path> {
         self.logical_path(relative)
-    }
-
-    fn list_prefix(&self, _: &Path, relative: &str) -> FixtureResult<String> {
-        Ok(relative.to_owned())
     }
 
     fn seed_file(
