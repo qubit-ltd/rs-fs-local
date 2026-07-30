@@ -12,6 +12,7 @@ use qubit_fs::{
     FileSystemId,
     FsErrorKind,
     NonSensitiveMetadata,
+    Path,
     UserMetadata,
 };
 use qubit_fs_local::LocalFileSystemProvider;
@@ -170,6 +171,47 @@ fn test_rooted_local_provider_resolves_file_uri() {
         .expect("rooted local provider must resolve file URI");
 
     assert_eq!(resolution.file_system().properties().info().id(), &id);
+}
+
+/// A rooted provider decodes percent-encoded file URI path segments before
+/// accessing its retained native authority.
+#[test]
+fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
+    let root = tempfile::tempdir().expect("provider root must be created");
+    std::fs::write(root.path().join("report final.txt"), b"payload")
+        .expect("encoded-path fixture must be written");
+    std::fs::write(root.path().join("café.txt"), b"payload")
+        .expect("UTF-8 encoded-path fixture must be written");
+    let id = FileSystemId::new("provider-encoded-path-root")
+        .expect("test identity must be valid");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::rooted(id, root.path()))
+        .expect("the rooted local provider descriptor must register");
+
+    for uri in ["file:///report%20final.txt", "file:///caf%C3%A9.txt"] {
+        let resolution = registry
+            .resolve_config(&FileSystemConfig::new(
+                ConnectionUri::parse(uri).expect("test URI must parse"),
+            ))
+            .expect("encoded local file URI must resolve");
+        resolution
+            .file_system()
+            .stat(resolution.path())
+            .expect("decoded path must access the native fixture");
+    }
+
+    assert_eq!(
+        Path::parse("/report final.txt").expect("test logical path must parse"),
+        registry
+            .resolve_config(&FileSystemConfig::new(
+                ConnectionUri::parse("file:///report%20final.txt")
+                    .expect("test URI must parse"),
+            ))
+            .expect("encoded local file URI must resolve")
+            .path()
+            .clone()
+    );
 }
 
 /// Rooted providers report initialization failure when their retained native
