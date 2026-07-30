@@ -54,6 +54,7 @@ external/
 # Temporary files
 *.tmp
 *.temp
+.worktrees/
 
 # Backup files
 *.bak
