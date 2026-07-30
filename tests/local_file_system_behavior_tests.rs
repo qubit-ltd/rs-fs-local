@@ -121,6 +121,31 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
     }
 }
 
+/// Copying with portable metadata preservation reports the policy actually
+/// applied by the local adapter.
+#[test]
+fn test_rooted_copy_reports_portable_metadata_preservation() {
+    let (_root, file_system) = rooted_file_system();
+    let source = path("/source.txt");
+    let target = path("/target.txt");
+    file_system
+        .write_all(&source, b"payload", WriteOptions::default())
+        .expect("copy source must be written");
+
+    let outcome = file_system
+        .copy(
+            &source,
+            &target,
+            CopyOptions {
+                preserve_metadata: MetadataPreservePolicy::Portable,
+                ..CopyOptions::file()
+            },
+        )
+        .expect("portable metadata copy must satisfy the facade contract");
+
+    assert_eq!(outcome.metadata(), MetadataPreservePolicy::Portable);
+}
+
 /// Rooted operation failures must preserve their public classifications.
 #[test]
 fn test_rooted_operations_map_missing_entries() {
@@ -196,14 +221,14 @@ fn test_rooted_operations_map_missing_entries() {
             ..TempFileOptions::default()
         })
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::Io, temporary_file.kind());
+    assert_eq!(FsErrorKind::InvalidPath, temporary_file.kind());
     let temporary_directory = file_system
         .create_temp_directory(TempDirectoryOptions {
             parent: Some(regular_file),
             ..TempDirectoryOptions::default()
         })
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::Io, temporary_directory.kind());
+    assert_eq!(FsErrorKind::InvalidPath, temporary_directory.kind());
 }
 
 /// Parses one absolute logical path used by the rooted adapter.
@@ -528,14 +553,14 @@ fn test_host_operations_map_missing_native_entries() {
             ..TempFileOptions::default()
         })
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::Io, temporary_file.kind());
+    assert_eq!(FsErrorKind::AlreadyExists, temporary_file.kind());
     let temporary_directory = file_system
         .create_temp_directory(TempDirectoryOptions {
             parent: Some(file_parent),
             ..TempDirectoryOptions::default()
         })
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::Io, temporary_directory.kind());
+    assert_eq!(FsErrorKind::AlreadyExists, temporary_directory.kind());
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.

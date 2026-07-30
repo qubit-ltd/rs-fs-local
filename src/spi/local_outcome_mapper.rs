@@ -16,6 +16,7 @@ use qubit_fs::{
     CopyStats,
     FileKind,
     FileMetadata,
+    MetadataPreservePolicy,
     PublicationMethod,
     RenameOutcome,
 };
@@ -62,6 +63,14 @@ impl LocalOutcomeMapper {
             },
         );
         result = result.with_durable(value.durable());
+        result = result.with_metadata(match value.metadata_preservation() {
+            native_files::LocalMetadataPreservePolicy::None => {
+                MetadataPreservePolicy::None
+            }
+            native_files::LocalMetadataPreservePolicy::Permissions => {
+                MetadataPreservePolicy::Portable
+            }
+        });
         result
     }
     pub(crate) fn rename(

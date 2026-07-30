@@ -43,7 +43,6 @@ use qubit_fs::{
     FileSystemLimits,
     FileSystemProperties,
     FsError,
-    FsErrorKind,
     FsOperation,
     FsResult,
     OpenedFileInfo,
@@ -315,11 +314,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         }
         let value = native_files::LocalFileSystem::create_temp_file(&options)
             .map_err(|error| {
-            FsError::with_source(
-                FsErrorKind::Io,
+            LocalFileErrorMapper::map_without_path(
+                error,
                 FsOperation::CreateTemp,
                 "native temporary file creation failed",
-                error,
             )
         })?;
         let path = LocalPathMapper::host_logical(value.path())?;
@@ -347,11 +345,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let value =
             native_files::LocalFileSystem::create_temp_directory(&options)
                 .map_err(|error| {
-                    FsError::with_source(
-                        FsErrorKind::Io,
+                    LocalFileErrorMapper::map_without_path(
+                        error,
                         FsOperation::CreateTemp,
                         "native temporary directory creation failed",
-                        error,
                     )
                 })?;
         let path = LocalPathMapper::host_logical(value.path())?;

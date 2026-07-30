@@ -31,6 +31,8 @@ use qubit_fs::{
 use qubit_io::Output;
 use qubit_local_files as native_files;
 
+use super::error_mapper::LocalFileErrorMapper;
+
 pub(crate) struct LocalFileWriterSpi {
     writer: Option<native_files::LocalFileWriter>,
 }
@@ -98,11 +100,10 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 self.writer = retained;
                 let state = write_failure_state(state, self.writer.is_some());
                 Err(SpiWriteFailure::new(
-                    FsError::with_source(
-                        FsErrorKind::Io,
+                    LocalFileErrorMapper::map_without_path(
+                        native,
                         FsOperation::CommitWriter,
                         "native writer commit failed",
-                        native,
                     ),
                     state,
                 ))
@@ -139,11 +140,10 @@ fn write_failure_state(
 }
 
 fn abort_error(error: native_files::LocalFileError) -> FsError {
-    FsError::with_source(
-        FsErrorKind::Io,
+    LocalFileErrorMapper::map_without_path(
+        error,
         FsOperation::AbortWriter,
         "native writer abort failed",
-        error,
     )
 }
 
@@ -257,7 +257,7 @@ mod tests {
         std::fs::create_dir(&target)
             .expect("destination directory must be created after opening");
         let failure = writer.commit().err().unwrap();
-        assert_eq!(FsErrorKind::Io, failure.error().kind());
+        assert_eq!(FsErrorKind::AlreadyExists, failure.error().kind());
         writer.abort().expect("retained writer must be abortable");
     }
 
