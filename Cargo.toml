@@ -31,6 +31,11 @@ name = "local_file_system_provider_tests"
 path = "tests/local_file_system_provider_tests.rs"
 required-features = ["registry"]
 
+[[test]]
+name = "local_file_uri_path_tests"
+path = "tests/local_file_uri_path_tests.rs"
+required-features = ["registry"]
+
 [dependencies]
 qubit-fs = { path = "../rs-fs", version = "0.2" }
 qubit-local-files = { path = "../rs-local-files", version = "0.7.1" }

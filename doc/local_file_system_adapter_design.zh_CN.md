@@ -68,7 +68,9 @@ qubit_local_files::RootedLocalFileSystem
 应用通过零变体 enum 的关联方法创建门面：
 
 ```rust
-pub enum LocalFileSystems {}
+pub struct LocalFileSystems {
+    _private: (),
+}
 
 impl LocalFileSystems {
     pub fn host() -> FsResult<FileSystem>;
