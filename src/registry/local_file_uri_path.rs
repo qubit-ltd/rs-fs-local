@@ -61,10 +61,8 @@ pub(super) fn decode(
 fn decode_component(
     component: &str,
 ) -> Result<String, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
-    let canonical =
-        LocalPathCodec::decode_uri_component(component).map_err(|_| {
-            invalid_path("local file URI contains an invalid percent escape")
-        })?;
+    let canonical = LocalPathCodec::decode_uri_component(component)
+        .map_err(|_| invalid_path("local file URI path contains an invalid encoded component"))?;
     let bytes = canonical.as_bytes();
     if bytes.contains(&b'/') || bytes.contains(&b'\\') {
         return Err(invalid_path(
