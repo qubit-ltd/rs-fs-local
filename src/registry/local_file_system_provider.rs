@@ -35,6 +35,8 @@ use qubit_spi::{
 
 use crate::LocalFileSystems;
 
+use super::local_file_uri_path;
+
 /// Creates local filesystem resolutions for accepted `file:` configurations.
 #[derive(Clone, Debug)]
 pub struct LocalFileSystemProvider {
@@ -104,8 +106,7 @@ impl LocalFileSystemProvider {
                 "local filesystem provider does not support URI queries",
             ));
         }
-        let path = FsPath::parse(uri.path())
-            .map_err(ProviderFailure::invalid_configuration)?;
+        let path = local_file_uri_path::decode(uri.path())?;
         if !path.is_absolute() {
             return Err(invalid_path("local file URI path must be absolute"));
         }
@@ -156,7 +157,7 @@ fn invalid_options(message: &'static str) -> ProviderFailure<FsError> {
 }
 
 /// Builds an invalid-path provider failure.
-fn invalid_path(message: &'static str) -> ProviderFailure<FsError> {
+pub(super) fn invalid_path(message: &'static str) -> ProviderFailure<FsError> {
     ProviderFailure::invalid_configuration(FsError::new(
         FsErrorKind::InvalidPath,
         FsOperation::Provider,
