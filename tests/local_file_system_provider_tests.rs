@@ -10,6 +10,7 @@
 use qubit_fs::{
     ConnectionUri,
     FileSystemId,
+    FsErrorKind,
     NonSensitiveMetadata,
     UserMetadata,
 };
@@ -52,7 +53,16 @@ fn test_local_provider_rejects_remote_authority() {
             .expect("the test URI must parse"),
     );
 
-    assert!(registry.resolve_config(&config).is_err());
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("remote file authority must be rejected");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+    assert_eq!(
+        creation.decisive_attempt().failure().error().kind(),
+        FsErrorKind::InvalidOptions
+    );
 }
 
 /// Provider configuration rejects every URI and metadata feature outside the
@@ -63,11 +73,15 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
     registry
         .register(LocalFileSystemProvider::default())
         .expect("the local provider descriptor must register");
+    let unsupported_scheme = FileSystemConfig::new(
+        ConnectionUri::parse("memory:///data").expect("test URI must parse"),
+    );
+    assert!(matches!(
+        registry.resolve_config(&unsupported_scheme),
+        Err(FileSystemRegistryError::Resolution(_))
+    ));
+
     for config in [
-        FileSystemConfig::new(
-            ConnectionUri::parse("memory:///data")
-                .expect("test URI must parse"),
-        ),
         FileSystemConfig::new(
             ConnectionUri::parse("file:///data?cache=true")
                 .expect("test URI must parse"),
@@ -81,9 +95,15 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
                 .expect("test metadata must be valid"),
         )),
     ] {
-        assert!(
-            registry.resolve_config(&config).is_err(),
-            "unsupported provider configuration must be rejected"
+        let error = registry
+            .resolve_config(&config)
+            .expect_err("unsupported provider configuration must be rejected");
+        let FileSystemRegistryError::Creation(creation) = error else {
+            panic!("expected provider creation error")
+        };
+        assert_eq!(
+            creation.decisive_attempt().failure().error().kind(),
+            FsErrorKind::InvalidOptions
         );
     }
 
@@ -91,9 +111,15 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
         ConnectionUri::parse("file:relative/path")
             .expect("relative file URI must parse"),
     );
-    assert!(
-        registry.resolve_config(&relative).is_err(),
-        "relative local file URIs must be rejected"
+    let error = registry
+        .resolve_config(&relative)
+        .expect_err("relative local file URIs must be rejected");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+    assert_eq!(
+        creation.decisive_attempt().failure().error().kind(),
+        FsErrorKind::InvalidPath
     );
 }
 
