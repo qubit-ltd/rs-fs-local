@@ -84,8 +84,8 @@ impl LocalFileSystemProvider {
         }
         let uri = config
             .uri()
-            .expose_unredacted(Uri::parse)
-            .expect("FileSystemConfig retains a URI validated at construction");
+            .try_to_uri()
+            .map_err(ProviderFailure::invalid_configuration)?;
         if uri.scheme() != "file" {
             return Err(invalid_options(
                 "local filesystem provider requires the file URI scheme",

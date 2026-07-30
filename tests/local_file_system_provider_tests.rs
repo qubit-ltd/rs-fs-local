@@ -17,6 +17,7 @@ use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::{
     FileSystemConfig,
     FileSystemRegistry,
+    FileSystemRegistryError,
 };
 
 /// A registered host provider resolves an absolute `file:` URI.
@@ -94,6 +95,32 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
         registry.resolve_config(&relative).is_err(),
         "relative local file URIs must be rejected"
     );
+}
+
+/// Embedded secrets are unsupported by the local provider and must return a
+/// provider-creation error instead of panicking while decoding the URI.
+#[test]
+fn test_local_provider_rejects_embedded_secrets_without_panicking() {
+    for text in [
+        "file://user:password@localhost/tmp/data",
+        "file:///tmp/data?token=secret",
+    ] {
+        let registry = FileSystemRegistry::default();
+        registry
+            .register(LocalFileSystemProvider::new())
+            .expect("the local provider descriptor must register");
+        let config = FileSystemConfig::new(
+            ConnectionUri::parse(text).expect("test connection URI must parse"),
+        );
+
+        let outcome =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                registry.resolve_config(&config)
+            }));
+
+        let result = outcome.expect("embedded secrets must not panic");
+        assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
+    }
 }
 
 /// A rooted provider resolves accepted file URIs inside its retained native
