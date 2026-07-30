@@ -9,8 +9,13 @@
 // contract tests.
 //! Native outcome conversion helpers.
 
+use qubit_fs::spi::{
+    CopyAttempt,
+    CopyDeclineReason,
+};
 use qubit_fs::{
     AchievedAtomicity,
+    CopyFailureState,
     CopyMethod,
     CopyOutcome,
     CopyStats,
@@ -18,6 +23,7 @@ use qubit_fs::{
     FileMetadata,
     MetadataPreservePolicy,
     PublicationMethod,
+    RenameFailureState,
     RenameOutcome,
 };
 use qubit_local_files as native_files;
@@ -115,4 +121,69 @@ pub(crate) fn rename(
         AchievedAtomicity::Atomic,
         PublicationMethod::AtomicRename,
     )
+}
+
+/// Converts native copy failure state to its portable equivalent.
+///
+/// # Parameters
+///
+/// - `state`: Native copy publication state.
+///
+/// # Returns
+///
+/// The equivalent portable copy failure state.
+#[inline]
+pub(crate) fn copy_failure_state(
+    state: native_files::LocalCopyFailureState,
+) -> CopyFailureState {
+    match state {
+        native_files::LocalCopyFailureState::Unchanged => {
+            CopyFailureState::Unchanged
+        }
+        native_files::LocalCopyFailureState::PartiallyPublished => {
+            CopyFailureState::PartiallyPublished
+        }
+        native_files::LocalCopyFailureState::Published => {
+            CopyFailureState::Published
+        }
+        native_files::LocalCopyFailureState::Indeterminate => {
+            CopyFailureState::Indeterminate
+        }
+    }
+}
+
+/// Converts native rename failure state to its portable equivalent.
+///
+/// # Parameters
+///
+/// - `state`: Native rename namespace state.
+///
+/// # Returns
+///
+/// The equivalent portable rename failure state.
+#[inline]
+pub(crate) fn rename_failure_state(
+    state: native_files::LocalRenameFailureState,
+) -> RenameFailureState {
+    match state {
+        native_files::LocalRenameFailureState::Unchanged => {
+            RenameFailureState::Unchanged
+        }
+        native_files::LocalRenameFailureState::Renamed => {
+            RenameFailureState::Renamed
+        }
+        native_files::LocalRenameFailureState::Indeterminate => {
+            RenameFailureState::Indeterminate
+        }
+    }
+}
+
+/// Declines native copy so the facade may select a fallback.
+///
+/// # Returns
+///
+/// A `NotApplicable` copy attempt.
+#[inline(always)]
+pub(crate) fn declined_copy() -> CopyAttempt {
+    CopyAttempt::Declined(CopyDeclineReason::NotApplicable)
 }

@@ -9,11 +9,18 @@
 // contract tests.
 //! Native error translation with public request context.
 
+use qubit_fs::spi::{
+    SpiCopyFailure,
+    SpiRenameFailure,
+};
 use qubit_fs::{
+    CopyFailureState,
+    CopyStats,
     FsError,
     FsErrorKind,
     FsOperation,
     Path,
+    RenameFailureState,
 };
 use qubit_local_files as native_files;
 
@@ -91,6 +98,38 @@ pub(crate) fn map_without_path(
 ) -> FsError {
     FsError::with_source(native_kind(error.kind()), operation, message, error)
         .with_provider("local-file")
+}
+
+/// Wraps a path-conversion error before native copy starts.
+///
+/// # Parameters
+///
+/// - `error`: Logical-to-native path conversion failure.
+///
+/// # Returns
+///
+/// A copy failure with unchanged namespace state and empty statistics.
+#[inline(always)]
+pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
+    SpiCopyFailure::new(
+        error,
+        CopyFailureState::Unchanged,
+        CopyStats::default(),
+    )
+}
+
+/// Wraps a path-conversion error before native rename starts.
+///
+/// # Parameters
+///
+/// - `error`: Logical-to-native path conversion failure.
+///
+/// # Returns
+///
+/// A rename failure with unchanged namespace state.
+#[inline(always)]
+pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
+    SpiRenameFailure::new(error, RenameFailureState::Unchanged)
 }
 
 /// Converts a native local-files error kind to its facade equivalent.

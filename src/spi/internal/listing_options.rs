@@ -45,6 +45,7 @@ impl ListingOptions {
     ///
     /// `true` when each entry should retain its observed metadata snapshot.
     #[inline(always)]
+    #[must_use]
     pub(in crate::spi) const fn include_metadata(&self) -> bool {
         self.include_metadata
     }
@@ -60,6 +61,7 @@ impl ListingOptions {
     /// `true` when no prefix is configured or the path is the prefix itself
     /// or one of its descendants.
     #[inline]
+    #[must_use]
     pub(in crate::spi) fn matches(&self, relative: &Path) -> bool {
         self.prefix.as_ref().is_none_or(|prefix| {
             let relative =

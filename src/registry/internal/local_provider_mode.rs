@@ -13,6 +13,7 @@ use qubit_fs::FileSystemId;
 
 /// Selects host-wide or descriptor-rooted authority for a provider instance.
 #[derive(Clone, Debug)]
+#[must_use]
 pub(in crate::registry) enum LocalProviderMode {
     /// Resolves paths against the process host filesystem.
     Host,

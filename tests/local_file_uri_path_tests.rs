@@ -41,3 +41,36 @@ fn test_rooted_provider_decodes_literal_percent_path_segment() {
         .stat(resolution.path())
         .expect("decoded percent path must access the native fixture");
 }
+
+/// Encoded separators and NUL bytes must not alter the logical URI hierarchy.
+#[test]
+fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
+    let root = tempfile::tempdir().expect("provider root must be created");
+    let id = FileSystemId::new("provider-unsafe-path-root")
+        .expect("test identity must be valid");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::rooted(id, root.path()))
+        .expect("the rooted local provider descriptor must register");
+
+    for uri in [
+        "file:///parent%2Fchild",
+        "file:///parent%5Cchild",
+        "file:///name%00",
+    ] {
+        let error = registry
+            .resolve_config(&FileSystemConfig::new(
+                ConnectionUri::parse(uri).expect("test URI must parse"),
+            ))
+            .expect_err("unsafe encoded path component must be rejected");
+        let qubit_fs_registry::FileSystemRegistryError::Creation(creation) =
+            error
+        else {
+            panic!("expected provider creation error")
+        };
+        assert_eq!(
+            qubit_fs::FsErrorKind::InvalidPath,
+            creation.decisive_attempt().failure().error().kind()
+        );
+    }
+}

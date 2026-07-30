@@ -15,6 +15,7 @@ use qubit_fs::{
 };
 use qubit_fs_local::LocalFileSystems;
 
+/// The host factory returns a concrete hierarchical local filesystem.
 #[test]
 fn test_host_factory_returns_concrete_file_system() {
     let file_system =
@@ -59,6 +60,7 @@ fn test_host_factory_advertises_atomic_rename() {
     );
 }
 
+/// An explicitly supplied rooted filesystem identity remains unchanged.
 #[test]
 fn test_rooted_with_id_preserves_explicit_identity() {
     let root = tempfile::tempdir().expect("root should exist");

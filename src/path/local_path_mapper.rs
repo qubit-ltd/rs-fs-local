@@ -41,7 +41,7 @@ use qubit_local_files as native_files;
 pub(crate) fn host(path: &Path) -> FsResult<PathBuf> {
     require_absolute(path)?;
     native_files::LocalPaths::from_canonical_absolute_components(
-        std::iter::once("").chain(path.components()).collect(),
+        std::iter::once("").chain(path.components()),
     )
     .map_err(|error| map(error, path, FsOperation::ParsePath))
 }
@@ -62,12 +62,14 @@ pub(crate) fn host(path: &Path) -> FsResult<PathBuf> {
 /// represented by the native path layer.
 pub(crate) fn rooted(path: &Path) -> FsResult<PathBuf> {
     require_absolute(path)?;
-    let components: Vec<_> = path.components().collect();
-    if components.is_empty() {
+    let mut components = path.components();
+    if components.next().is_none() {
         Ok(PathBuf::new())
     } else {
-        native_files::LocalPaths::from_canonical_relative_components(components)
-            .map_err(|error| map(error, path, FsOperation::ParsePath))
+        native_files::LocalPaths::from_canonical_relative_components(
+            path.components(),
+        )
+        .map_err(|error| map(error, path, FsOperation::ParsePath))
     }
 }
 

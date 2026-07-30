@@ -101,6 +101,8 @@ error rather than assuming a URI was accepted.
 
 The provider rejects configurations outside its local-file contract: a remote
 authority, query, relative path, non-`file` scheme, options, and credentials.
+It decodes percent-encoded path bytes per URI component; encoded separators
+and NUL bytes are rejected so they cannot alter the logical hierarchy.
 
 ## Troubleshooting
 
