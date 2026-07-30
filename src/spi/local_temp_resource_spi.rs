@@ -331,8 +331,7 @@ fn persist_file(
     match resource.persist_with_outcome(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let state = native_persist_failure_state(&error);
-            let (io, resource, _, _, _) = error.into_parts();
+            let (io, resource, _, _, _, state) = error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
                 error_mapper::map_io(
@@ -340,7 +339,7 @@ fn persist_file(
                     FsOperation::PersistTemp,
                     "temporary file persistence failed",
                 ),
-                state,
+                persist_failure_state(state),
             ))
         }
     }
@@ -372,8 +371,7 @@ fn persist_directory(
     match resource.persist_with_outcome(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let state = native_persist_failure_state(&error);
-            let (io, resource, _, _, _) = error.into_parts();
+            let (io, resource, _, _, _, state) = error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
                 error_mapper::map_io(
@@ -381,30 +379,10 @@ fn persist_directory(
                     FsOperation::PersistTemp,
                     "temporary directory persistence failed",
                 ),
-                state,
+                persist_failure_state(state),
             ))
         }
     }
-}
-
-/// Maps native persistence context to the facade recovery state.
-///
-/// # Type Parameters
-///
-/// - `T`: Native temporary resource retained by the persistence error.
-///
-/// # Parameters
-///
-/// - `error`: Native persistence failure carrying recovery context.
-///
-/// # Returns
-///
-/// The equivalent portable persistence failure state.
-#[inline(always)]
-fn native_persist_failure_state<T>(
-    error: &native_files::LocalPersistError<T>,
-) -> PersistFailureState {
-    persist_failure_state(error.state())
 }
 
 /// Converts native persistence state to its portable equivalent.

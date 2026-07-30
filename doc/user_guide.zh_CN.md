@@ -91,6 +91,8 @@ registry 的创建和解析错误由 `qubit-fs-registry` 返回。应检查返�
 
 provider 会拒绝超出本地文件契约的配置：远程 authority、query、相对路径、非 `file` scheme、
 options 和 credentials。
+它按 URI component 解码百分号编码的路径字节；编码后的分隔符和 NUL 字节会被拒绝，避免其
+改变逻辑层级。
 
 ## 排障
 

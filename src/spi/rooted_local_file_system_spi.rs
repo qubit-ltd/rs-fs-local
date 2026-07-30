@@ -9,16 +9,10 @@
 // contract tests.
 //! Descriptor-backed rooted synchronous SPI delegated to `qubit-local-files`.
 
-use super::error_mapper;
-use super::local_directory_stream_spi::LocalDirectoryStreamSpi;
-use super::local_file_writer_spi::LocalFileWriterSpi;
-use super::local_options_mapper;
-use super::local_outcome_mapper;
-use super::local_temp_resource_spi::LocalTempResourceSpi;
-use crate::path::local_path_mapper;
+use std::path::Path as NativePath;
+
 use qubit_fs::spi::{
     CopyAttempt,
-    CopyDeclineReason,
     CopyRequest,
     CreateDirectoryRequest,
     CreateTempDirectoryRequest,
@@ -55,10 +49,16 @@ use qubit_fs::{
     OpenedFileInfo,
     PathConstraints,
     PathSemantics,
-    RenameFailureState,
 };
 use qubit_local_files as native_files;
-use std::path::Path as NativePath;
+
+use super::error_mapper;
+use super::local_directory_stream_spi::LocalDirectoryStreamSpi;
+use super::local_file_writer_spi::LocalFileWriterSpi;
+use super::local_options_mapper;
+use super::local_outcome_mapper;
+use super::local_temp_resource_spi::LocalTempResourceSpi;
+use crate::path::local_path_mapper;
 
 /// Opened rooted implementation of the synchronous local filesystem SPI.
 #[must_use]
@@ -406,12 +406,12 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
         let options = match local_options_mapper::copy(request.options()) {
             Ok(options) => options,
             Err(_) => {
-                return Ok(declined_copy());
+                return Ok(local_outcome_mapper::declined_copy());
             }
         };
         let (source, target) =
             local_path_mapper::rooted_pair(request.source(), request.target())
-                .map_err(copy_path_error)?;
+                .map_err(error_mapper::copy_path_error)?;
         self.native
             .copy(&source, &target, &options)
             .map(|value| {
@@ -427,7 +427,7 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
                         request.source(),
                         Some(request.target()),
                     ),
-                    copy_failure_state(state),
+                    local_outcome_mapper::copy_failure_state(state),
                     qubit_fs::CopyStats {
                         files: stats.files(),
                         directories: stats.directories(),
@@ -460,7 +460,7 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
     ) -> Result<qubit_fs::RenameOutcome, SpiRenameFailure> {
         let (source, target) =
             local_path_mapper::rooted_pair(request.source(), request.target())
-                .map_err(rename_path_error)?;
+                .map_err(error_mapper::rename_path_error)?;
         let options = local_options_mapper::rename(request.options());
         self.native
             .rename(&source, &target, &options)
@@ -480,7 +480,7 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
                         request.source(),
                         Some(request.target()),
                     ),
-                    rename_failure_state(state),
+                    local_outcome_mapper::rename_failure_state(state),
                 )
             })
     }
@@ -574,100 +574,4 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
             Box::new(LocalTempResourceSpi::directory(value, true)),
         ))
     }
-}
-
-/// Converts native copy failure state to its portable equivalent.
-///
-/// # Parameters
-///
-/// - `state`: Native copy publication state.
-///
-/// # Returns
-///
-/// The equivalent portable copy failure state.
-#[inline]
-fn copy_failure_state(
-    state: native_files::LocalCopyFailureState,
-) -> qubit_fs::CopyFailureState {
-    match state {
-        native_files::LocalCopyFailureState::Unchanged => {
-            qubit_fs::CopyFailureState::Unchanged
-        }
-        native_files::LocalCopyFailureState::PartiallyPublished => {
-            qubit_fs::CopyFailureState::PartiallyPublished
-        }
-        native_files::LocalCopyFailureState::Published => {
-            qubit_fs::CopyFailureState::Published
-        }
-        native_files::LocalCopyFailureState::Indeterminate => {
-            qubit_fs::CopyFailureState::Indeterminate
-        }
-    }
-}
-
-/// Converts native rename failure state to its portable equivalent.
-///
-/// # Parameters
-///
-/// - `state`: Native rename namespace state.
-///
-/// # Returns
-///
-/// The equivalent portable state; unknown future native states map to
-/// `Indeterminate`.
-#[inline]
-fn rename_failure_state(
-    state: native_files::LocalRenameFailureState,
-) -> RenameFailureState {
-    match state {
-        native_files::LocalRenameFailureState::Unchanged => {
-            RenameFailureState::Unchanged
-        }
-        native_files::LocalRenameFailureState::Renamed => {
-            RenameFailureState::Renamed
-        }
-        _ => RenameFailureState::Indeterminate,
-    }
-}
-
-/// Declines native copy so the facade may select a fallback.
-///
-/// # Returns
-///
-/// A `NotApplicable` copy attempt.
-#[inline(always)]
-fn declined_copy() -> CopyAttempt {
-    CopyAttempt::Declined(CopyDeclineReason::NotApplicable)
-}
-
-/// Wraps a path-conversion error before native copy starts.
-///
-/// # Parameters
-///
-/// - `error`: Logical-to-native path conversion failure.
-///
-/// # Returns
-///
-/// A copy failure with unchanged namespace state and empty statistics.
-#[inline(always)]
-fn copy_path_error(error: FsError) -> SpiCopyFailure {
-    SpiCopyFailure::new(
-        error,
-        qubit_fs::CopyFailureState::Unchanged,
-        qubit_fs::CopyStats::default(),
-    )
-}
-
-/// Wraps a path-conversion error before native rename starts.
-///
-/// # Parameters
-///
-/// - `error`: Logical-to-native path conversion failure.
-///
-/// # Returns
-///
-/// A rename failure with unchanged namespace state.
-#[inline(always)]
-fn rename_path_error(error: FsError) -> SpiRenameFailure {
-    SpiRenameFailure::new(error, RenameFailureState::Unchanged)
 }
