@@ -33,14 +33,14 @@ canonical URI。
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs-local
+cargo add qubit-fs qubit-fs-local
 ```
 
 如需 registry，请启用 feature，并在应用中添加 registry crate：
 
 ```bash
-cargo add qubit-fs-local --features registry
 cargo add qubit-fs-registry
+cargo add qubit-fs-local --features registry
 ```
 
 ## 核心工作流
@@ -81,8 +81,9 @@ let _metadata = resolution.file_system().stat(resolution.path())?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-如改用 `LocalFileSystemProvider::rooted(id, root)` 注册 provider，则其原生 authority 是给定的
-根目录。
+如改用 `LocalFileSystemProvider::rooted(id, root)` 注册 provider，它会在构造阶段打开给定的
+原生 authority，并返回 `FsResult<LocalFileSystemProvider>`。后续 resolution 会复用已打开的
+authority，不会重新打开配置的根路径。
 
 ## 错误与诊断
 

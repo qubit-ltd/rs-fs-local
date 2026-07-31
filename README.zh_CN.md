@@ -14,12 +14,13 @@
 ## 安装
 
 ```bash
-cargo add qubit-fs-local
+cargo add qubit-fs qubit-fs-local
 ```
 
 仅当需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才启用 registry 集成：
 
 ```bash
+cargo add qubit-fs-registry
 cargo add qubit-fs-local --features registry
 ```
 
