@@ -44,13 +44,11 @@ impl RootedFixture {
             .expect("fixture filesystem identity must be valid");
         let file_system = LocalFileSystems::rooted_with_id(id, root.path())
             .expect("rooted fixture filesystem must open");
-        Self {
-            root,
-            file_system,
-        }
+        Self { root, file_system }
     }
 
-    /// Converts a rooted logical path into its independent native observation path.
+    /// Converts a rooted logical path into its independent native observation
+    /// path.
     fn native_path(&self, path: &Path) -> FixtureResult<PathBuf> {
         let relative = path.as_str().strip_prefix('/').ok_or_else(|| {
             FixtureError::new("rooted fixture path must be absolute")
@@ -99,7 +97,9 @@ impl FileSystemFixture for RootedFixture {
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
         std::fs::read(self.native_path(path)?)
             .map(FixtureSupport::Supported)
-            .map_err(|error| FixtureError::with_source("fixture read failed", error))
+            .map_err(|error| {
+                FixtureError::with_source("fixture read failed", error)
+            })
     }
 }
 
@@ -133,7 +133,8 @@ impl HostFixture {
         })
     }
 
-    /// Converts a host logical path into its independent native observation path.
+    /// Converts a host logical path into its independent native observation
+    /// path.
     fn native_path(&self, path: &Path) -> PathBuf {
         PathBuf::from(path.as_str())
     }
@@ -173,7 +174,9 @@ impl FileSystemFixture for HostFixture {
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
         std::fs::read(self.native_path(path))
             .map(FixtureSupport::Supported)
-            .map_err(|error| FixtureError::with_source("fixture read failed", error))
+            .map_err(|error| {
+                FixtureError::with_source("fixture read failed", error)
+            })
     }
 }
 
