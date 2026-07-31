@@ -97,6 +97,7 @@ impl LocalFileSystemSpi {
             .with(FileSystemCapability::Write)
             .with(FileSystemCapability::Append)
             .with(FileSystemCapability::CreateDirectory)
+            .with(FileSystemCapability::EmptyDirectory)
             .with(FileSystemCapability::Delete)
             .with(FileSystemCapability::RecursiveDelete)
             .with(FileSystemCapability::Rename)
@@ -420,11 +421,23 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 CopyAttempt::Completed(local_outcome_mapper::copy(value))
             })
             .map_err(|error| {
-                error_mapper::map_copy_failure(
-                    error,
-                    FsOperation::Copy,
-                    request.source(),
-                    request.target(),
+                let state = error.state();
+                let stats = *error.partial_stats();
+                SpiCopyFailure::new(
+                    error_mapper::copy_failure(
+                        error,
+                        request.source(),
+                        request.target(),
+                    ),
+                    local_outcome_mapper::copy_failure_state(state),
+                    qubit_fs::CopyStats {
+                        files: stats.files(),
+                        directories: stats.directories(),
+                        bytes: stats.bytes(),
+                        skipped: stats.skipped(),
+                        overwritten: stats.overwritten(),
+                        ..Default::default()
+                    },
                 )
             })
     }
