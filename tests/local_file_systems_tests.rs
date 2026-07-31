@@ -71,6 +71,67 @@ fn test_rooted_with_id_preserves_explicit_identity() {
     assert_eq!(file_system.properties().info().id(), &id);
 }
 
+/// Rooted metadata and existence probes treat the logical root as the opened
+/// native authority rather than an invalid empty descendant.
+#[test]
+fn test_rooted_root_is_statable_and_exists() {
+    let root = tempfile::tempdir().expect("root should exist");
+    let file_system = LocalFileSystems::rooted(root.path())
+        .expect("rooted filesystem should construct");
+
+    assert!(
+        file_system
+            .stat(&Path::root())
+            .expect("root stat should succeed")
+            .is_directory_like()
+    );
+    assert!(
+        file_system
+            .exists(&Path::root())
+            .expect("root existence probe should succeed")
+    );
+}
+
+/// Both local authority modes advertise their exact portable capability set.
+#[test]
+fn test_local_capabilities_include_empty_directory_only_when_supported() {
+    let root = tempfile::tempdir().expect("root should exist");
+    let rooted = LocalFileSystems::rooted(root.path())
+        .expect("rooted filesystem should construct");
+    let host =
+        LocalFileSystems::host().expect("host filesystem should construct");
+
+    for file_system in [&rooted, &host] {
+        let capabilities = file_system.properties().capabilities();
+        assert!(capabilities.contains(FileSystemCapability::EmptyDirectory));
+        assert!(!capabilities.contains(FileSystemCapability::Symlink));
+        for capability in FileSystemCapability::ALL {
+            let expected = matches!(
+                capability,
+                FileSystemCapability::List
+                    | FileSystemCapability::Read
+                    | FileSystemCapability::Write
+                    | FileSystemCapability::Append
+                    | FileSystemCapability::CreateDirectory
+                    | FileSystemCapability::EmptyDirectory
+                    | FileSystemCapability::Delete
+                    | FileSystemCapability::RecursiveDelete
+                    | FileSystemCapability::Rename
+                    | FileSystemCapability::Copy
+                    | FileSystemCapability::TempFile
+                    | FileSystemCapability::TempDirectory
+                    | FileSystemCapability::AtomicRename
+                    | FileSystemCapability::AtomicReplace
+                    | FileSystemCapability::AtomicTempPersist
+                    | FileSystemCapability::DurableCopy
+            );
+            if !expected {
+                assert!(!capabilities.contains(capability));
+            }
+        }
+    }
+}
+
 /// Verifies automatic rooted identities are valid and distinct per facade.
 #[test]
 fn test_rooted_factory_assigns_distinct_process_local_identities() {
