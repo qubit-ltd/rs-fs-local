@@ -21,6 +21,7 @@ include = [
 ]
 keywords = ["filesystem", "local", "provider", "qubit"]
 categories = ["filesystem"]
+metadata.docs.rs.all-features = true
 
 [lib]
 name = "qubit_fs_local"

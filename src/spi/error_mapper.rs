@@ -118,6 +118,21 @@ pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
     )
 }
 
+/// Converts a complete native copy failure without discarding staging or
+/// cleanup diagnostics retained by the native pipeline.
+#[inline]
+pub(crate) fn copy_failure(
+    error: native_files::LocalCopyFailure,
+    path: &Path,
+    target: &Path,
+) -> FsError {
+    let kind = native_kind(error.error().kind());
+    FsError::with_source(kind, FsOperation::Copy, "local copy failed", error)
+        .with_path(path.clone())
+        .with_target(target.clone())
+        .with_provider("local-file")
+}
+
 /// Wraps a path-conversion error before native rename starts.
 ///
 /// # Parameters
@@ -194,10 +209,9 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
         std::io::ErrorKind::Interrupted => FsErrorKind::Interrupted,
         std::io::ErrorKind::TimedOut => FsErrorKind::Timeout,
         std::io::ErrorKind::Unsupported => FsErrorKind::UnsupportedOperation,
-        std::io::ErrorKind::OutOfMemory
-        | std::io::ErrorKind::StorageFull
-        | std::io::ErrorKind::QuotaExceeded => {
-            FsErrorKind::ResourceLimitExceeded
+        std::io::ErrorKind::OutOfMemory => FsErrorKind::ResourceLimitExceeded,
+        std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded => {
+            FsErrorKind::QuotaExceeded
         }
         _ => FsErrorKind::Io,
     }
