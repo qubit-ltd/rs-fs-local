@@ -7,8 +7,6 @@
 // =============================================================================
 //! Authority modes supported by the local filesystem provider.
 
-use std::fmt;
-
 use qubit_fs::FileSystem;
 
 /// Selects host-wide or descriptor-rooted authority for a provider instance.
@@ -19,20 +17,7 @@ pub(in crate::registry) enum LocalProviderMode {
     Host,
     /// Resolves paths below one retained native directory.
     Rooted {
-        /// Opened facade retaining the descriptor-backed authority.
+        /// Filesystem retaining the descriptor-backed native authority.
         file_system: FileSystem,
     },
-}
-
-impl fmt::Debug for LocalProviderMode {
-    /// Formats the mode without expanding the internal filesystem SPI.
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Host => formatter.write_str("Host"),
-            Self::Rooted { file_system } => formatter
-                .debug_struct("Rooted")
-                .field("file_system_id", file_system.properties().info().id())
-                .finish(),
-        }
-    }
 }
