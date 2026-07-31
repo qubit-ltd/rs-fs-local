@@ -159,7 +159,10 @@ fn test_rooted_local_provider_resolves_file_uri() {
         .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id.clone(), root.path()))
+        .register(
+            LocalFileSystemProvider::rooted(id.clone(), root.path())
+                .expect("rooted provider authority must open"),
+        )
         .expect("the rooted local provider descriptor must register");
     let config = FileSystemConfig::new(
         ConnectionUri::parse("file:///inside-root")
@@ -186,7 +189,10 @@ fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
         .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id, root.path()))
+        .register(
+            LocalFileSystemProvider::rooted(id, root.path())
+                .expect("rooted provider authority must open"),
+        )
         .expect("the rooted local provider descriptor must register");
 
     for uri in ["file:///report%20final.txt", "file:///caf%C3%A9.txt"] {
@@ -214,8 +220,8 @@ fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
     );
 }
 
-/// Rooted providers report initialization failure when their retained native
-/// authority cannot be opened.
+/// Rooted providers report initialization failure when their authority cannot
+/// be opened.
 #[test]
 fn test_rooted_local_provider_rejects_missing_root() {
     let root = std::env::temp_dir().join(format!(
@@ -224,17 +230,51 @@ fn test_rooted_local_provider_rejects_missing_root() {
     ));
     let id = FileSystemId::new("provider-missing-root")
         .expect("test identity must be valid");
+    assert!(
+        LocalFileSystemProvider::rooted(id, &root).is_err(),
+        "a missing rooted authority must fail during provider construction"
+    );
+}
+
+/// Rooted provider resolutions keep using the authority opened at construction
+/// even when the configured root path is later replaced.
+#[cfg(unix)]
+#[test]
+fn test_rooted_local_provider_retains_opened_authority() {
+    let root = tempfile::tempdir().expect("provider root must be created");
+    std::fs::write(root.path().join("report.txt"), b"original")
+        .expect("original fixture must be written");
+    let id = FileSystemId::new("provider-retained-authority")
+        .expect("test identity must be valid");
+    let provider = LocalFileSystemProvider::rooted(id, root.path())
+        .expect("rooted provider authority must open");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id, &root))
-        .expect("the rooted provider descriptor must register");
-    let config = FileSystemConfig::new(
-        ConnectionUri::parse("file:///inside-root")
-            .expect("test file URI must parse"),
-    );
+        .register(provider)
+        .expect("the rooted local provider descriptor must register");
 
-    assert!(
-        registry.resolve_config(&config).is_err(),
-        "a missing rooted authority must not resolve"
+    let replacement =
+        tempfile::tempdir().expect("replacement root must be created");
+    std::fs::write(replacement.path().join("report.txt"), b"replacement")
+        .expect("replacement fixture must be written");
+    let moved_root = replacement.path().join("moved-root");
+    std::fs::rename(root.path(), &moved_root)
+        .expect("original root must be replaceable on Unix");
+    std::fs::create_dir(root.path()).expect("replacement path must be created");
+    std::fs::write(root.path().join("report.txt"), b"new-path")
+        .expect("new diagnostic root fixture must be written");
+
+    let resolution = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("file:///report.txt")
+                .expect("test file URI must parse"),
+        ))
+        .expect("rooted provider must resolve through retained authority");
+    assert_eq!(
+        b"original".to_vec(),
+        resolution
+            .file_system()
+            .read_all(resolution.path(), Default::default(), 1024)
+            .expect("retained authority file must be readable")
     );
 }
