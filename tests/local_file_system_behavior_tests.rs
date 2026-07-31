@@ -11,6 +11,7 @@ use qubit_fs::{
     Checksum,
     ChecksumAlgorithm,
     CopyOptions,
+    CopyConflictPolicy,
     CreateDirectoryOptions,
     DeleteOptions,
     FsErrorKind,
@@ -119,6 +120,38 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
             .expect_err("unsupported copy option must be rejected");
         assert_eq!(FsErrorKind::RequirementNotMet, error.error().kind());
     }
+}
+
+/// Copy mode and conflict policy retain their public source-kind semantics.
+#[test]
+fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
+    let (_root, file_system) = rooted_file_system();
+    let file = path("/file");
+    let directory = path("/directory");
+    file_system.write_all(&file, b"payload", WriteOptions::default())
+        .expect("file fixture must be written");
+    file_system.create_directory(&directory, CreateDirectoryOptions::default())
+        .expect("directory fixture must be created");
+
+    let tree_error = file_system.copy(&file, &path("/tree-target"), CopyOptions::tree())
+        .expect_err("tree mode must reject a regular file source");
+    assert_eq!(FsErrorKind::RequirementNotMet, tree_error.error().kind());
+    let file_error = file_system.copy(&directory, &path("/file-target"), CopyOptions::file())
+        .expect_err("file mode must reject a directory source");
+    assert_eq!(FsErrorKind::RequirementNotMet, file_error.error().kind());
+    file_system.copy(&directory, &path("/auto-target"), CopyOptions::default())
+        .expect("auto mode must detect a directory source");
+
+    let skipped = file_system.copy(
+        &file,
+        &directory,
+        CopyOptions {
+            conflict: CopyConflictPolicy::Skip,
+            ..CopyOptions::file()
+        },
+    ).expect("skip policy must keep an incompatible destination");
+    assert_eq!(1, skipped.stats().skipped);
+    assert!(file_system.stat(&directory).expect("destination must remain").is_directory_like());
 }
 
 /// Copying with portable metadata preservation reports the policy actually
