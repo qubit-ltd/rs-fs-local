@@ -93,6 +93,9 @@ let _metadata = resolution.file_system().stat(resolution.path())?;
 during provider construction and returns `FsResult<LocalFileSystemProvider>`.
 Every later resolution reuses that opened authority instead of reopening the
 configured root path.
+Use `rooted_with_descriptor` when registering multiple rooted authorities in one
+registry; each descriptor ID must be distinct and becomes the filesystem
+provider identity.
 
 ## Errors and Diagnostics
 

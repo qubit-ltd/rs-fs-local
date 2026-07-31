@@ -54,6 +54,9 @@ println!("{metadata:?}");
   解析为文件系统、路径和 canonical URI。
 - provider 仅接受绝对 `file:` URI；会拒绝远程 authority、query、相对路径、非 `file`
   scheme，以及配置 options 或 credentials。
+- 如果同一个 registry 需要注册多个 rooted authority，请使用
+  `LocalFileSystemProvider::rooted_with_descriptor`，每个 descriptor ID 会成为其文件系统的
+  provider identity。
 
 当前版本仅提供同步本地文件系统门面，不提供异步本地文件系统门面。
 

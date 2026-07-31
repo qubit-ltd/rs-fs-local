@@ -41,6 +41,8 @@ use super::local_file_uri_path;
 pub struct LocalFileSystemProvider {
     /// Authority mode used for every configuration resolved by this provider.
     mode: LocalProviderMode,
+    /// Descriptor used to register and validate this provider instance.
+    descriptor: Option<ProviderDescriptor>,
 }
 
 impl LocalFileSystemProvider {
@@ -54,6 +56,7 @@ impl LocalFileSystemProvider {
     pub const fn new() -> Self {
         Self {
             mode: LocalProviderMode::Host,
+            descriptor: None,
         }
     }
 
@@ -70,8 +73,31 @@ impl LocalFileSystemProvider {
     /// A provider that resolves accepted paths below the opened `root`.
     #[inline]
     pub fn rooted(id: FileSystemId, root: &Path) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_id(id, root).map(|file_system| Self {
+        Self::rooted_with_descriptor(
+            provider_descriptor!("local-file", aliases: ["file"]),
+            id,
+            root,
+        )
+    }
+
+    /// Creates a rooted provider with caller-specified registration metadata.
+    ///
+    /// The descriptor ID is also exposed by the configured filesystem, so
+    /// multiple rooted local providers can coexist in one registry when they
+    /// use distinct IDs and aliases.
+    pub fn rooted_with_descriptor(
+        descriptor: ProviderDescriptor,
+        id: FileSystemId,
+        root: &Path,
+    ) -> Result<Self, FsError> {
+        LocalFileSystems::rooted_with_provider_id(
+            id,
+            descriptor.id().as_str(),
+            root,
+        )
+        .map(|file_system| Self {
             mode: LocalProviderMode::Rooted { file_system },
+            descriptor: Some(descriptor),
         })
     }
 
@@ -153,7 +179,9 @@ impl ProviderMetadata for LocalFileSystemProvider {
     /// alias.
     #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
-        provider_descriptor!("local-file", aliases: ["file"])
+        self.descriptor.clone().unwrap_or_else(|| {
+            provider_descriptor!("local-file", aliases: ["file"])
+        })
     }
 }
 

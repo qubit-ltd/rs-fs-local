@@ -84,6 +84,8 @@ let _metadata = resolution.file_system().stat(resolution.path())?;
 如改用 `LocalFileSystemProvider::rooted(id, root)` 注册 provider，它会在构造阶段打开给定的
 原生 authority，并返回 `FsResult<LocalFileSystemProvider>`。后续 resolution 会复用已打开的
 authority，不会重新打开配置的根路径。
+如果同一个 registry 需要多个 rooted authority，请改用
+`rooted_with_descriptor`，并为每个 provider 使用不同的 descriptor ID。
 
 ## 错误与诊断
 

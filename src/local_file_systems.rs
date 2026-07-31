@@ -110,6 +110,22 @@ impl LocalFileSystems {
     ) -> FsResult<FileSystem> {
         FileSystem::from_spi(RootedLocalFileSystemSpi::open(id, root)?)
     }
+
+    /// Opens `root` with a caller-specified provider identity.
+    ///
+    /// This is intended for applications that register multiple rooted local
+    /// providers in one provider registry.
+    pub fn rooted_with_provider_id(
+        id: FileSystemId,
+        provider_id: impl std::fmt::Display,
+        root: &Path,
+    ) -> FsResult<FileSystem> {
+        FileSystem::from_spi(RootedLocalFileSystemSpi::open_with_provider_id(
+            id,
+            provider_id,
+            root,
+        )?)
+    }
 }
 
 /// Converts an absolute host-native path to a canonical logical path.
