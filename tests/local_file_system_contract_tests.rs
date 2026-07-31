@@ -19,7 +19,10 @@ use qubit_fs::{
     Path,
     WriteOptions,
 };
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{
+    LocalFileSystems,
+    host_path_to_logical,
+};
 use qubit_fs_testkit::{
     FileSystemFixture,
     FixtureError,
@@ -93,6 +96,17 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(path))
     }
 
+    fn seed_empty_directory(
+        &self,
+        relative: &str,
+    ) -> FixtureResult<FixtureSupport<Path>> {
+        let path = self.path(relative)?;
+        std::fs::create_dir_all(self.native_path(&path)?).map_err(|error| {
+            FixtureError::with_source("fixture directory creation failed", error)
+        })?;
+        Ok(FixtureSupport::Supported(path))
+    }
+
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
         std::fs::read(self.native_path(path)?)
             .map(FixtureSupport::Supported)
@@ -122,11 +136,7 @@ impl HostFixture {
     /// Converts a fixture-relative path into the host facade's logical path.
     fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
         let native = self.root.path().join(relative);
-        Path::parse(
-            native
-                .to_str()
-                .expect("test fixture paths must be valid UTF-8"),
-        )
+        host_path_to_logical(&native)
         .map_err(|error| {
             FixtureError::with_source("fixture path is invalid", error)
         })
@@ -166,6 +176,17 @@ impl FileSystemFixture for HostFixture {
         }
         std::fs::write(native, bytes).map_err(|error| {
             FixtureError::with_source("fixture seed write failed", error)
+        })?;
+        Ok(FixtureSupport::Supported(path))
+    }
+
+    fn seed_empty_directory(
+        &self,
+        relative: &str,
+    ) -> FixtureResult<FixtureSupport<Path>> {
+        let path = self.logical_path(relative)?;
+        std::fs::create_dir_all(self.native_path(&path)).map_err(|error| {
+            FixtureError::with_source("fixture directory creation failed", error)
         })?;
         Ok(FixtureSupport::Supported(path))
     }

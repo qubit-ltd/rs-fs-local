@@ -25,7 +25,10 @@ use qubit_fs::{
     WriteOptions,
     WritePrecondition,
 };
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{
+    LocalFileSystems,
+    host_path_to_logical,
+};
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
 fn rooted_file_system() -> (tempfile::TempDir, qubit_fs::FileSystem) {
@@ -237,12 +240,8 @@ fn path(value: &str) -> Path {
 #[cfg(unix)]
 fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
     let native = root.path().join(relative);
-    Path::parse(
-        native
-            .to_str()
-            .expect("test native path must be valid UTF-8"),
-    )
-    .expect("test host logical path must be valid")
+    host_path_to_logical(&native)
+        .expect("test host logical path must be valid")
 }
 
 /// Host failures retain their operation-specific public error classifications.
