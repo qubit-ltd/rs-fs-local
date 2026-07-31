@@ -14,6 +14,7 @@ use qubit_fs::{
     FsError,
     FsErrorKind,
     FsOperation,
+    FsResult,
     Path as FsPath,
     Uri,
 };
@@ -67,15 +68,19 @@ impl LocalFileSystemProvider {
     ///
     /// # Returns
     ///
-    /// A provider that resolves accepted paths below `root`.
+    /// A provider that resolves accepted paths below the opened authority at
+    /// `root`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the native initialization error when `root` cannot be opened or
+    /// the rooted facade cannot be assembled.
     #[inline]
-    pub fn rooted(id: FileSystemId, root: &Path) -> Self {
-        Self {
-            mode: LocalProviderMode::Rooted {
-                id,
-                root: root.to_path_buf(),
-            },
-        }
+    pub fn rooted(id: FileSystemId, root: &Path) -> FsResult<Self> {
+        let file_system = LocalFileSystems::rooted_with_id(id, root)?;
+        Ok(Self {
+            mode: LocalProviderMode::Rooted { file_system },
+        })
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -183,8 +188,8 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(),
-            LocalProviderMode::Rooted { id, root } => {
-                LocalFileSystems::rooted_with_id(id.clone(), root)
+            LocalProviderMode::Rooted { file_system } => {
+                Ok(file_system.clone())
             }
         }
         .map_err(ProviderFailure::initialization_failed)?;
