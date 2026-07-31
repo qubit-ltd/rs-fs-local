@@ -146,6 +146,56 @@ fn test_rooted_copy_reports_portable_metadata_preservation() {
     assert_eq!(outcome.metadata(), MetadataPreservePolicy::Portable);
 }
 
+/// Copy failures retain native staging cleanup diagnostics as a typed source.
+#[cfg(coverage)]
+#[test]
+fn test_host_copy_failure_retains_cleanup_diagnostics() {
+    use std::error::Error;
+    use std::process::Command;
+
+    const TEST_NAME: &str =
+        "test_host_copy_failure_retains_cleanup_diagnostics";
+    const FAULT_ENV: &str = "QUBIT_LOCAL_FILES_COVERAGE_FAULT";
+    if std::env::var_os(FAULT_ENV).is_none() {
+        let executable =
+            std::env::current_exe().expect("test executable must be available");
+        let status = Command::new(executable)
+            .arg("--exact")
+            .arg(TEST_NAME)
+            .arg("--nocapture")
+            .env(FAULT_ENV, "copy-staging-copy-cleanup")
+            .status()
+            .expect("coverage fault child must launch");
+        assert!(status.success(), "coverage fault child must pass");
+        return;
+    }
+
+    let root = tempfile::tempdir().expect("copy fixture root must be created");
+    let source = root.path().join("source");
+    std::fs::create_dir(&source)
+        .expect("copy source directory must be created");
+    std::fs::write(source.join("payload"), b"payload")
+        .expect("copy source must be written");
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must be opened");
+    let failure = file_system
+        .copy(
+            &host_path(&root, "source"),
+            &host_path(&root, "target"),
+            CopyOptions::tree(),
+        )
+        .expect_err("staging and cleanup faults must fail");
+    let source = Error::source(failure.error())
+        .expect("copy failure must retain a native source");
+    let native = source
+        .downcast_ref::<qubit_local_files::LocalCopyFailure>()
+        .expect("copy failure source must retain LocalCopyFailure");
+
+    assert!(native.staging_path().is_some());
+    assert!(native.cleanup_error().is_some());
+    assert_eq!(0, native.partial_stats().files());
+}
+
 /// Rooted operation failures must preserve their public classifications.
 #[test]
 fn test_rooted_operations_map_missing_entries() {
@@ -221,14 +271,22 @@ fn test_rooted_operations_map_missing_entries() {
             ..TempFileOptions::default()
         })
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::InvalidPath, temporary_file.kind());
+    assert_eq!(FsErrorKind::InvalidOptions, temporary_file.kind());
     let temporary_directory = file_system
         .create_temp_directory(TempDirectoryOptions {
             parent: Some(regular_file),
             ..TempDirectoryOptions::default()
         })
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::InvalidPath, temporary_directory.kind());
+    assert_eq!(FsErrorKind::InvalidOptions, temporary_directory.kind());
+
+    let invalid_prefix = file_system
+        .create_temp_file(TempFileOptions {
+            prefix: "invalid/prefix".to_owned(),
+            ..TempFileOptions::default()
+        })
+        .expect_err("a temp prefix containing a separator must fail");
+    assert_eq!(FsErrorKind::InvalidOptions, invalid_prefix.kind());
 }
 
 /// Parses one absolute logical path used by the rooted adapter.
@@ -418,7 +476,7 @@ fn test_rooted_mutation_operations_cover_conflict_and_recursive_policies() {
     let error = file_system
         .delete_directory(&path("/tree"), DeleteOptions::default())
         .expect_err("non-recursive deletion must reject a nonempty directory");
-    assert_eq!(error.kind(), FsErrorKind::Io);
+    assert_eq!(error.kind(), FsErrorKind::Conflict);
     file_system
         .delete_directory(
             &path("/tree"),
@@ -538,6 +596,13 @@ fn test_host_operations_map_missing_native_entries() {
     let regular_file = root.path().join("regular-file");
     std::fs::write(&regular_file, b"file")
         .expect("regular fixture file must be written");
+
+    let file_child = host_path(&root, "regular-file/child");
+    let file_child_writer = file_system
+        .open_writer(&file_child, WriteOptions::default())
+        .expect_err("a regular file cannot be used as a parent directory");
+    assert_eq!(FsErrorKind::NotDirectory, file_child_writer.kind());
+
     let create_directory = file_system
         .create_directory(
             &host_path(&root, "regular-file"),
@@ -561,6 +626,14 @@ fn test_host_operations_map_missing_native_entries() {
         })
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::AlreadyExists, temporary_directory.kind());
+
+    let invalid_prefix = file_system
+        .create_temp_file(TempFileOptions {
+            prefix: "invalid/prefix".to_owned(),
+            ..TempFileOptions::default()
+        })
+        .expect_err("a host temp prefix containing a separator must fail");
+    assert_eq!(FsErrorKind::InvalidOptions, invalid_prefix.kind());
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.
