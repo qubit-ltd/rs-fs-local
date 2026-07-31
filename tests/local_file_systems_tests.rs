@@ -79,13 +79,17 @@ fn test_rooted_root_is_statable_and_exists() {
     let file_system = LocalFileSystems::rooted(root.path())
         .expect("rooted filesystem should construct");
 
-    assert!(file_system
-        .stat(&Path::root())
-        .expect("root stat should succeed")
-        .is_directory_like());
-    assert!(file_system
-        .exists(&Path::root())
-        .expect("root existence probe should succeed"));
+    assert!(
+        file_system
+            .stat(&Path::root())
+            .expect("root stat should succeed")
+            .is_directory_like()
+    );
+    assert!(
+        file_system
+            .exists(&Path::root())
+            .expect("root existence probe should succeed")
+    );
 }
 
 /// Both local authority modes advertise their exact portable capability set.
@@ -94,7 +98,8 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
     let root = tempfile::tempdir().expect("root should exist");
     let rooted = LocalFileSystems::rooted(root.path())
         .expect("rooted filesystem should construct");
-    let host = LocalFileSystems::host().expect("host filesystem should construct");
+    let host =
+        LocalFileSystems::host().expect("host filesystem should construct");
 
     for file_system in [&rooted, &host] {
         let capabilities = file_system.properties().capabilities();

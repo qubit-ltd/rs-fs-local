@@ -159,7 +159,10 @@ fn test_rooted_local_provider_resolves_file_uri() {
         .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id.clone(), root.path()).expect("rooted provider must open"))
+        .register(
+            LocalFileSystemProvider::rooted(id.clone(), root.path())
+                .expect("rooted provider must open"),
+        )
         .expect("the rooted local provider descriptor must register");
     let config = FileSystemConfig::new(
         ConnectionUri::parse("file:///inside-root")
@@ -180,7 +183,8 @@ fn test_rooted_local_provider_pins_opened_authority() {
     let parent = tempfile::tempdir().expect("provider parent must be created");
     let root = parent.path().join("root");
     std::fs::create_dir(&root).expect("provider root must be created");
-    std::fs::write(root.join("value"), b"original").expect("fixture must be written");
+    std::fs::write(root.join("value"), b"original")
+        .expect("fixture must be written");
     let id = FileSystemId::new("provider-pinned-root")
         .expect("test identity must be valid");
     let provider = LocalFileSystemProvider::rooted(id, &root)
@@ -193,12 +197,18 @@ fn test_rooted_local_provider_pins_opened_authority() {
 
     let registry = FileSystemRegistry::default();
     registry.register(provider).expect("provider must register");
-    let resolution = registry.resolve_config(&FileSystemConfig::new(
-        ConnectionUri::parse("file:///value").expect("test URI must parse"),
-    )).expect("provider must resolve pinned authority");
-    assert_eq!(b"original".to_vec(), resolution.file_system()
-        .read_all(resolution.path(), Default::default(), 1024)
-        .expect("pinned root must retain original entry"));
+    let resolution = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("file:///value").expect("test URI must parse"),
+        ))
+        .expect("provider must resolve pinned authority");
+    assert_eq!(
+        b"original".to_vec(),
+        resolution
+            .file_system()
+            .read_all(resolution.path(), Default::default(), 1024)
+            .expect("pinned root must retain original entry")
+    );
 }
 
 /// A rooted provider decodes percent-encoded file URI path segments before
@@ -214,7 +224,10 @@ fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
         .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id, root.path()).expect("rooted provider must open"))
+        .register(
+            LocalFileSystemProvider::rooted(id, root.path())
+                .expect("rooted provider must open"),
+        )
         .expect("the rooted local provider descriptor must register");
 
     for uri in ["file:///report%20final.txt", "file:///caf%C3%A9.txt"] {
