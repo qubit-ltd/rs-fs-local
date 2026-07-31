@@ -27,6 +27,7 @@ use qubit_fs_testkit::{
     FixtureResult,
     FixtureSupport,
 };
+use qubit_local_files::LocalPaths;
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.
 struct RootedFixture {
@@ -104,13 +105,11 @@ impl FileSystemFixture for RootedFixture {
 }
 
 /// Isolated host filesystem fixture used to exercise the host SPI path.
-#[cfg(unix)]
 struct HostFixture {
     root: tempfile::TempDir,
     file_system: FileSystem,
 }
 
-#[cfg(unix)]
 impl HostFixture {
     /// Creates a fresh host facade rooted at an isolated native directory.
     fn new() -> Self {
@@ -123,24 +122,35 @@ impl HostFixture {
     /// Converts a fixture-relative path into the host facade's logical path.
     fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
         let native = self.root.path().join(relative);
-        Path::parse(
-            native
-                .to_str()
-                .expect("test fixture paths must be valid UTF-8"),
-        )
-        .map_err(|error| {
+        let components = LocalPaths::to_canonical_absolute_components(&native)
+            .map_err(|error| {
+                FixtureError::with_source("fixture path is invalid", error)
+            })?;
+        let (root, rest) = components
+            .split_first()
+            .ok_or_else(|| FixtureError::new("fixture path has no root"))?;
+        if !root.is_empty() {
+            return Err(FixtureError::new(
+                "fixture path has an unsupported native root",
+            ));
+        }
+        Path::parse(&format!("/{}", rest.join("/"))).map_err(|error| {
             FixtureError::with_source("fixture path is invalid", error)
         })
     }
 
     /// Converts a host logical path into its independent native observation
     /// path.
-    fn native_path(&self, path: &Path) -> PathBuf {
-        PathBuf::from(path.as_str())
+    fn native_path(&self, path: &Path) -> FixtureResult<PathBuf> {
+        LocalPaths::from_canonical_absolute_components(
+            std::iter::once("").chain(path.components()),
+        )
+        .map_err(|error| {
+            FixtureError::with_source("fixture native path is invalid", error)
+        })
     }
 }
 
-#[cfg(unix)]
 impl FileSystemFixture for HostFixture {
     fn file_system(&self) -> &FileSystem {
         &self.file_system
@@ -156,7 +166,7 @@ impl FileSystemFixture for HostFixture {
         bytes: &[u8],
     ) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.logical_path(relative)?;
-        let native = self.native_path(&path);
+        let native = self.native_path(&path)?;
         if let Some(parent) = native.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
                 FixtureError::with_source(
@@ -172,7 +182,7 @@ impl FileSystemFixture for HostFixture {
     }
 
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
-        std::fs::read(self.native_path(path))
+        std::fs::read(self.native_path(path)?)
             .map(FixtureSupport::Supported)
             .map_err(|error| {
                 FixtureError::with_source("fixture read failed", error)
@@ -188,7 +198,6 @@ fn test_rooted_local_adapter_passes_provider_contract() {
 }
 
 /// The host adapter satisfies the synchronous provider-neutral contract.
-#[cfg(unix)]
 #[test]
 fn test_host_local_adapter_passes_provider_contract() {
     let fixture = HostFixture::new();
