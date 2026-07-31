@@ -420,24 +420,11 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 CopyAttempt::Completed(local_outcome_mapper::copy(value))
             })
             .map_err(|error| {
-                let (error, state, stats, _staging, _cleanup) =
-                    error.into_parts();
-                SpiCopyFailure::new(
-                    error_mapper::map(
-                        error,
-                        FsOperation::Copy,
-                        request.source(),
-                        Some(request.target()),
-                    ),
-                    local_outcome_mapper::copy_failure_state(state),
-                    qubit_fs::CopyStats {
-                        files: stats.files(),
-                        directories: stats.directories(),
-                        bytes: stats.bytes(),
-                        skipped: stats.skipped(),
-                        overwritten: stats.overwritten(),
-                        ..Default::default()
-                    },
+                error_mapper::map_copy_failure(
+                    error,
+                    FsOperation::Copy,
+                    request.source(),
+                    request.target(),
                 )
             })
     }
