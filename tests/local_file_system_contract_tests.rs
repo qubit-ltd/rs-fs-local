@@ -19,15 +19,16 @@ use qubit_fs::{
     Path,
     WriteOptions,
 };
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{
+    LocalFileSystems,
+    host_path_to_logical,
+};
 use qubit_fs_testkit::{
-    FileSystemContractSuite,
     FileSystemFixture,
     FixtureError,
     FixtureResult,
     FixtureSupport,
 };
-use qubit_local_files::LocalPaths;
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.
 struct RootedFixture {
@@ -95,6 +96,20 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(path))
     }
 
+    fn seed_empty_directory(
+        &self,
+        relative: &str,
+    ) -> FixtureResult<FixtureSupport<Path>> {
+        let path = self.path(relative)?;
+        std::fs::create_dir_all(self.native_path(&path)?).map_err(|error| {
+            FixtureError::with_source(
+                "fixture directory creation failed",
+                error,
+            )
+        })?;
+        Ok(FixtureSupport::Supported(path))
+    }
+
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
         std::fs::read(self.native_path(path)?)
             .map(FixtureSupport::Supported)
@@ -105,11 +120,13 @@ impl FileSystemFixture for RootedFixture {
 }
 
 /// Isolated host filesystem fixture used to exercise the host SPI path.
+#[cfg(unix)]
 struct HostFixture {
     root: tempfile::TempDir,
     file_system: FileSystem,
 }
 
+#[cfg(unix)]
 impl HostFixture {
     /// Creates a fresh host facade rooted at an isolated native directory.
     fn new() -> Self {
@@ -122,35 +139,19 @@ impl HostFixture {
     /// Converts a fixture-relative path into the host facade's logical path.
     fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
         let native = self.root.path().join(relative);
-        let components = LocalPaths::to_canonical_absolute_components(&native)
-            .map_err(|error| {
-                FixtureError::with_source("fixture path is invalid", error)
-            })?;
-        let (root, rest) = components
-            .split_first()
-            .ok_or_else(|| FixtureError::new("fixture path has no root"))?;
-        if !root.is_empty() {
-            return Err(FixtureError::new(
-                "fixture path has an unsupported native root",
-            ));
-        }
-        Path::parse(&format!("/{}", rest.join("/"))).map_err(|error| {
+        host_path_to_logical(&native).map_err(|error| {
             FixtureError::with_source("fixture path is invalid", error)
         })
     }
 
     /// Converts a host logical path into its independent native observation
     /// path.
-    fn native_path(&self, path: &Path) -> FixtureResult<PathBuf> {
-        LocalPaths::from_canonical_absolute_components(
-            std::iter::once("").chain(path.components()),
-        )
-        .map_err(|error| {
-            FixtureError::with_source("fixture native path is invalid", error)
-        })
+    fn native_path(&self, path: &Path) -> PathBuf {
+        PathBuf::from(path.as_str())
     }
 }
 
+#[cfg(unix)]
 impl FileSystemFixture for HostFixture {
     fn file_system(&self) -> &FileSystem {
         &self.file_system
@@ -166,7 +167,7 @@ impl FileSystemFixture for HostFixture {
         bytes: &[u8],
     ) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.logical_path(relative)?;
-        let native = self.native_path(&path)?;
+        let native = self.native_path(&path);
         if let Some(parent) = native.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
                 FixtureError::with_source(
@@ -181,8 +182,22 @@ impl FileSystemFixture for HostFixture {
         Ok(FixtureSupport::Supported(path))
     }
 
+    fn seed_empty_directory(
+        &self,
+        relative: &str,
+    ) -> FixtureResult<FixtureSupport<Path>> {
+        let path = self.logical_path(relative)?;
+        std::fs::create_dir_all(self.native_path(&path)).map_err(|error| {
+            FixtureError::with_source(
+                "fixture directory creation failed",
+                error,
+            )
+        })?;
+        Ok(FixtureSupport::Supported(path))
+    }
+
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
-        std::fs::read(self.native_path(path)?)
+        std::fs::read(self.native_path(path))
             .map(FixtureSupport::Supported)
             .map_err(|error| {
                 FixtureError::with_source("fixture read failed", error)
@@ -190,18 +205,15 @@ impl FileSystemFixture for HostFixture {
     }
 }
 
-/// The rooted adapter satisfies the synchronous provider-neutral contract.
-#[test]
-fn test_rooted_local_adapter_passes_provider_contract() {
-    let fixture = RootedFixture::new();
-    FileSystemContractSuite::new(&fixture).assert_all();
+#[cfg(unix)]
+qubit_fs_testkit::register_file_system_contract_tests! {
+    module: host_contracts,
+    fixture: super::HostFixture::new,
 }
 
-/// The host adapter satisfies the synchronous provider-neutral contract.
-#[test]
-fn test_host_local_adapter_passes_provider_contract() {
-    let fixture = HostFixture::new();
-    FileSystemContractSuite::new(&fixture).assert_all();
+qubit_fs_testkit::register_file_system_contract_tests! {
+    module: rooted_contracts,
+    fixture: super::RootedFixture::new,
 }
 
 /// Rooted listings preserve the namespace of a non-root request path.

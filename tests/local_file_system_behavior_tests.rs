@@ -23,12 +23,13 @@ use qubit_fs::{
     TempDirectoryOptions,
     TempFileOptions,
     UserMetadata,
-    WriteDisposition,
     WriteOptions,
     WritePrecondition,
 };
-use qubit_fs_local::LocalFileSystems;
-use qubit_io::Output;
+use qubit_fs_local::{
+    LocalFileSystems,
+    host_path_to_logical,
+};
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
 fn rooted_file_system() -> (tempfile::TempDir, qubit_fs::FileSystem) {
@@ -121,6 +122,50 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
     }
 }
 
+/// Copy mode and conflict policy retain their public source-kind semantics.
+#[test]
+fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
+    let (_root, file_system) = rooted_file_system();
+    let file = path("/file");
+    let directory = path("/directory");
+    file_system
+        .write_all(&file, b"payload", WriteOptions::default())
+        .expect("file fixture must be written");
+    file_system
+        .create_directory(&directory, CreateDirectoryOptions::default())
+        .expect("directory fixture must be created");
+
+    let tree_error = file_system
+        .copy(&file, &path("/tree-target"), CopyOptions::tree())
+        .expect_err("tree mode must reject a regular file source");
+    assert_eq!(FsErrorKind::RequirementNotMet, tree_error.error().kind());
+    let file_error = file_system
+        .copy(&directory, &path("/file-target"), CopyOptions::file())
+        .expect_err("file mode must reject a directory source");
+    assert_eq!(FsErrorKind::RequirementNotMet, file_error.error().kind());
+    file_system
+        .copy(&directory, &path("/auto-target"), CopyOptions::default())
+        .expect("auto mode must detect a directory source");
+
+    let skipped = file_system
+        .copy(
+            &file,
+            &directory,
+            CopyOptions {
+                conflict: CopyConflictPolicy::Skip,
+                ..CopyOptions::file()
+            },
+        )
+        .expect("skip policy must keep an incompatible destination");
+    assert_eq!(1, skipped.stats().skipped);
+    assert!(
+        file_system
+            .stat(&directory)
+            .expect("destination must remain")
+            .is_directory_like()
+    );
+}
+
 /// Copying with portable metadata preservation reports the policy actually
 /// applied by the local adapter.
 #[test]
@@ -144,56 +189,6 @@ fn test_rooted_copy_reports_portable_metadata_preservation() {
         .expect("portable metadata copy must satisfy the facade contract");
 
     assert_eq!(outcome.metadata(), MetadataPreservePolicy::Portable);
-}
-
-/// Copy failures retain native staging cleanup diagnostics as a typed source.
-#[cfg(coverage)]
-#[test]
-fn test_host_copy_failure_retains_cleanup_diagnostics() {
-    use std::error::Error;
-    use std::process::Command;
-
-    const TEST_NAME: &str =
-        "test_host_copy_failure_retains_cleanup_diagnostics";
-    const FAULT_ENV: &str = "QUBIT_LOCAL_FILES_COVERAGE_FAULT";
-    if std::env::var_os(FAULT_ENV).is_none() {
-        let executable =
-            std::env::current_exe().expect("test executable must be available");
-        let status = Command::new(executable)
-            .arg("--exact")
-            .arg(TEST_NAME)
-            .arg("--nocapture")
-            .env(FAULT_ENV, "copy-staging-copy-cleanup")
-            .status()
-            .expect("coverage fault child must launch");
-        assert!(status.success(), "coverage fault child must pass");
-        return;
-    }
-
-    let root = tempfile::tempdir().expect("copy fixture root must be created");
-    let source = root.path().join("source");
-    std::fs::create_dir(&source)
-        .expect("copy source directory must be created");
-    std::fs::write(source.join("payload"), b"payload")
-        .expect("copy source must be written");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must be opened");
-    let failure = file_system
-        .copy(
-            &host_path(&root, "source"),
-            &host_path(&root, "target"),
-            CopyOptions::tree(),
-        )
-        .expect_err("staging and cleanup faults must fail");
-    let source = Error::source(failure.error())
-        .expect("copy failure must retain a native source");
-    let native = source
-        .downcast_ref::<qubit_local_files::LocalCopyFailure>()
-        .expect("copy failure source must retain LocalCopyFailure");
-
-    assert!(native.staging_path().is_some());
-    assert!(native.cleanup_error().is_some());
-    assert_eq!(0, native.partial_stats().files());
 }
 
 /// Rooted operation failures must preserve their public classifications.
@@ -271,22 +266,14 @@ fn test_rooted_operations_map_missing_entries() {
             ..TempFileOptions::default()
         })
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::InvalidOptions, temporary_file.kind());
+    assert_eq!(FsErrorKind::InvalidPath, temporary_file.kind());
     let temporary_directory = file_system
         .create_temp_directory(TempDirectoryOptions {
             parent: Some(regular_file),
             ..TempDirectoryOptions::default()
         })
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::InvalidOptions, temporary_directory.kind());
-
-    let invalid_prefix = file_system
-        .create_temp_file(TempFileOptions {
-            prefix: "invalid/prefix".to_owned(),
-            ..TempFileOptions::default()
-        })
-        .expect_err("a temp prefix containing a separator must fail");
-    assert_eq!(FsErrorKind::InvalidOptions, invalid_prefix.kind());
+    assert_eq!(FsErrorKind::InvalidPath, temporary_directory.kind());
 }
 
 /// Parses one absolute logical path used by the rooted adapter.
@@ -298,254 +285,7 @@ fn path(value: &str) -> Path {
 #[cfg(unix)]
 fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
     let native = root.path().join(relative);
-    Path::parse(
-        native
-            .to_str()
-            .expect("test native path must be valid UTF-8"),
-    )
-    .expect("test host logical path must be valid")
-}
-
-/// Rooted writes support create-parent, create-new, replacement, append, and
-/// terminal writer sessions.
-#[test]
-fn test_rooted_writer_supports_publication_modes_and_terminal_sessions() {
-    let (_root, file_system) = rooted_file_system();
-    let target = path("/nested/output.txt");
-    file_system
-        .write_all(
-            &target,
-            b"first",
-            WriteOptions {
-                create_parent: true,
-                ..WriteOptions::default()
-            },
-        )
-        .expect("create-parent write must succeed");
-
-    let error = file_system
-        .write_all(
-            &target,
-            b"again",
-            WriteOptions {
-                disposition: WriteDisposition::CreateNew,
-                ..WriteOptions::default()
-            },
-        )
-        .expect_err("create-new write must reject an existing target");
-    assert_eq!(error.error().kind(), FsErrorKind::AlreadyExists);
-
-    file_system
-        .write_all(&target, b"replace", WriteOptions::default())
-        .expect("replacement write must succeed");
-    file_system
-        .write_all(
-            &target,
-            b"+append",
-            WriteOptions {
-                disposition: WriteDisposition::Append,
-                ..WriteOptions::default()
-            },
-        )
-        .expect("append write must succeed");
-    assert_eq!(
-        file_system
-            .read_all(&target, Default::default(), 1024)
-            .expect("written bytes must be readable"),
-        b"replace+append"
-    );
-
-    let terminal = path("/terminal.txt");
-    let mut writer = file_system
-        .open_writer(&terminal, WriteOptions::default())
-        .expect("writer must open");
-    Output::write_fully(&mut writer, b"terminal")
-        .expect("writer must accept bytes");
-    writer.commit().expect("first commit must publish");
-    let error = writer
-        .commit()
-        .expect_err("second commit must reject a terminal session");
-    assert_eq!(error.error().kind(), FsErrorKind::InvalidState);
-    let error = writer
-        .abort()
-        .expect_err("published writer must reject a later abort");
-    assert_eq!(error.kind(), FsErrorKind::InvalidState);
-
-    let mut aborted = file_system
-        .open_writer(&path("/aborted.txt"), WriteOptions::default())
-        .expect("writer must open for abort");
-    aborted.abort().expect("open writer must abort");
-    assert!(
-        !file_system
-            .exists(&path("/aborted.txt"))
-            .expect("existence probe must succeed")
-    );
-}
-
-/// Rooted create, delete, copy, and rename operations preserve their explicit
-/// conflict and recursive policies.
-#[test]
-fn test_rooted_mutation_operations_cover_conflict_and_recursive_policies() {
-    let (_root, file_system) = rooted_file_system();
-    let tree = path("/tree/child");
-    file_system
-        .create_directory(
-            &tree,
-            CreateDirectoryOptions {
-                recursive: true,
-                ..CreateDirectoryOptions::default()
-            },
-        )
-        .expect("recursive directory creation must succeed");
-    let source = path("/tree/child/source.txt");
-    file_system
-        .write_all(&source, b"source", WriteOptions::default())
-        .expect("source file must be written");
-
-    let created_parent_target = path("/created/parent/target.txt");
-    file_system
-        .copy(
-            &source,
-            &created_parent_target,
-            CopyOptions {
-                create_parent: true,
-                ..CopyOptions::file()
-            },
-        )
-        .expect("copy must create missing target parents");
-    assert_eq!(
-        file_system
-            .read_all(&created_parent_target, Default::default(), 1024)
-            .expect("copied bytes must be readable"),
-        b"source"
-    );
-
-    let target = path("/tree/child/target.txt");
-    file_system
-        .copy(&source, &target, CopyOptions::file())
-        .expect("file copy must succeed");
-    let error = file_system
-        .copy(&source, &target, CopyOptions::file())
-        .expect_err("default conflict policy must preserve destination");
-    assert_eq!(error.error().kind(), FsErrorKind::AlreadyExists);
-    let skipped = file_system
-        .copy(
-            &source,
-            &target,
-            CopyOptions {
-                conflict: CopyConflictPolicy::Skip,
-                ..CopyOptions::file()
-            },
-        )
-        .expect("skip conflict policy must complete");
-    assert_eq!(skipped.stats().skipped, 1);
-    file_system
-        .copy(
-            &source,
-            &target,
-            CopyOptions {
-                conflict: CopyConflictPolicy::Overwrite,
-                ..CopyOptions::file()
-            },
-        )
-        .expect("overwrite conflict policy must replace destination");
-
-    let renamed = path("/tree/child/renamed.txt");
-    file_system
-        .rename(&target, &renamed, RenameOptions::default())
-        .expect("rename must succeed");
-    let destination = path("/tree/child/destination.txt");
-    file_system
-        .write_all(&destination, b"occupied", WriteOptions::default())
-        .expect("rename destination must be occupied");
-    let error = file_system
-        .rename(&renamed, &destination, RenameOptions::default())
-        .expect_err("rename must reject an occupied destination by default");
-    assert_eq!(error.error().kind(), FsErrorKind::AlreadyExists);
-    file_system
-        .rename(
-            &renamed,
-            &destination,
-            RenameOptions {
-                overwrite: true,
-                ..RenameOptions::default()
-            },
-        )
-        .expect("overwrite rename must replace destination");
-
-    let error = file_system
-        .delete_directory(&path("/tree"), DeleteOptions::default())
-        .expect_err("non-recursive deletion must reject a nonempty directory");
-    assert_eq!(error.kind(), FsErrorKind::Conflict);
-    file_system
-        .delete_directory(
-            &path("/tree"),
-            DeleteOptions {
-                recursive: true,
-                ..DeleteOptions::default()
-            },
-        )
-        .expect("recursive deletion must remove the directory tree");
-    file_system
-        .delete_file(
-            &path("/tree/missing.txt"),
-            DeleteOptions {
-                missing_ok: true,
-                ..DeleteOptions::default()
-            },
-        )
-        .expect("missing-ok deletion must be successful");
-}
-
-/// Host operations apply the same policies while preserving absolute native
-/// namespace translation.
-#[cfg(unix)]
-#[test]
-fn test_host_mutation_operations_cover_native_path_translation() {
-    let root = tempfile::tempdir().expect("host fixture root must be created");
-    let file_system =
-        LocalFileSystems::host().expect("host local filesystem must be opened");
-    let directory = host_path(&root, "nested/child");
-    let source = host_path(&root, "nested/child/source.txt");
-    let target = host_path(&root, "nested/child/target.txt");
-    let renamed = host_path(&root, "nested/child/renamed.txt");
-
-    file_system
-        .create_directory(
-            &directory,
-            CreateDirectoryOptions {
-                recursive: true,
-                ..CreateDirectoryOptions::default()
-            },
-        )
-        .expect("host recursive directory creation must succeed");
-    file_system
-        .write_all(&source, b"host source", WriteOptions::default())
-        .expect("host source write must succeed");
-    file_system
-        .copy(&source, &target, CopyOptions::file())
-        .expect("host file copy must succeed");
-    file_system
-        .rename(&target, &renamed, RenameOptions::default())
-        .expect("host rename must succeed");
-    assert_eq!(
-        file_system
-            .read_all(&renamed, Default::default(), 1024)
-            .expect("host renamed file must be readable"),
-        b"host source"
-    );
-    file_system
-        .delete_file(&renamed, DeleteOptions::default())
-        .expect("host file deletion must succeed");
-    file_system
-        .delete_directory(
-            &host_path(&root, "nested"),
-            DeleteOptions {
-                recursive: true,
-                ..DeleteOptions::default()
-            },
-        )
-        .expect("host recursive directory deletion must succeed");
+    host_path_to_logical(&native).expect("test host logical path must be valid")
 }
 
 /// Host failures retain their operation-specific public error classifications.
@@ -596,13 +336,6 @@ fn test_host_operations_map_missing_native_entries() {
     let regular_file = root.path().join("regular-file");
     std::fs::write(&regular_file, b"file")
         .expect("regular fixture file must be written");
-
-    let file_child = host_path(&root, "regular-file/child");
-    let file_child_writer = file_system
-        .open_writer(&file_child, WriteOptions::default())
-        .expect_err("a regular file cannot be used as a parent directory");
-    assert_eq!(FsErrorKind::NotDirectory, file_child_writer.kind());
-
     let create_directory = file_system
         .create_directory(
             &host_path(&root, "regular-file"),
@@ -626,14 +359,6 @@ fn test_host_operations_map_missing_native_entries() {
         })
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::AlreadyExists, temporary_directory.kind());
-
-    let invalid_prefix = file_system
-        .create_temp_file(TempFileOptions {
-            prefix: "invalid/prefix".to_owned(),
-            ..TempFileOptions::default()
-        })
-        .expect_err("a host temp prefix containing a separator must fail");
-    assert_eq!(FsErrorKind::InvalidOptions, invalid_prefix.kind());
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.

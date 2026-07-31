@@ -48,7 +48,7 @@ fn test_local_provider_modes_select_expected_authority() {
     rooted_registry
         .register(
             LocalFileSystemProvider::rooted(rooted_id.clone(), root.path())
-                .expect("rooted provider authority must open"),
+                .expect("rooted provider must open"),
         )
         .expect("rooted provider must register");
     let rooted_resolution = rooted_registry
