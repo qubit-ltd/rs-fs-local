@@ -87,6 +87,18 @@ impl RootedLocalFileSystemSpi {
     /// property-construction error when the supplied identity or static scheme
     /// violates filesystem invariants.
     pub fn open(id: FileSystemId, root: &NativePath) -> FsResult<Self> {
+        Self::open_with_provider_id(id, "local-file", root)
+    }
+
+    /// Opens `root` with an explicit provider identity.
+    ///
+    /// The provider identity is kept separate from the configured filesystem
+    /// identity so multiple rooted providers can coexist in one registry.
+    pub fn open_with_provider_id(
+        id: FileSystemId,
+        provider_id: impl std::fmt::Display,
+        root: &NativePath,
+    ) -> FsResult<Self> {
         let native = native_files::RootedLocalFileSystem::open(root).map_err(
             |error| {
                 FsError::with_source(
@@ -121,7 +133,7 @@ impl RootedLocalFileSystemSpi {
             capabilities = capabilities.with(FileSystemCapability::DurableCopy);
         }
         let properties = FileSystemProperties::new(
-            FileSystemInfo::new(id, "local-file", PathSemantics::Hierarchical)
+            FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
                 .with_scheme("file")?,
             capabilities,
             FileSystemLimits::unknown(),

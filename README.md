@@ -62,6 +62,9 @@ identity must be stable outside the process.
 - The provider accepts absolute `file:` URIs only. It rejects a remote
   authority, query, relative path, non-`file` scheme, and configuration options
   or credentials.
+- Use `LocalFileSystemProvider::rooted_with_descriptor` when multiple rooted
+  local authorities must be registered in one registry; each descriptor ID
+  becomes the provider identity exposed by its filesystem.
 
 This crate is synchronous today. It does not provide an asynchronous local
 filesystem facade.

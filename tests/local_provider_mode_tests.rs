@@ -16,6 +16,11 @@ use qubit_fs_registry::{
     FileSystemConfig,
     FileSystemRegistry,
 };
+use qubit_spi::{
+    ProviderDescriptor,
+    ProviderId,
+    ProviderSelection,
+};
 
 /// Host and rooted providers expose the identity selected by their authority
 /// mode.
@@ -60,5 +65,76 @@ fn test_local_provider_modes_select_expected_authority() {
     assert_eq!(
         &rooted_id,
         rooted_resolution.file_system().properties().info().id()
+    );
+}
+
+/// Distinct rooted provider descriptors can coexist in one registry.
+#[test]
+fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
+    let first_root = tempfile::tempdir().expect("first root must be created");
+    let second_root = tempfile::tempdir().expect("second root must be created");
+    let first_descriptor = ProviderDescriptor::new(
+        ProviderId::new("rooted-first").expect("provider ID must be valid"),
+    )
+    .with_aliases(["rooted-first-file"])
+    .expect("provider alias must be valid");
+    let second_descriptor = ProviderDescriptor::new(
+        ProviderId::new("rooted-second").expect("provider ID must be valid"),
+    )
+    .with_aliases(["rooted-second-file"])
+    .expect("provider alias must be valid");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(
+            LocalFileSystemProvider::rooted_with_descriptor(
+                first_descriptor,
+                FileSystemId::new("first-root").expect("filesystem ID must be valid"),
+                first_root.path(),
+            )
+            .expect("first rooted provider must open"),
+        )
+        .expect("first rooted provider must register");
+    registry
+        .register(
+            LocalFileSystemProvider::rooted_with_descriptor(
+                second_descriptor,
+                FileSystemId::new("second-root").expect("filesystem ID must be valid"),
+                second_root.path(),
+            )
+            .expect("second rooted provider must open"),
+        )
+        .expect("second rooted provider must register");
+
+    let first = FileSystemConfig::new(
+        ConnectionUri::parse("file:///inside").expect("URI must parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("rooted-first").expect("selection must parse"),
+    );
+    let second = FileSystemConfig::new(
+        ConnectionUri::parse("file:///inside").expect("URI must parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("rooted-second").expect("selection must parse"),
+    );
+    assert_eq!(
+        "rooted-first",
+        registry
+            .resolve_config(&first)
+            .expect("first provider must resolve")
+            .file_system()
+            .properties()
+            .info()
+            .provider_id(),
+    );
+    assert_eq!(
+        "rooted-second",
+        registry
+            .resolve_config(&second)
+            .expect("second provider must resolve")
+            .file_system()
+            .properties()
+            .info()
+            .provider_id(),
     );
 }
