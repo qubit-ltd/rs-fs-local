@@ -15,13 +15,14 @@ parsing and native-path conversion part of application code.
 ## Installation
 
 ```bash
-cargo add qubit-fs-local
+cargo add qubit-fs qubit-fs-local
 ```
 
 Enable registry integration only when registering the optional `file`
 provider with `qubit-fs-registry`:
 
 ```bash
+cargo add qubit-fs-registry
 cargo add qubit-fs-local --features registry
 ```
 

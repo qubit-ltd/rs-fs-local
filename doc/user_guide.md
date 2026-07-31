@@ -37,15 +37,15 @@ one rooted facade.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs-local
+cargo add qubit-fs qubit-fs-local
 ```
 
 For registry use, enable the feature and add the registry crate in the
 application:
 
 ```bash
-cargo add qubit-fs-local --features registry
 cargo add qubit-fs-registry
+cargo add qubit-fs-local --features registry
 ```
 
 ## Core Workflow
@@ -89,8 +89,10 @@ let _metadata = resolution.file_system().stat(resolution.path())?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`LocalFileSystemProvider::rooted(id, root)` instead registers a provider whose
-native authority is the supplied root.
+`LocalFileSystemProvider::rooted(id, root)` opens the supplied native authority
+during provider construction and returns `FsResult<LocalFileSystemProvider>`.
+Every later resolution reuses that opened authority instead of reopening the
+configured root path.
 
 ## Errors and Diagnostics
 

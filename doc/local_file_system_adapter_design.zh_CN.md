@@ -385,33 +385,21 @@ nonblocking/async 本地原语之前：
 
 ## 12. Error 映射
 
-错误映射集中在一个私有 mapper 类型中，不使用散落的 free function：
-
-```rust
-struct LocalFileErrorMapper {
-    properties: Arc<FileSystemProperties>,
-}
-
-impl LocalFileErrorMapper {
-    fn map_error(
-        &self,
-        request: &impl LocalRequestContext,
-        error: native_files::LocalFileError,
-    ) -> FsError;
-}
-```
-
-Host 与 rooted SPI 共享 `LocalFileErrorMapper`，但不把 mapper 暴露为应用 API。
+错误映射集中在 `spi/error_mapper.rs` 的私有 free functions 中，不把 mapper 暴露为应用 API。
+`map`、`map_without_path` 和 `map_copy_failure` 都补齐 canonical provider、逻辑路径和
+target context；host 与 rooted SPI 共享这组映射函数。
 
 映射规则：
 
-- native kind 映射到最精确的 `FsErrorKind`；
+- 有 typed I/O source 时优先按 `std::io::ErrorKind` 映射到最精确的 `FsErrorKind`；无
+  source 时才回退到 native kind；`PathCodec` 失败保持 `InvalidPath`；
 - `InvalidPath`/`InvalidOptions` 与 `NotDirectory`/`IsDirectory` 保持各自分类，不折叠为
   `Conflict` 或普通 I/O；
 - public operation、source path 和 target path 取自 request；provider id 固定使用
   adapter 属性声明的 canonical `local-file`；
 - native path 仅在确认不会越过安全边界时进入 message；
-- `std::io::Error` 保留为 source，不自动格式化；
+- `std::io::Error` 保留为 source，不自动格式化；copy failure 还保留完整的
+  `LocalCopyFailure`，因此 staging path 与 cleanup error 可通过 typed source 诊断；
 - native requirement failure 映射为 `RequirementNotMet`；
 - native indeterminate 映射为 `Indeterminate`；
 - adapter 自身产生不可能状态时使用 `ProviderContractViolation`，不伪装成 I/O。
@@ -428,6 +416,8 @@ Host 与 rooted SPI 共享 `LocalFileErrorMapper`，但不把 mapper 暴露为�
 - 拒绝 remote authority、未支持 query 和 secret；
 - provider-specific 解码 URI path；
 - 根据配置选择 host 或 rooted filesystem；
+- rooted provider 在构造阶段打开并保留 descriptor-backed authority，resolution 只 clone
+  已打开的 `FileSystem`；
 - 在凭据/敏感 query 已被移除后构造 canonical `Uri`；
 - 返回具体 `FileSystemResolution`。
 
