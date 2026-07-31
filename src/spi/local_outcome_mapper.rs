@@ -78,6 +78,7 @@ pub(crate) fn copy(value: native_files::LocalCopyOutcome) -> CopyOutcome {
         match value.method() {
             native_files::LocalCopyMethod::StagedFile => CopyMethod::Native,
             native_files::LocalCopyMethod::Recursive => CopyMethod::Native,
+            _ => CopyMethod::Native,
         },
         if value.atomic() {
             AchievedAtomicity::Atomic

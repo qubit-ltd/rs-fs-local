@@ -119,8 +119,11 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path =
-                output_path(rooted.as_ref(), &logical_relative, entry.path())?;
+            let path = output_path(
+                rooted.as_ref(),
+                &logical_relative,
+                entry.diagnostic_path(),
+            )?;
             let mut result =
                 DirEntry::new(path, output_kind(entry.metadata().kind()));
             if options.include_metadata() {
