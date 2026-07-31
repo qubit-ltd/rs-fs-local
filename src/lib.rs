@@ -16,5 +16,6 @@ mod registry;
 pub mod spi;
 
 pub use local_file_systems::LocalFileSystems;
+pub use local_file_systems::host_path_to_logical;
 #[cfg(feature = "registry")]
 pub use registry::LocalFileSystemProvider;
