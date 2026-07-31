@@ -21,7 +21,6 @@ use qubit_fs::{
 };
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_testkit::{
-    FileSystemContractSuite,
     FileSystemFixture,
     FixtureError,
     FixtureResult,
@@ -180,19 +179,15 @@ impl FileSystemFixture for HostFixture {
     }
 }
 
-/// The rooted adapter satisfies the synchronous provider-neutral contract.
-#[test]
-fn test_rooted_local_adapter_passes_provider_contract() {
-    let fixture = RootedFixture::new();
-    FileSystemContractSuite::new(&fixture).assert_all();
+#[cfg(unix)]
+qubit_fs_testkit::register_file_system_contract_tests! {
+    module: host_contracts,
+    fixture: super::HostFixture::new,
 }
 
-/// The host adapter satisfies the synchronous provider-neutral contract.
-#[cfg(unix)]
-#[test]
-fn test_host_local_adapter_passes_provider_contract() {
-    let fixture = HostFixture::new();
-    FileSystemContractSuite::new(&fixture).assert_all();
+qubit_fs_testkit::register_file_system_contract_tests! {
+    module: rooted_contracts,
+    fixture: super::RootedFixture::new,
 }
 
 /// Rooted listings preserve the namespace of a non-root request path.
