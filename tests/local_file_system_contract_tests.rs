@@ -102,7 +102,10 @@ impl FileSystemFixture for RootedFixture {
     ) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.path(relative)?;
         std::fs::create_dir_all(self.native_path(&path)?).map_err(|error| {
-            FixtureError::with_source("fixture directory creation failed", error)
+            FixtureError::with_source(
+                "fixture directory creation failed",
+                error,
+            )
         })?;
         Ok(FixtureSupport::Supported(path))
     }
@@ -136,8 +139,7 @@ impl HostFixture {
     /// Converts a fixture-relative path into the host facade's logical path.
     fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
         let native = self.root.path().join(relative);
-        host_path_to_logical(&native)
-        .map_err(|error| {
+        host_path_to_logical(&native).map_err(|error| {
             FixtureError::with_source("fixture path is invalid", error)
         })
     }
@@ -186,7 +188,10 @@ impl FileSystemFixture for HostFixture {
     ) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.logical_path(relative)?;
         std::fs::create_dir_all(self.native_path(&path)).map_err(|error| {
-            FixtureError::with_source("fixture directory creation failed", error)
+            FixtureError::with_source(
+                "fixture directory creation failed",
+                error,
+            )
         })?;
         Ok(FixtureSupport::Supported(path))
     }

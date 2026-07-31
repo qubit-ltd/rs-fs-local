@@ -27,7 +27,10 @@ fn test_rooted_provider_decodes_literal_percent_path_segment() {
         .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id, root.path()).expect("rooted provider must open"))
+        .register(
+            LocalFileSystemProvider::rooted(id, root.path())
+                .expect("rooted provider must open"),
+        )
         .expect("the rooted local provider descriptor must register");
     let resolution = registry
         .resolve_config(&FileSystemConfig::new(
@@ -50,7 +53,10 @@ fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
         .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::rooted(id, root.path()).expect("rooted provider must open"))
+        .register(
+            LocalFileSystemProvider::rooted(id, root.path())
+                .expect("rooted provider must open"),
+        )
         .expect("the rooted local provider descriptor must register");
 
     for uri in [

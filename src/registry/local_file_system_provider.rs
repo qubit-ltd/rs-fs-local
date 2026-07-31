@@ -71,9 +71,7 @@ impl LocalFileSystemProvider {
     #[inline]
     pub fn rooted(id: FileSystemId, root: &Path) -> Result<Self, FsError> {
         LocalFileSystems::rooted_with_id(id, root).map(|file_system| Self {
-            mode: LocalProviderMode::Rooted {
-                file_system,
-            },
+            mode: LocalProviderMode::Rooted { file_system },
         })
     }
 
@@ -182,7 +180,9 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(),
-            LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
+            LocalProviderMode::Rooted { file_system } => {
+                Ok(file_system.clone())
+            }
         }
         .map_err(ProviderFailure::initialization_failed)?;
         FileSystemResolution::try_new(file_system, path, uri)
