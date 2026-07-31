@@ -104,6 +104,7 @@ impl RootedLocalFileSystemSpi {
             .with(FileSystemCapability::Write)
             .with(FileSystemCapability::Append)
             .with(FileSystemCapability::CreateDirectory)
+            .with(FileSystemCapability::EmptyDirectory)
             .with(FileSystemCapability::Delete)
             .with(FileSystemCapability::RecursiveDelete)
             .with(FileSystemCapability::Rename)
@@ -418,14 +419,13 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
                 CopyAttempt::Completed(local_outcome_mapper::copy(value))
             })
             .map_err(|error| {
-                let (error, state, stats, _staging, _cleanup) =
-                    error.into_parts();
+                let state = error.state();
+                let stats = *error.partial_stats();
                 SpiCopyFailure::new(
-                    error_mapper::map(
+                    error_mapper::copy_failure(
                         error,
-                        FsOperation::Copy,
                         request.source(),
-                        Some(request.target()),
+                        request.target(),
                     ),
                     local_outcome_mapper::copy_failure_state(state),
                     qubit_fs::CopyStats {

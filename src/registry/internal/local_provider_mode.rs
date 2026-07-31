@@ -7,21 +7,17 @@
 // =============================================================================
 //! Authority modes supported by the local filesystem provider.
 
-use std::path::PathBuf;
-
-use qubit_fs::FileSystemId;
+use qubit_fs::FileSystem;
 
 /// Selects host-wide or descriptor-rooted authority for a provider instance.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[must_use]
 pub(in crate::registry) enum LocalProviderMode {
     /// Resolves paths against the process host filesystem.
     Host,
     /// Resolves paths below one retained native directory.
     Rooted {
-        /// Stable identity exposed by the rooted filesystem.
-        id: FileSystemId,
-        /// Native directory retained as the filesystem authority.
-        root: PathBuf,
+        /// Filesystem retaining the descriptor-backed native authority.
+        file_system: FileSystem,
     },
 }

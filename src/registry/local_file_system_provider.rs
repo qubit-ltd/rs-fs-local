@@ -36,7 +36,7 @@ use super::internal::LocalProviderMode;
 use super::local_file_uri_path;
 
 /// Creates local filesystem resolutions for accepted `file:` configurations.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[must_use]
 pub struct LocalFileSystemProvider {
     /// Authority mode used for every configuration resolved by this provider.
@@ -67,15 +67,14 @@ impl LocalFileSystemProvider {
     ///
     /// # Returns
     ///
-    /// A provider that resolves accepted paths below `root`.
+    /// A provider that resolves accepted paths below the opened `root`.
     #[inline]
-    pub fn rooted(id: FileSystemId, root: &Path) -> Self {
-        Self {
+    pub fn rooted(id: FileSystemId, root: &Path) -> Result<Self, FsError> {
+        LocalFileSystems::rooted_with_id(id, root).map(|file_system| Self {
             mode: LocalProviderMode::Rooted {
-                id,
-                root: root.to_path_buf(),
+                file_system,
             },
-        }
+        })
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -183,9 +182,7 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(),
-            LocalProviderMode::Rooted { id, root } => {
-                LocalFileSystems::rooted_with_id(id.clone(), root)
-            }
+            LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
         }
         .map_err(ProviderFailure::initialization_failed)?;
         FileSystemResolution::try_new(file_system, path, uri)

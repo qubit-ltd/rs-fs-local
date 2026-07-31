@@ -223,8 +223,19 @@ pub(crate) fn copy(
         .with_symlink_policy(symlink_policy(options.follow_symlinks))
         .with_atomicity(atomicity(options.atomicity))
         .with_durability(durability(options.durability));
-    if matches!(options.mode, CopyMode::Tree | CopyMode::Auto) {
-        native = native.with_recursive();
+    native = match options.mode {
+        CopyMode::File => native.with_file_source(),
+        CopyMode::Tree => native.with_tree_source(),
+        CopyMode::Auto => native,
+    };
+    if options.conflict == CopyConflictPolicy::Overwrite {
+        native = native.with_type_conflict(
+            native_files::LocalCopyTypeConflictPolicy::Replace,
+        );
+    } else if options.conflict == CopyConflictPolicy::Skip {
+        native = native.with_type_conflict(
+            native_files::LocalCopyTypeConflictPolicy::Skip,
+        );
     }
     if options.create_parent {
         native = native.with_parent();
