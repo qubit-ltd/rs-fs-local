@@ -29,7 +29,7 @@ fn test_rooted_provider_decodes_literal_percent_path_segment() {
     registry
         .register(
             LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider authority must open"),
+                .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
     let resolution = registry
@@ -55,7 +55,7 @@ fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
     registry
         .register(
             LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider authority must open"),
+                .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
 
