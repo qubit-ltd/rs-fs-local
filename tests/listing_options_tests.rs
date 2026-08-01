@@ -47,11 +47,9 @@ fn test_listing_options_filter_prefix_and_include_metadata() {
     let mut stream = file_system
         .list(
             &list_root,
-            ListOptions {
-                prefix: Some("nested".to_owned()),
-                include_metadata: true,
-                ..ListOptions::default()
-            },
+            ListOptions::default()
+                .with_prefix(Some("nested".to_owned()))
+                .with_include_metadata(true),
         )
         .expect("prefix-filtered listing must open");
     let mut entries = Vec::new();

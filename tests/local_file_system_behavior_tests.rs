@@ -95,10 +95,8 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
         .copy(
             &path("/missing-source"),
             &path("/target"),
-            CopyOptions {
-                preserve_metadata: MetadataPreservePolicy::UserMetadata,
-                ..CopyOptions::file()
-            },
+            CopyOptions::file()
+                .with_preserve_metadata(MetadataPreservePolicy::UserMetadata),
         )
         .expect_err("user metadata preservation must be rejected");
     assert_eq!(FsErrorKind::RequirementNotMet, copy.error().kind());
@@ -107,23 +105,19 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
         .write_all(
             &path("/typed-write"),
             b"payload",
-            WriteOptions {
-                content_type: Some("text/plain".to_owned()),
-                ..WriteOptions::default()
-            },
+            WriteOptions::default()
+                .with_content_type(Some("text/plain".to_owned())),
         )
         .expect_err("content type must be rejected");
     assert_eq!(FsErrorKind::RequirementNotMet, content_type.error().kind());
 
     for options in [
-        WriteOptions {
-            precondition: WritePrecondition::IfAbsent,
-            ..WriteOptions::default()
-        },
-        WriteOptions {
-            checksum: Some(Checksum::new(ChecksumAlgorithm::Sha256, "00")),
-            ..WriteOptions::default()
-        },
+        WriteOptions::default()
+            .with_precondition(WritePrecondition::IfAbsent),
+        WriteOptions::default().with_checksum(Some(Checksum::new(
+            ChecksumAlgorithm::Sha256,
+            "00",
+        ))),
     ] {
         let error = file_system
             .write_all(&path("/conditional-write"), b"payload", options)
@@ -132,14 +126,8 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
     }
 
     for options in [
-        CopyOptions {
-            continue_on_error: true,
-            ..CopyOptions::file()
-        },
-        CopyOptions {
-            server_side: ServerSidePreference::Require,
-            ..CopyOptions::file()
-        },
+        CopyOptions::file().with_continue_on_error(true),
+        CopyOptions::file().with_server_side(ServerSidePreference::Require),
     ] {
         let error = file_system
             .copy(&path("/missing-source"), &path("/target"), options)
@@ -177,10 +165,7 @@ fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
         .copy(
             &file,
             &directory,
-            CopyOptions {
-                conflict: CopyConflictPolicy::Skip,
-                ..CopyOptions::file()
-            },
+            CopyOptions::file().with_conflict(CopyConflictPolicy::Skip),
         )
         .expect("skip policy must keep an incompatible destination");
     assert_eq!(1, skipped.stats().skipped);
@@ -207,10 +192,8 @@ fn test_rooted_copy_reports_portable_metadata_preservation() {
         .copy(
             &source,
             &target,
-            CopyOptions {
-                preserve_metadata: MetadataPreservePolicy::Portable,
-                ..CopyOptions::file()
-            },
+            CopyOptions::file()
+                .with_preserve_metadata(MetadataPreservePolicy::Portable),
         )
         .expect("portable metadata copy must satisfy the facade contract");
 
@@ -404,7 +387,7 @@ fn test_host_metadata_maps_symbolic_link_kind() {
     let metadata = file_system
         .stat(&host_path(&root, "link"))
         .expect("symbolic link metadata should be readable");
-    assert_eq!(metadata.kind, qubit_fs::FileKind::Symlink);
+    assert_eq!(metadata.kind(), &qubit_fs::FileKind::Symlink);
 }
 
 /// Host metadata maps Unix-domain sockets to the adapter's generic local
@@ -424,5 +407,8 @@ fn test_host_metadata_maps_unix_socket_kind() {
     let metadata = file_system
         .stat(&host_path(&root, "socket"))
         .expect("socket metadata should be readable");
-    assert_eq!(metadata.kind, qubit_fs::FileKind::Other("local".to_owned()));
+    assert_eq!(
+        metadata.kind(),
+        &qubit_fs::FileKind::Other("local".to_owned())
+    );
 }

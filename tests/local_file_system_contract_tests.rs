@@ -326,10 +326,8 @@ fn test_rooted_write_rejects_unrepresentable_metadata_options() {
         .write_all(
             &path,
             b"contents",
-            WriteOptions {
-                content_type: Some("text/plain".to_owned()),
-                ..WriteOptions::default()
-            },
+            WriteOptions::default()
+                .with_content_type(Some("text/plain".to_owned())),
         )
         .expect_err("local adapter must reject metadata it cannot retain");
 
@@ -364,10 +362,8 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
         .file_system()
         .list(
             &root,
-            ListOptions {
-                prefix: Some("report%25name.txt".to_owned()),
-                ..ListOptions::default()
-            },
+            ListOptions::default()
+                .with_prefix(Some("report%25name.txt".to_owned())),
         )
         .expect("local adapter must accept canonical prefixes");
     let entry = stream

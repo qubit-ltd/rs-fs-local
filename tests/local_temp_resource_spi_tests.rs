@@ -288,13 +288,15 @@ fn test_temp_directory_cleanup_failure_rejects_replacement_path() {
         root.path().join(path.as_str().trim_start_matches('/')),
         b"replacement",
     )
-        .expect("replacement fixture must be restored");
+    .expect("replacement fixture must be restored");
     let error = temporary
         .cleanup()
         .expect_err("replacement directory must fail identity validation");
     assert_eq!(error.kind(), FsErrorKind::NotDirectory);
     assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
-    file_system.stat(&path).expect("replacement entry must remain");
+    file_system
+        .stat(&path)
+        .expect("replacement entry must remain");
 }
 
 /// Keeping a temporary file preserves it and makes later lifecycle commands
