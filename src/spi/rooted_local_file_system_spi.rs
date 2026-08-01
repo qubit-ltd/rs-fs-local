@@ -259,6 +259,9 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
         request: ListRequest<'_>,
     ) -> FsResult<OpenedDirectoryStream> {
         let path = local_path_mapper::rooted(request.path())?;
+        let _ = self.native.metadata(&path).map_err(|error| {
+            self.map(error, FsOperation::List, request.path())
+        })?;
         let options = local_options_mapper::list(request.options())?;
         self.native
             .list(&path, &options)
