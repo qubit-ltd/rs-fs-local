@@ -145,10 +145,18 @@ pub(crate) fn copy_failure(
 /// intentionally coarser than `std::io::ErrorKind`.
 #[inline]
 fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
-    match error.source_kind() {
-        Some(LocalFileErrorSource::Io(source)) => io_kind(source.kind()),
-        Some(LocalFileErrorSource::PathCodec(_)) => FsErrorKind::InvalidPath,
-        Some(_) | None => native_kind(error.kind()),
+    match error.kind() {
+        native_files::LocalFileErrorKind::Indeterminate => {
+            FsErrorKind::Indeterminate
+        }
+        native_files::LocalFileErrorKind::PublicationIncomplete => {
+            FsErrorKind::Io
+        }
+        _ => match error.source_kind() {
+            Some(LocalFileErrorSource::Io(source)) => io_kind(source.kind()),
+            Some(LocalFileErrorSource::PathCodec(_)) => FsErrorKind::InvalidPath,
+            Some(_) | None => native_kind(error.kind()),
+        },
     }
 }
 
