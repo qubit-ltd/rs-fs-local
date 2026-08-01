@@ -9,9 +9,18 @@
 // contract tests.
 //! Canonical conversion between public logical paths and native paths.
 
-use std::path::{Path as NativePath, PathBuf};
+use std::path::{
+    Path as NativePath,
+    PathBuf,
+};
 
-use qubit_fs::{FsError, FsErrorKind, FsOperation, FsResult, Path};
+use qubit_fs::{
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    Path,
+};
 use qubit_local_files as native_files;
 
 /// Converts an absolute logical path to a process-host native path.
@@ -57,8 +66,10 @@ pub(crate) fn rooted(path: &Path) -> FsResult<PathBuf> {
     if components.next().is_none() {
         Ok(PathBuf::new())
     } else {
-        native_files::LocalPaths::from_canonical_relative_components(path.components())
-            .map_err(|error| map(error, path, FsOperation::ParsePath))
+        native_files::LocalPaths::from_canonical_relative_components(
+            path.components(),
+        )
+        .map_err(|error| map(error, path, FsOperation::ParsePath))
     }
 }
 
@@ -78,7 +89,10 @@ pub(crate) fn rooted(path: &Path) -> FsResult<PathBuf> {
 /// Returns `InvalidPath` when either logical path is relative or contains an
 /// unrepresentable component. Any error retains the failing logical path.
 #[inline(always)]
-pub(crate) fn host_pair(source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
+pub(crate) fn host_pair(
+    source: &Path,
+    target: &Path,
+) -> FsResult<(PathBuf, PathBuf)> {
     Ok((host(source)?, host(target)?))
 }
 
@@ -98,7 +112,10 @@ pub(crate) fn host_pair(source: &Path, target: &Path) -> FsResult<(PathBuf, Path
 /// Returns `InvalidPath` when either logical path is relative or contains an
 /// unrepresentable component. Any error retains the failing logical path.
 #[inline(always)]
-pub(crate) fn rooted_pair(source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
+pub(crate) fn rooted_pair(
+    source: &Path,
+    target: &Path,
+) -> FsResult<(PathBuf, PathBuf)> {
     Ok((rooted(source)?, rooted(target)?))
 }
 
@@ -122,8 +139,9 @@ pub(crate) fn rooted_pair(source: &Path, target: &Path) -> FsResult<(PathBuf, Pa
 /// Panics if `qubit-local-files` violates its contract by returning an
 /// absolute component sequence without a root component.
 pub(crate) fn host_logical(path: &NativePath) -> FsResult<Path> {
-    let components = native_files::LocalPaths::to_canonical_absolute_components(path)
-        .map_err(|error| map_native(error, FsOperation::List))?;
+    let components =
+        native_files::LocalPaths::to_canonical_absolute_components(path)
+            .map_err(|error| map_native(error, FsOperation::List))?;
     let (root, rest) = components
         .split_first()
         .expect("LocalPaths returns an absolute canonical path with its root");
@@ -153,8 +171,9 @@ pub(crate) fn rooted_logical(path: &NativePath) -> FsResult<Path> {
     if path.as_os_str().is_empty() {
         return Ok(Path::root());
     }
-    let components = native_files::LocalPaths::to_canonical_relative_components(path)
-        .map_err(|error| map_native(error, FsOperation::List))?;
+    let components =
+        native_files::LocalPaths::to_canonical_relative_components(path)
+            .map_err(|error| map_native(error, FsOperation::List))?;
     logical(&components)
 }
 
@@ -213,7 +232,11 @@ fn logical(components: &[String]) -> FsResult<Path> {
 ///
 /// An `InvalidPath` facade error retaining `path` and the native source.
 #[inline(always)]
-fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation) -> FsError {
+fn map(
+    error: native_files::LocalFileError,
+    path: &Path,
+    operation: FsOperation,
+) -> FsError {
     map_native(error, operation).with_path(path.clone())
 }
 
@@ -228,7 +251,10 @@ fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation)
 ///
 /// An `InvalidPath` facade error retaining the native source.
 #[inline(always)]
-fn map_native(error: native_files::LocalFileError, operation: FsOperation) -> FsError {
+fn map_native(
+    error: native_files::LocalFileError,
+    operation: FsOperation,
+) -> FsError {
     FsError::with_source(
         FsErrorKind::InvalidPath,
         operation,

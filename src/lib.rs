@@ -9,6 +9,7 @@
 
 #![deny(missing_docs)]
 
+mod constants;
 mod local_file_systems;
 mod path;
 #[cfg(feature = "registry")]

@@ -8,11 +8,21 @@
 //! Concrete facade factories for local filesystem adapters.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 
-use qubit_fs::{FileSystem, FileSystemId, FsResult};
+use qubit_fs::{
+    FileSystem,
+    FileSystemId,
+    FsResult,
+};
 
-use crate::spi::{LocalFileSystemSpi, RootedLocalFileSystemSpi};
+use crate::spi::{
+    LocalFileSystemSpi,
+    RootedLocalFileSystemSpi,
+};
 
 /// Monotonic process-local suffix for generated rooted filesystem identities.
 static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -69,8 +79,9 @@ impl LocalFileSystems {
                 std::process::id(),
                 ROOTED_COUNTER.fetch_add(1, Ordering::Relaxed)
             );
-            FileSystemId::new(&value)
-                .expect("process id and monotonic counter form a valid filesystem id")
+            FileSystemId::new(&value).expect(
+                "process id and monotonic counter form a valid filesystem id",
+            )
         };
         Self::rooted_with_id(id, root)
     }
@@ -93,7 +104,10 @@ impl LocalFileSystems {
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id`.
     #[inline(always)]
-    pub fn rooted_with_id(id: FileSystemId, root: &Path) -> FsResult<FileSystem> {
+    pub fn rooted_with_id(
+        id: FileSystemId,
+        root: &Path,
+    ) -> FsResult<FileSystem> {
         FileSystem::from_spi(RootedLocalFileSystemSpi::open(id, root)?)
     }
 
