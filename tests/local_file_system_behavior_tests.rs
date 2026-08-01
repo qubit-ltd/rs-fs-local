@@ -243,7 +243,7 @@ fn test_rooted_operations_map_missing_entries() {
     let create_directory = file_system
         .create_directory(&regular_file, CreateDirectoryOptions::default())
         .expect_err("a file cannot become a directory");
-    assert_eq!(FsErrorKind::AlreadyExists, create_directory.kind());
+    assert_eq!(FsErrorKind::Conflict, create_directory.kind());
     let temporary_file = file_system
         .create_temp_file(TempFileOptions {
             parent: Some(regular_file.clone()),
@@ -324,7 +324,7 @@ fn test_host_operations_map_missing_native_entries() {
             CreateDirectoryOptions::default(),
         )
         .expect_err("a file cannot be created as a directory");
-    assert_eq!(FsErrorKind::AlreadyExists, create_directory.kind());
+    assert_eq!(FsErrorKind::Conflict, create_directory.kind());
 
     let file_parent = host_path(&root, "regular-file");
     let temporary_file = file_system

@@ -44,7 +44,7 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
         .persist(&target, PersistOptions::default())
         .expect("retained temporary file must be persistable after conflict removal");
 
-    assert_eq!(outcome.target, target);
+    assert_eq!(outcome.target(), &target);
 }
 
 /// A confirmed destination conflict retains the native temporary directory for
@@ -79,7 +79,7 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         .persist(&target, PersistOptions::default())
         .expect("retained temporary directory must be persistable after conflict removal");
 
-    assert_eq!(outcome.target, target);
+    assert_eq!(outcome.target(), &target);
 }
 
 /// A temporary directory replaces an empty destination when persistence allows
@@ -110,7 +110,7 @@ fn test_temp_directory_persist_overwrites_empty_destination() {
         )
         .expect("overwrite persistence must replace the empty destination");
 
-    assert_eq!(outcome.target, target);
+    assert_eq!(outcome.target(), &target);
 }
 
 /// A temporary file replaces an existing file when persistence allows it, and
@@ -139,7 +139,7 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
         )
         .expect("overwrite persistence must replace the destination file");
 
-    assert_eq!(outcome.target, target);
+    assert_eq!(outcome.target(), &target);
     assert_eq!(temporary.state(), TempResourceState::Persisted);
     assert_eq!(
         temporary
@@ -374,7 +374,7 @@ fn test_host_temp_resources_persist_and_cleanup() {
     let outcome = file
         .persist(&target, PersistOptions::default())
         .expect("host temporary file must persist");
-    assert_eq!(outcome.target, target);
+    assert_eq!(outcome.target(), &target);
 
     let mut directory = file_system
         .create_temp_directory(TempDirectoryOptions {
