@@ -9,10 +9,6 @@
 // contract tests.
 //! Native outcome conversion helpers.
 
-use qubit_fs::spi::{
-    CopyAttempt,
-    CopyDeclineReason,
-};
 use qubit_fs::{
     AchievedAtomicity,
     CopyFailureState,
@@ -39,19 +35,19 @@ use qubit_local_files as native_files;
 /// Portable kind, length, and timestamp fields supported by the native
 /// snapshot.
 pub(crate) fn metadata(value: native_files::LocalFileMetadata) -> FileMetadata {
-    let mut result = FileMetadata::new(match value.kind() {
+    let kind = match value.kind() {
         native_files::LocalFileKind::File => FileKind::File,
         native_files::LocalFileKind::Directory => FileKind::Directory,
         native_files::LocalFileKind::Symlink => FileKind::Symlink,
         native_files::LocalFileKind::Other => {
             FileKind::Other("local".to_owned())
         }
-    });
-    result.len = Some(value.len());
-    result.accessed_at = value.accessed_at();
-    result.modified_at = value.modified_at();
-    result.created_at = value.created_at();
-    result
+    };
+    FileMetadata::new(kind)
+        .with_len(Some(value.len()))
+        .with_accessed_at(value.accessed_at())
+        .with_modified_at(value.modified_at())
+        .with_created_at(value.created_at())
 }
 
 /// Converts a native copy outcome to its portable facade representation.
@@ -177,14 +173,4 @@ pub(crate) fn rename_failure_state(
             RenameFailureState::Indeterminate
         }
     }
-}
-
-/// Declines native copy so the facade may select a fallback.
-///
-/// # Returns
-///
-/// A `NotApplicable` copy attempt.
-#[inline(always)]
-pub(crate) fn declined_copy() -> CopyAttempt {
-    CopyAttempt::Declined(CopyDeclineReason::NotApplicable)
 }

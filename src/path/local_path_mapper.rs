@@ -124,6 +124,7 @@ pub(crate) fn rooted_pair(
 /// # Parameters
 ///
 /// - `path`: Absolute native host path to convert.
+/// - `operation`: Facade operation requesting the conversion.
 ///
 /// # Returns
 ///
@@ -138,10 +139,13 @@ pub(crate) fn rooted_pair(
 ///
 /// Panics if `qubit-local-files` violates its contract by returning an
 /// absolute component sequence without a root component.
-pub(crate) fn host_logical(path: &NativePath) -> FsResult<Path> {
+pub(crate) fn host_logical(
+    path: &NativePath,
+    operation: FsOperation,
+) -> FsResult<Path> {
     let components =
         native_files::LocalPaths::to_canonical_absolute_components(path)
-            .map_err(|error| map_native(error, FsOperation::List))?;
+            .map_err(|error| map_native(error, operation))?;
     let (root, rest) = components
         .split_first()
         .expect("LocalPaths returns an absolute canonical path with its root");
@@ -157,6 +161,7 @@ pub(crate) fn host_logical(path: &NativePath) -> FsResult<Path> {
 /// # Parameters
 ///
 /// - `path`: Relative native descendant path, or an empty path for the root.
+/// - `operation`: Facade operation requesting the conversion.
 ///
 /// # Returns
 ///
@@ -167,13 +172,16 @@ pub(crate) fn host_logical(path: &NativePath) -> FsResult<Path> {
 /// Returns `InvalidPath` when the native path is not a canonical relative
 /// path or cannot be represented in logical form.
 #[inline]
-pub(crate) fn rooted_logical(path: &NativePath) -> FsResult<Path> {
+pub(crate) fn rooted_logical(
+    path: &NativePath,
+    operation: FsOperation,
+) -> FsResult<Path> {
     if path.as_os_str().is_empty() {
         return Ok(Path::root());
     }
     let components =
         native_files::LocalPaths::to_canonical_relative_components(path)
-            .map_err(|error| map_native(error, FsOperation::List))?;
+            .map_err(|error| map_native(error, operation))?;
     logical(&components)
 }
 

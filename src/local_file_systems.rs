@@ -133,5 +133,8 @@ impl LocalFileSystems {
 /// This conversion preserves platform-native path components, including
 /// non-UTF-8 Unix names, without routing through lossy display text.
 pub fn host_path_to_logical(path: &Path) -> FsResult<qubit_fs::Path> {
-    crate::path::local_path_mapper::host_logical(path)
+    crate::path::local_path_mapper::host_logical(
+        path,
+        qubit_fs::FsOperation::ParsePath,
+    )
 }

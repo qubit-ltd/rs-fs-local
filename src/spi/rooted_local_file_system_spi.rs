@@ -35,8 +35,12 @@ use qubit_fs::spi::{
     StatResponse,
 };
 use qubit_fs::{
+    CopyFailureState,
+    CopyStats,
     CreateDirectoryOutcome,
     DeleteOutcome,
+    FileKind,
+    FileMetadata,
     FileSystemCapabilities,
     FileSystemCapability,
     FileSystemId,
@@ -130,19 +134,19 @@ impl RootedLocalFileSystemSpi {
             .with(FileSystemCapability::Copy)
             .with(FileSystemCapability::TempFile)
             .with(FileSystemCapability::TempDirectory);
-        if native_capabilities.supports_atomic_rename() {
+        if native_capabilities.atomic_rename_implemented() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicRename);
         }
-        if native_capabilities.supports_atomic_replace() {
+        if native_capabilities.atomic_replace_implemented() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicReplace);
         }
-        if native_capabilities.supports_atomic_temp_persist() {
+        if native_capabilities.atomic_temp_persist_implemented() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicTempPersist);
         }
-        if native_capabilities.supports_directory_durability() {
+        if native_capabilities.directory_durability_implemented() {
             capabilities = capabilities.with(FileSystemCapability::DurableCopy);
         }
         let properties = FileSystemProperties::new(
@@ -443,8 +447,16 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
     ) -> Result<CopyAttempt, SpiCopyFailure> {
         let options = match local_options_mapper::copy(request.options()) {
             Ok(options) => options,
-            Err(_) => {
-                return Ok(local_outcome_mapper::declined_copy());
+            Err(error) => {
+                return Err(SpiCopyFailure::new(
+                    error
+                        .with_operation(FsOperation::Copy)
+                        .with_path(request.source().clone())
+                        .with_target(request.target().clone())
+                        .with_provider(&self.provider_id),
+                    CopyFailureState::Unchanged,
+                    CopyStats::default(),
+                ));
             }
         };
         let (source, target) =
@@ -562,9 +574,13 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
                     &self.provider_id,
                 )
             })?;
-        let path = local_path_mapper::rooted_logical(value.path())?;
+        let path = local_path_mapper::rooted_logical(
+            value.path(),
+            FsOperation::CreateTemp,
+        )?;
         Ok(OpenedTempFile::new(
-            self.info(path),
+            self.info(path)
+                .with_metadata(FileMetadata::new(FileKind::File)),
             Box::new(LocalTempResourceSpi::file(
                 value,
                 true,
@@ -613,9 +629,13 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
                         &self.provider_id,
                     )
                 })?;
-        let path = local_path_mapper::rooted_logical(value.path())?;
+        let path = local_path_mapper::rooted_logical(
+            value.path(),
+            FsOperation::CreateTemp,
+        )?;
         Ok(OpenedTempDirectory::new(
-            self.info(path),
+            self.info(path)
+                .with_metadata(FileMetadata::new(FileKind::Directory)),
             Box::new(LocalTempResourceSpi::directory(
                 value,
                 true,
