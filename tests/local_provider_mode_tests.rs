@@ -7,20 +7,10 @@
 // =============================================================================
 //! Public behavior coverage for host and rooted provider authority modes.
 
-use qubit_fs::{
-    ConnectionUri,
-    FileSystemId,
-};
+use qubit_fs::{ConnectionUri, FileSystemId};
 use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-};
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderId,
-    ProviderSelection,
-};
+use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
 
 /// Host and rooted providers expose the identity selected by their authority
 /// mode.
@@ -32,8 +22,7 @@ fn test_local_provider_modes_select_expected_authority() {
         .expect("host provider must register");
     let host_resolution = host_registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///tmp")
-                .expect("host test URI must parse"),
+            ConnectionUri::parse("file:///tmp").expect("host test URI must parse"),
         ))
         .expect("host provider must resolve an absolute file URI");
     assert_eq!(
@@ -47,8 +36,8 @@ fn test_local_provider_modes_select_expected_authority() {
     );
 
     let root = tempfile::tempdir().expect("provider root must be created");
-    let rooted_id = FileSystemId::new("provider-mode-root")
-        .expect("rooted provider identity must be valid");
+    let rooted_id =
+        FileSystemId::new("provider-mode-root").expect("rooted provider identity must be valid");
     let rooted_registry = FileSystemRegistry::default();
     rooted_registry
         .register(
@@ -58,8 +47,7 @@ fn test_local_provider_modes_select_expected_authority() {
         .expect("rooted provider must register");
     let rooted_resolution = rooted_registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///inside")
-                .expect("rooted test URI must parse"),
+            ConnectionUri::parse("file:///inside").expect("rooted test URI must parse"),
         ))
         .expect("rooted provider must resolve an absolute file URI");
     assert_eq!(
@@ -105,18 +93,16 @@ fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
         )
         .expect("second rooted provider must register");
 
-    let first = FileSystemConfig::new(
-        ConnectionUri::parse("file:///inside").expect("URI must parse"),
-    )
-    .with_selection(
-        ProviderSelection::named("rooted-first").expect("selection must parse"),
-    );
-    let second = FileSystemConfig::new(
-        ConnectionUri::parse("file:///inside").expect("URI must parse"),
-    )
-    .with_selection(
-        ProviderSelection::named("rooted-second").expect("selection must parse"),
-    );
+    let first =
+        FileSystemConfig::new(ConnectionUri::parse("file:///inside").expect("URI must parse"))
+            .with_selection(
+                ProviderSelection::named("rooted-first").expect("selection must parse"),
+            );
+    let second =
+        FileSystemConfig::new(ConnectionUri::parse("file:///inside").expect("URI must parse"))
+            .with_selection(
+                ProviderSelection::named("rooted-second").expect("selection must parse"),
+            );
     assert_eq!(
         "rooted-first",
         registry

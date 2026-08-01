@@ -9,24 +9,12 @@
 // contract tests.
 //! Stateful writer adapter delegated to `qubit-local-files`.
 
-use std::io::{
-    Result as IoResult,
-    Write,
-};
+use std::io::{Result as IoResult, Write};
 
-use qubit_fs::spi::{
-    FileWriterSpi,
-    SpiWriteFailure,
-};
+use qubit_fs::spi::{FileWriterSpi, SpiWriteFailure};
 use qubit_fs::{
-    AchievedAtomicity,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsResult,
-    PublicationMethod,
-    WriteFailureState,
-    WriteOutcome,
+    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PublicationMethod,
+    WriteFailureState, WriteOutcome,
 };
 use qubit_io::Output;
 use qubit_local_files as native_files;
@@ -223,20 +211,13 @@ impl FileWriterSpi for LocalFileWriterSpi {
 ///
 /// The most precise portable writer failure state supported by both values.
 #[inline]
-fn write_failure_state(
-    state: native_files::LocalWriterState,
-    retained: bool,
-) -> WriteFailureState {
+fn write_failure_state(state: native_files::LocalWriterState, retained: bool) -> WriteFailureState {
     match state {
         native_files::LocalWriterState::NotPublished if retained => {
             WriteFailureState::RetryableNotPublished
         }
-        native_files::LocalWriterState::NotPublished => {
-            WriteFailureState::NotPublished
-        }
-        native_files::LocalWriterState::Published => {
-            WriteFailureState::Published
-        }
+        native_files::LocalWriterState::NotPublished => WriteFailureState::NotPublished,
+        native_files::LocalWriterState::Published => WriteFailureState::Published,
         _ => WriteFailureState::Indeterminate,
     }
 }

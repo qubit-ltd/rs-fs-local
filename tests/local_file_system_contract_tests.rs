@@ -10,25 +10,11 @@
 use std::path::PathBuf;
 
 use qubit_fs::{
-    CopyOptions,
-    CreateDirectoryOptions,
-    FileSystem,
-    FileSystemId,
-    FsErrorKind,
-    ListOptions,
-    Path,
+    CopyOptions, CreateDirectoryOptions, FileSystem, FileSystemId, FsErrorKind, ListOptions, Path,
     WriteOptions,
 };
-use qubit_fs_local::{
-    LocalFileSystems,
-    host_path_to_logical,
-};
-use qubit_fs_testkit::{
-    FileSystemFixture,
-    FixtureError,
-    FixtureResult,
-    FixtureSupport,
-};
+use qubit_fs_local::{LocalFileSystems, host_path_to_logical};
+use qubit_fs_testkit::{FileSystemFixture, FixtureError, FixtureResult, FixtureSupport};
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.
 struct RootedFixture {
@@ -52,9 +38,10 @@ impl RootedFixture {
     /// Converts a rooted logical path into its independent native observation
     /// path.
     fn native_path(&self, path: &Path) -> FixtureResult<PathBuf> {
-        let relative = path.as_str().strip_prefix('/').ok_or_else(|| {
-            FixtureError::new("rooted fixture path must be absolute")
-        })?;
+        let relative = path
+            .as_str()
+            .strip_prefix('/')
+            .ok_or_else(|| FixtureError::new("rooted fixture path must be absolute"))?;
         Ok(self.root.path().join(relative))
     }
 }
@@ -66,46 +53,30 @@ impl FileSystemFixture for RootedFixture {
 
     fn path(&self, relative: &str) -> FixtureResult<Path> {
         if relative == "list-root" {
-            return Path::parse("/").map_err(|error| {
-                FixtureError::with_source("fixture path is invalid", error)
-            });
+            return Path::parse("/")
+                .map_err(|error| FixtureError::with_source("fixture path is invalid", error));
         }
-        Path::parse(&format!("/fixture/{relative}")).map_err(|error| {
-            FixtureError::with_source("fixture path is invalid", error)
-        })
+        Path::parse(&format!("/fixture/{relative}"))
+            .map_err(|error| FixtureError::with_source("fixture path is invalid", error))
     }
 
-    fn seed_file(
-        &self,
-        relative: &str,
-        bytes: &[u8],
-    ) -> FixtureResult<FixtureSupport<Path>> {
+    fn seed_file(&self, relative: &str, bytes: &[u8]) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.path(relative)?;
         let native = self.native_path(&path)?;
         if let Some(parent) = native.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
-                FixtureError::with_source(
-                    "fixture seed parent directory failed",
-                    error,
-                )
+                FixtureError::with_source("fixture seed parent directory failed", error)
             })?;
         }
-        std::fs::write(native, bytes).map_err(|error| {
-            FixtureError::with_source("fixture seed write failed", error)
-        })?;
+        std::fs::write(native, bytes)
+            .map_err(|error| FixtureError::with_source("fixture seed write failed", error))?;
         Ok(FixtureSupport::Supported(path))
     }
 
-    fn seed_empty_directory(
-        &self,
-        relative: &str,
-    ) -> FixtureResult<FixtureSupport<Path>> {
+    fn seed_empty_directory(&self, relative: &str) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.path(relative)?;
         std::fs::create_dir_all(self.native_path(&path)?).map_err(|error| {
-            FixtureError::with_source(
-                "fixture directory creation failed",
-                error,
-            )
+            FixtureError::with_source("fixture directory creation failed", error)
         })?;
         Ok(FixtureSupport::Supported(path))
     }
@@ -113,9 +84,7 @@ impl FileSystemFixture for RootedFixture {
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
         std::fs::read(self.native_path(path)?)
             .map(FixtureSupport::Supported)
-            .map_err(|error| {
-                FixtureError::with_source("fixture read failed", error)
-            })
+            .map_err(|error| FixtureError::with_source("fixture read failed", error))
     }
 }
 
@@ -131,17 +100,15 @@ impl HostFixture {
     /// Creates a fresh host facade rooted at an isolated native directory.
     fn new() -> Self {
         let root = tempfile::tempdir().expect("fixture root must be created");
-        let file_system =
-            LocalFileSystems::host().expect("host filesystem must open");
+        let file_system = LocalFileSystems::host().expect("host filesystem must open");
         Self { root, file_system }
     }
 
     /// Converts a fixture-relative path into the host facade's logical path.
     fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
         let native = self.root.path().join(relative);
-        host_path_to_logical(&native).map_err(|error| {
-            FixtureError::with_source("fixture path is invalid", error)
-        })
+        host_path_to_logical(&native)
+            .map_err(|error| FixtureError::with_source("fixture path is invalid", error))
     }
 
     /// Converts a host logical path into its independent native observation
@@ -161,37 +128,23 @@ impl FileSystemFixture for HostFixture {
         self.logical_path(relative)
     }
 
-    fn seed_file(
-        &self,
-        relative: &str,
-        bytes: &[u8],
-    ) -> FixtureResult<FixtureSupport<Path>> {
+    fn seed_file(&self, relative: &str, bytes: &[u8]) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.logical_path(relative)?;
         let native = self.native_path(&path);
         if let Some(parent) = native.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
-                FixtureError::with_source(
-                    "fixture seed parent directory failed",
-                    error,
-                )
+                FixtureError::with_source("fixture seed parent directory failed", error)
             })?;
         }
-        std::fs::write(native, bytes).map_err(|error| {
-            FixtureError::with_source("fixture seed write failed", error)
-        })?;
+        std::fs::write(native, bytes)
+            .map_err(|error| FixtureError::with_source("fixture seed write failed", error))?;
         Ok(FixtureSupport::Supported(path))
     }
 
-    fn seed_empty_directory(
-        &self,
-        relative: &str,
-    ) -> FixtureResult<FixtureSupport<Path>> {
+    fn seed_empty_directory(&self, relative: &str) -> FixtureResult<FixtureSupport<Path>> {
         let path = self.logical_path(relative)?;
         std::fs::create_dir_all(self.native_path(&path)).map_err(|error| {
-            FixtureError::with_source(
-                "fixture directory creation failed",
-                error,
-            )
+            FixtureError::with_source("fixture directory creation failed", error)
         })?;
         Ok(FixtureSupport::Supported(path))
     }
@@ -199,9 +152,7 @@ impl FileSystemFixture for HostFixture {
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
         std::fs::read(self.native_path(path))
             .map(FixtureSupport::Supported)
-            .map_err(|error| {
-                FixtureError::with_source("fixture read failed", error)
-            })
+            .map_err(|error| FixtureError::with_source("fixture read failed", error))
     }
 }
 
@@ -220,10 +171,9 @@ qubit_fs_testkit::register_file_system_contract_tests! {
 #[test]
 fn test_rooted_list_keeps_entry_paths_below_requested_root() {
     let fixture = RootedFixture::new();
-    let requested_root = Path::parse("/fixture/listed")
-        .expect("requested listing root must be valid");
-    let child = Path::parse("/fixture/listed/child")
-        .expect("listed child path must be valid");
+    let requested_root =
+        Path::parse("/fixture/listed").expect("requested listing root must be valid");
+    let child = Path::parse("/fixture/listed/child").expect("listed child path must be valid");
     fixture
         .file_system()
         .create_directory(&requested_root, CreateDirectoryOptions::default())
@@ -305,8 +255,7 @@ fn test_rooted_copy_auto_detects_directory_sources() {
         .copy(&source, &target, CopyOptions::default())
         .expect("automatic copy must handle directory sources");
 
-    let copied = Path::parse("/fixture/copy-target/child.txt")
-        .expect("copied path must be valid");
+    let copied = Path::parse("/fixture/copy-target/child.txt").expect("copied path must be valid");
     assert_eq!(
         fixture
             .file_system()
