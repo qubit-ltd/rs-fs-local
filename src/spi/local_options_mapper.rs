@@ -134,14 +134,14 @@ pub(crate) fn write(
 pub(crate) fn create_directory(
     options: &ResolvedCreateDirectoryOptions,
 ) -> Result<native_files::LocalCreateDirectoryOptions, FsError> {
-    if !options.options().user_metadata.is_empty() {
+    if !options.options().user_metadata().is_empty() {
         return Err(unsupported(FsOperation::CreateDir));
     }
     let mut native = native_files::LocalCreateDirectoryOptions::new();
-    if options.options().recursive {
+    if options.options().recursive() {
         native = native.with_recursive();
     }
-    if options.options().exists_ok {
+    if options.options().exists_ok() {
         native = native.with_exists_ok();
     }
     Ok(native)
@@ -161,10 +161,10 @@ pub(crate) fn delete(
     options: &ResolvedDeleteOptions,
 ) -> native_files::LocalDeleteOptions {
     let mut native = native_files::LocalDeleteOptions::new();
-    if options.options().recursive {
+    if options.options().recursive() {
         native = native.with_recursive();
     }
-    if options.options().missing_ok {
+    if options.options().missing_ok() {
         native = native.with_missing_ok();
     }
     native
@@ -185,7 +185,7 @@ pub(crate) fn rename(
     options: &ResolvedRenameOptions,
 ) -> native_files::LocalRenameOptions {
     let mut native = native_files::LocalRenameOptions::new();
-    if options.options().overwrite {
+    if options.options().overwrite() {
         native = native.with_overwrite();
     }
     native

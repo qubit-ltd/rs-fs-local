@@ -161,7 +161,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
             Self::File { provider_id, .. }
             | Self::Directory { provider_id, .. } => provider_id.to_owned(),
         };
-        let options = persist_options(request.options().overwrite);
+        let options = persist_options(request.options().overwrite());
         let result = match self {
             Self::File { resource: slot, .. } => persist_file(
                 slot,
