@@ -558,13 +558,12 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
     ) -> FsResult<OpenedTempFile> {
         let parent = request
             .options()
-            .parent
-            .as_ref()
+            .parent()
             .map(local_path_mapper::rooted)
             .transpose()?;
         let mut options = native_files::LocalTempFileOptions::new()
-            .with_prefix(&request.options().prefix)
-            .with_suffix(&request.options().suffix);
+            .with_prefix(request.options().prefix())
+            .with_suffix(request.options().suffix());
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
         }
@@ -611,13 +610,12 @@ impl FileSystemSpi for RootedLocalFileSystemSpi {
     ) -> FsResult<OpenedTempDirectory> {
         let parent = request
             .options()
-            .parent
-            .as_ref()
+            .parent()
             .map(local_path_mapper::rooted)
             .transpose()?;
         let mut options = native_files::LocalTempDirectoryOptions::new()
-            .with_prefix(&request.options().prefix)
-            .with_suffix(&request.options().suffix);
+            .with_prefix(request.options().prefix())
+            .with_suffix(request.options().suffix());
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
         }
