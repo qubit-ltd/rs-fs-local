@@ -66,10 +66,10 @@ pub(crate) fn list(
     options: &ResolvedListOptions,
 ) -> Result<native_files::LocalListOptions, FsError> {
     let mut native = native_files::LocalListOptions::new();
-    if options.options().recursive || options.options().prefix.is_some() {
+    if options.options().recursive() || options.options().prefix().is_some() {
         native = native.with_recursive();
     }
-    if options.options().follow_symlinks {
+    if options.options().follow_symlinks() {
         native = native.with_follow_symlinks();
     }
     Ok(native)
@@ -94,7 +94,7 @@ pub(crate) fn write(
     options: &ResolvedWriteOptions,
 ) -> Result<native_files::LocalWriteOptions, FsError> {
     let options = options.options();
-    let mode = match options.disposition {
+    let mode = match options.disposition() {
         WriteDisposition::CreateNew => native_files::LocalWriteMode::CreateNew,
         WriteDisposition::CreateOrReplace => {
             native_files::LocalWriteMode::CreateOrReplace
@@ -102,14 +102,14 @@ pub(crate) fn write(
         WriteDisposition::Append => native_files::LocalWriteMode::Append,
     };
     let mut native = native_files::LocalWriteOptions::new(mode)
-        .with_atomicity(atomicity(options.atomicity));
-    if options.create_parent {
+        .with_atomicity(atomicity(options.atomicity()));
+    if options.create_parent() {
         native = native.with_parent();
     }
-    if options.precondition != WritePrecondition::None
-        || options.content_type.is_some()
-        || !options.user_metadata.is_empty()
-        || options.checksum.is_some()
+    if *options.precondition() != WritePrecondition::None
+        || options.content_type().is_some()
+        || !options.user_metadata().is_empty()
+        || options.checksum().is_some()
     {
         return Err(unsupported(FsOperation::OpenWriter));
     }
@@ -210,34 +210,34 @@ pub(crate) fn copy(
     options: &qubit_fs::spi::ResolvedCopyOptions,
 ) -> Result<native_files::LocalCopyOptions, FsError> {
     let options = options.options();
-    if options.continue_on_error
-        || options.server_side == qubit_fs::ServerSidePreference::Require
+    if options.continue_on_error()
+        || options.server_side() == qubit_fs::ServerSidePreference::Require
     {
         return Err(unsupported(FsOperation::Copy));
     }
     let mut native = native_files::LocalCopyOptions::new()
-        .with_conflict(copy_conflict(options.conflict))
+        .with_conflict(copy_conflict(options.conflict()))
         .with_metadata_preservation(metadata_preservation(
-            options.preserve_metadata,
+            options.preserve_metadata(),
         )?)
-        .with_symlink_policy(symlink_policy(options.follow_symlinks))
-        .with_atomicity(atomicity(options.atomicity))
-        .with_durability(durability(options.durability));
-    native = match options.mode {
+        .with_symlink_policy(symlink_policy(options.follow_symlinks()))
+        .with_atomicity(atomicity(options.atomicity()))
+        .with_durability(durability(options.durability()));
+    native = match options.mode() {
         CopyMode::File => native.with_file_source(),
         CopyMode::Tree => native.with_tree_source(),
         CopyMode::Auto => native,
     };
-    if options.conflict == CopyConflictPolicy::Overwrite {
+    if options.conflict() == CopyConflictPolicy::Overwrite {
         native = native.with_type_conflict(
             native_files::LocalCopyTypeConflictPolicy::Replace,
         );
-    } else if options.conflict == CopyConflictPolicy::Skip {
+    } else if options.conflict() == CopyConflictPolicy::Skip {
         native = native.with_type_conflict(
             native_files::LocalCopyTypeConflictPolicy::Skip,
         );
     }
-    if options.create_parent {
+    if options.create_parent() {
         native = native.with_parent();
     }
     Ok(native)
