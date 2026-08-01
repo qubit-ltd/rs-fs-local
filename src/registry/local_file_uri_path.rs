@@ -52,16 +52,16 @@ pub(super) fn canonical_uri(
     let mut encoded = String::with_capacity(text.len());
     let mut index = 0;
     while index < text.len() {
-        if text.as_bytes()[index] == b'%' && index + 2 < text.len() {
-            if hex_value(text.as_bytes()[index + 1]).is_some()
-                && hex_value(text.as_bytes()[index + 2]).is_some()
-            {
-                encoded.push('%');
-                encoded.push(char::from(text.as_bytes()[index + 1]));
-                encoded.push(char::from(text.as_bytes()[index + 2]));
-                index += 3;
-                continue;
-            }
+        if text.as_bytes()[index] == b'%'
+            && index + 2 < text.len()
+            && hex_value(text.as_bytes()[index + 1]).is_some()
+            && hex_value(text.as_bytes()[index + 2]).is_some()
+        {
+            encoded.push('%');
+            encoded.push(char::from(text.as_bytes()[index + 1]));
+            encoded.push(char::from(text.as_bytes()[index + 2]));
+            index += 3;
+            continue;
         }
         let scalar = text[index..]
             .chars()
