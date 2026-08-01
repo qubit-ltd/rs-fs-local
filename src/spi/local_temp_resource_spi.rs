@@ -545,5 +545,14 @@ fn directory_cleanup_error(
     error: std::io::Error,
     provider_id: &str,
 ) -> FsError {
+    if error.kind() == std::io::ErrorKind::InvalidInput {
+        return FsError::with_source(
+            FsErrorKind::NotDirectory,
+            FsOperation::CleanupTemp,
+            "temporary directory identity no longer names a directory",
+            error,
+        )
+        .with_provider(provider_id);
+    }
     cleanup_error(error, "temporary directory cleanup failed", provider_id)
 }

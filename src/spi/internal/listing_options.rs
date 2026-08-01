@@ -34,8 +34,8 @@ impl ListingOptions {
     #[inline]
     pub(in crate::spi) fn new(options: &ResolvedListOptions) -> Self {
         Self {
-            include_metadata: options.options().include_metadata,
-            prefix: options.options().prefix.clone(),
+            include_metadata: options.options().include_metadata(),
+            prefix: options.options().prefix().map(str::to_owned),
         }
     }
 
