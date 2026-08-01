@@ -112,8 +112,7 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
     assert_eq!(FsErrorKind::RequirementNotMet, content_type.error().kind());
 
     for options in [
-        WriteOptions::default()
-            .with_precondition(WritePrecondition::IfAbsent),
+        WriteOptions::default().with_precondition(WritePrecondition::IfAbsent),
         WriteOptions::default().with_checksum(Some(Checksum::new(
             ChecksumAlgorithm::Sha256,
             "00",
