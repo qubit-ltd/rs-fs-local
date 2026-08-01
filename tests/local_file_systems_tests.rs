@@ -165,11 +165,12 @@ fn test_host_temp_file_applies_parent_and_affixes() {
         LocalFileSystems::host().expect("host filesystem should construct");
 
     let temporary = file_system
-        .create_temp_file(TempFileOptions {
-            parent: Some(parent.clone()),
-            prefix: "host-upload-".to_owned(),
-            suffix: ".part".to_owned(),
-        })
+        .create_temp_file(
+            TempFileOptions::default()
+                .with_parent(Some(parent.clone()))
+                .with_prefix("host-upload-".to_owned())
+                .with_suffix(".part".to_owned()),
+        )
         .expect("temporary file should be created");
 
     assert!(

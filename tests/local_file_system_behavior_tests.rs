@@ -269,17 +269,15 @@ fn test_rooted_operations_map_missing_entries() {
         .expect_err("a file cannot become a directory");
     assert_eq!(FsErrorKind::Conflict, create_directory.kind());
     let temporary_file = file_system
-        .create_temp_file(TempFileOptions {
-            parent: Some(regular_file.clone()),
-            ..TempFileOptions::default()
-        })
+        .create_temp_file(
+            TempFileOptions::default().with_parent(Some(regular_file.clone())),
+        )
         .expect_err("temporary file with a file parent must fail");
     assert_eq!(FsErrorKind::InvalidPath, temporary_file.kind());
     let temporary_directory = file_system
-        .create_temp_directory(TempDirectoryOptions {
-            parent: Some(regular_file),
-            ..TempDirectoryOptions::default()
-        })
+        .create_temp_directory(
+            TempDirectoryOptions::default().with_parent(Some(regular_file)),
+        )
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::InvalidPath, temporary_directory.kind());
 }
@@ -354,17 +352,15 @@ fn test_host_operations_map_missing_native_entries() {
 
     let file_parent = host_path(&root, "regular-file");
     let temporary_file = file_system
-        .create_temp_file(TempFileOptions {
-            parent: Some(file_parent.clone()),
-            ..TempFileOptions::default()
-        })
+        .create_temp_file(
+            TempFileOptions::default().with_parent(Some(file_parent.clone())),
+        )
         .expect_err("temporary file with a file parent must fail");
     assert_eq!(FsErrorKind::AlreadyExists, temporary_file.kind());
     let temporary_directory = file_system
-        .create_temp_directory(TempDirectoryOptions {
-            parent: Some(file_parent),
-            ..TempDirectoryOptions::default()
-        })
+        .create_temp_directory(
+            TempDirectoryOptions::default().with_parent(Some(file_parent)),
+        )
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::AlreadyExists, temporary_directory.kind());
 }

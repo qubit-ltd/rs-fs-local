@@ -384,11 +384,12 @@ fn test_host_temp_resources_persist_and_cleanup() {
     )
     .expect("host target path must be valid");
     let mut file = file_system
-        .create_temp_file(TempFileOptions {
-            parent: Some(parent.clone()),
-            prefix: "host-file-".to_owned(),
-            suffix: ".tmp".to_owned(),
-        })
+        .create_temp_file(
+            TempFileOptions::default()
+                .with_parent(Some(parent.clone()))
+                .with_prefix("host-file-".to_owned())
+                .with_suffix(".tmp".to_owned()),
+        )
         .expect("host temporary file must be created");
     let outcome = file
         .persist(&target, PersistOptions::default())
@@ -396,11 +397,12 @@ fn test_host_temp_resources_persist_and_cleanup() {
     assert_eq!(outcome.target(), &target);
 
     let mut directory = file_system
-        .create_temp_directory(TempDirectoryOptions {
-            parent: Some(parent),
-            prefix: "host-directory-".to_owned(),
-            suffix: ".tmp".to_owned(),
-        })
+        .create_temp_directory(
+            TempDirectoryOptions::default()
+                .with_parent(Some(parent))
+                .with_prefix("host-directory-".to_owned())
+                .with_suffix(".tmp".to_owned()),
+        )
         .expect("host temporary directory must be created");
     let directory_path = directory.path().clone();
     directory
