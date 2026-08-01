@@ -261,9 +261,10 @@ fn test_temp_directory_cleanup_removes_directory() {
     assert_eq!(error.kind(), FsErrorKind::NotFound);
 }
 
-/// A cleanup failure retains a temporary directory for a later cleanup retry.
+/// A replacement at the original path is rejected instead of being removed by
+/// a cleanup retry.
 #[test]
-fn test_temp_directory_cleanup_failure_retains_resource_for_retry() {
+fn test_temp_directory_cleanup_failure_rejects_replacement_path() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-directory-cleanup-retry-root")
         .expect("test identity must be valid");
@@ -283,13 +284,17 @@ fn test_temp_directory_cleanup_failure_retains_resource_for_retry() {
     assert_eq!(error.kind(), FsErrorKind::NotFound);
     assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
 
-    file_system
-        .create_directory(&path, CreateDirectoryOptions::default())
-        .expect("temporary directory fixture must be restored");
-    temporary
+    std::fs::write(
+        root.path().join(path.as_str().trim_start_matches('/')),
+        b"replacement",
+    )
+        .expect("replacement fixture must be restored");
+    let error = temporary
         .cleanup()
-        .expect("retained temporary directory must support cleanup retry");
-    assert_eq!(temporary.state(), TempResourceState::Cleaned);
+        .expect_err("replacement directory must fail identity validation");
+    assert_eq!(error.kind(), FsErrorKind::NotDirectory);
+    assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
+    file_system.stat(&path).expect("replacement entry must remain");
 }
 
 /// Keeping a temporary file preserves it and makes later lifecycle commands
