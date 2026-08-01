@@ -156,7 +156,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         PublicationMethod::Direct
                     },
                 );
-                result.bytes_written = Some(outcome.bytes_written());
+                result = result.with_bytes_written(outcome.bytes_written());
                 Ok(result)
             }
             Err(error) => {
