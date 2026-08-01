@@ -9,11 +9,21 @@
 // contract tests.
 //! Native error translation with public request context.
 
-use qubit_fs::spi::{SpiCopyFailure, SpiRenameFailure};
+use qubit_fs::spi::{
+    SpiCopyFailure,
+    SpiRenameFailure,
+};
 use qubit_fs::{
-    CopyFailureState, CopyStats, FsError, FsErrorKind, FsOperation, Path, RenameFailureState,
+    CopyFailureState,
+    CopyStats,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    Path,
+    RenameFailureState,
 };
 use qubit_local_files as native_files;
+use qubit_local_files::LocalFileErrorSource;
 
 /// Maps a native failure with caller-visible source and optional target paths.
 ///
@@ -33,11 +43,17 @@ pub(crate) fn map(
     operation: FsOperation,
     path: &Path,
     target: Option<&Path>,
+    provider_id: &str,
 ) -> FsError {
-    let kind = native_kind(error.kind());
-    let error = FsError::with_source(kind, operation, "local filesystem operation failed", error)
-        .with_path(path.clone())
-        .with_provider("local-file");
+    let kind = error_kind(&error);
+    let error = FsError::with_source(
+        kind,
+        operation,
+        "local filesystem operation failed",
+        error,
+    )
+    .with_path(path.clone())
+    .with_provider(provider_id);
     match target {
         Some(target) => error.with_target(target.clone()),
         None => error,
@@ -60,9 +76,10 @@ pub(crate) fn map_io(
     error: std::io::Error,
     operation: FsOperation,
     message: &'static str,
+    provider_id: &str,
 ) -> FsError {
     FsError::with_source(io_kind(error.kind()), operation, message, error)
-        .with_provider("local-file")
+        .with_provider(provider_id)
 }
 
 /// Maps a native local-files failure without inventing a logical path.
@@ -81,9 +98,11 @@ pub(crate) fn map_without_path(
     error: native_files::LocalFileError,
     operation: FsOperation,
     message: &'static str,
+    provider_id: &str,
 ) -> FsError {
-    FsError::with_source(native_kind(error.kind()), operation, message, error)
-        .with_provider("local-file")
+    let kind = error_kind(&error);
+    FsError::with_source(kind, operation, message, error)
+        .with_provider(provider_id)
 }
 
 /// Wraps a path-conversion error before native copy starts.
@@ -97,7 +116,11 @@ pub(crate) fn map_without_path(
 /// A copy failure with unchanged namespace state and empty statistics.
 #[inline(always)]
 pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
-    SpiCopyFailure::new(error, CopyFailureState::Unchanged, CopyStats::default())
+    SpiCopyFailure::new(
+        error,
+        CopyFailureState::Unchanged,
+        CopyStats::default(),
+    )
 }
 
 /// Converts a complete native copy failure without discarding staging or
@@ -107,12 +130,26 @@ pub(crate) fn copy_failure(
     error: native_files::LocalCopyFailure,
     path: &Path,
     target: &Path,
+    provider_id: &str,
 ) -> FsError {
-    let kind = native_kind(error.error().kind());
+    let kind = error_kind(error.error());
     FsError::with_source(kind, FsOperation::Copy, "local copy failed", error)
         .with_path(path.clone())
         .with_target(target.clone())
-        .with_provider("local-file")
+        .with_provider(provider_id)
+}
+
+/// Selects the most precise portable kind available from a native failure.
+///
+/// Native I/O sources are authoritative because the stable native category is
+/// intentionally coarser than `std::io::ErrorKind`.
+#[inline]
+fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
+    match error.source_kind() {
+        Some(LocalFileErrorSource::Io(source)) => io_kind(source.kind()),
+        Some(LocalFileErrorSource::PathCodec(_)) => FsErrorKind::InvalidPath,
+        Some(_) | None => native_kind(error.kind()),
+    }
 }
 
 /// Wraps a path-conversion error before native rename starts.
@@ -141,16 +178,32 @@ pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
 /// map to `Other`.
 fn native_kind(kind: native_files::LocalFileErrorKind) -> FsErrorKind {
     match kind {
-        native_files::LocalFileErrorKind::InvalidInput => FsErrorKind::InvalidPath,
+        native_files::LocalFileErrorKind::InvalidInput => {
+            FsErrorKind::InvalidPath
+        }
         native_files::LocalFileErrorKind::NotFound => FsErrorKind::NotFound,
-        native_files::LocalFileErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
+        native_files::LocalFileErrorKind::AlreadyExists => {
+            FsErrorKind::AlreadyExists
+        }
         native_files::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
-        native_files::LocalFileErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
-        native_files::LocalFileErrorKind::Unsupported => FsErrorKind::UnsupportedOperation,
-        native_files::LocalFileErrorKind::RequirementNotMet => FsErrorKind::RequirementNotMet,
-        native_files::LocalFileErrorKind::ResourceLimit => FsErrorKind::ResourceLimitExceeded,
-        native_files::LocalFileErrorKind::PublicationIncomplete => FsErrorKind::Io,
-        native_files::LocalFileErrorKind::Indeterminate => FsErrorKind::Indeterminate,
+        native_files::LocalFileErrorKind::PermissionDenied => {
+            FsErrorKind::PermissionDenied
+        }
+        native_files::LocalFileErrorKind::Unsupported => {
+            FsErrorKind::UnsupportedOperation
+        }
+        native_files::LocalFileErrorKind::RequirementNotMet => {
+            FsErrorKind::RequirementNotMet
+        }
+        native_files::LocalFileErrorKind::ResourceLimit => {
+            FsErrorKind::ResourceLimitExceeded
+        }
+        native_files::LocalFileErrorKind::PublicationIncomplete => {
+            FsErrorKind::Io
+        }
+        native_files::LocalFileErrorKind::Indeterminate => {
+            FsErrorKind::Indeterminate
+        }
         native_files::LocalFileErrorKind::Io => FsErrorKind::Io,
         _ => FsErrorKind::Other,
     }
@@ -169,6 +222,7 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
     match kind {
         std::io::ErrorKind::NotFound => FsErrorKind::NotFound,
         std::io::ErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
+        std::io::ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
         std::io::ErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
         std::io::ErrorKind::InvalidInput => FsErrorKind::InvalidPath,
         std::io::ErrorKind::InvalidData => FsErrorKind::DataCorruption,

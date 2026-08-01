@@ -7,8 +7,7 @@
 // =============================================================================
 //! Decoding of raw `file:` URI paths into local canonical path text.
 
-use qubit_fs::Path;
-use qubit_local_files::LocalPathCodec;
+use qubit_fs::{Path, Uri};
 
 use super::local_file_system_provider::invalid_path;
 
@@ -40,7 +39,55 @@ pub(super) fn decode(
         }
         canonical.push_str(&decode_component(component)?);
     }
-    Path::parse(&canonical).map_err(|_| invalid_path("local file URI path is invalid"))
+    Path::parse(&canonical)
+        .map_err(|_| invalid_path("local file URI path is invalid"))
+}
+
+/// Re-encodes a canonical logical path as the unique absolute `file:` URI
+/// spelling used by registry resolutions.
+pub(super) fn canonical_uri(
+    path: &Path,
+) -> Result<Uri, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
+    let text = path.as_str();
+    let mut encoded = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < text.len() {
+        if text.as_bytes()[index] == b'%' && index + 2 < text.len() {
+            if hex_value(text.as_bytes()[index + 1]).is_some()
+                && hex_value(text.as_bytes()[index + 2]).is_some()
+            {
+                encoded.push('%');
+                encoded.push(char::from(text.as_bytes()[index + 1]));
+                encoded.push(char::from(text.as_bytes()[index + 2]));
+                index += 3;
+                continue;
+            }
+        }
+        let scalar = text[index..]
+            .chars()
+            .next()
+            .expect("path byte index must start a scalar");
+        if scalar == '/' || is_uri_pchar(scalar) {
+            encoded.push(scalar);
+        } else {
+            for byte in scalar.to_string().as_bytes() {
+                push_uri_escaped_byte(&mut encoded, *byte);
+            }
+        }
+        index += scalar.len_utf8();
+    }
+    Uri::parse(&format!("file://{encoded}"))
+        .map_err(|_| invalid_path("local file URI path cannot be canonicalized"))
+}
+
+/// Returns whether a scalar can appear unescaped in a URI path segment.
+fn is_uri_pchar(scalar: char) -> bool {
+    scalar.is_ascii_alphanumeric()
+        || matches!(
+            scalar,
+            '-' | '.' | '_' | '~' | '!' | '$' | '&' | '\'' | '(' | ')' | '*' | '+' | ','
+                | ';' | ':' | '@'
+        )
 }
 
 /// Decodes one URI segment and encodes it in the local canonical text form.
@@ -60,8 +107,7 @@ pub(super) fn decode(
 fn decode_component(
     component: &str,
 ) -> Result<String, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
-    let canonical = LocalPathCodec::decode_uri_component(component)
-        .map_err(|_| invalid_path("local file URI path contains an invalid encoded component"))?;
+    let canonical = canonicalize_uri_bytes(&decode_uri_bytes(component)?);
     let bytes = canonical.as_bytes();
     if bytes.contains(&b'/') || bytes.contains(&b'\\') {
         return Err(invalid_path(
@@ -69,4 +115,103 @@ fn decode_component(
         ));
     }
     Ok(canonical)
+}
+
+/// Strictly percent-decodes a URI component without treating `+` as a space.
+fn decode_uri_bytes(
+    component: &str,
+) -> Result<Vec<u8>, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
+    let bytes = component.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            decoded.push(bytes[index]);
+            index += 1;
+            continue;
+        }
+        let high = bytes
+            .get(index + 1)
+            .copied()
+            .and_then(hex_value)
+            .ok_or_else(|| {
+                invalid_path(
+                    "local file URI path contains an invalid encoded component",
+                )
+            })?;
+        let low = bytes
+            .get(index + 2)
+            .copied()
+            .and_then(hex_value)
+            .ok_or_else(|| {
+                invalid_path(
+                    "local file URI path contains an invalid encoded component",
+                )
+            })?;
+        decoded.push((high << 4) | low);
+        index += 3;
+    }
+    if decoded.contains(&0) {
+        return Err(invalid_path(
+            "local file URI path contains an invalid encoded component",
+        ));
+    }
+    Ok(decoded)
+}
+
+/// Converts one ASCII hexadecimal digit to its numeric value.
+const fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Canonicalizes URI bytes without first constructing a native path value.
+fn canonicalize_uri_bytes(bytes: &[u8]) -> String {
+    let mut canonical = String::with_capacity(bytes.len());
+    let mut remaining = bytes;
+    while !remaining.is_empty() {
+        match std::str::from_utf8(remaining) {
+            Ok(valid) => {
+                push_uri_scalars(&mut canonical, valid);
+                break;
+            }
+            Err(error) => {
+                let valid_end = error.valid_up_to();
+                let valid = std::str::from_utf8(&remaining[..valid_end])
+                    .expect("valid UTF-8 prefix must decode");
+                push_uri_scalars(&mut canonical, valid);
+                let invalid_len = error.error_len().unwrap_or(1);
+                for byte in &remaining[valid_end..valid_end + invalid_len] {
+                    push_uri_escaped_byte(&mut canonical, *byte);
+                }
+                remaining = &remaining[valid_end + invalid_len..];
+            }
+        }
+    }
+    canonical
+}
+
+/// Appends UTF-8 scalars using local canonical escaped-byte text.
+fn push_uri_scalars(canonical: &mut String, text: &str) {
+    for scalar in text.chars() {
+        if scalar == '%' || scalar.is_control() {
+            for byte in scalar.to_string().bytes() {
+                push_uri_escaped_byte(canonical, byte);
+            }
+        } else {
+            canonical.push(scalar);
+        }
+    }
+}
+
+/// Appends one uppercase percent escape.
+fn push_uri_escaped_byte(canonical: &mut String, byte: u8) {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    canonical.push('%');
+    canonical.push(char::from(HEX[usize::from(byte >> 4)]));
+    canonical.push(char::from(HEX[usize::from(byte & 0x0F)]));
 }

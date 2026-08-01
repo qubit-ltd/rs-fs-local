@@ -11,10 +11,20 @@
 
 use std::path::PathBuf;
 
-use qubit_fs::spi::{PersistRequest, SpiPersistFailure, TempResourceSpi};
+use qubit_fs::spi::{
+    PersistRequest,
+    SpiPersistFailure,
+    TempResourceSpi,
+};
 use qubit_fs::{
-    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PersistFailureState,
-    PersistOutcome, PublicationMethod,
+    AchievedAtomicity,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    PersistFailureState,
+    PersistOutcome,
+    PublicationMethod,
 };
 use qubit_local_files as native_files;
 
@@ -31,6 +41,8 @@ pub(crate) enum LocalTempResourceSpi {
         resource: Option<native_files::LocalTempFile>,
         /// Whether paths must be translated relative to a rooted authority.
         rooted: bool,
+        /// Provider identity attached to lifecycle failures.
+        provider_id: String,
     },
     /// Owns a native temporary directory until it reaches a terminal lifecycle
     /// state.
@@ -39,6 +51,8 @@ pub(crate) enum LocalTempResourceSpi {
         resource: Option<native_files::LocalTempDirectory>,
         /// Whether paths must be translated relative to a rooted authority.
         rooted: bool,
+        /// Provider identity attached to lifecycle failures.
+        provider_id: String,
     },
 }
 impl LocalTempResourceSpi {
@@ -53,10 +67,15 @@ impl LocalTempResourceSpi {
     ///
     /// An active temporary-file lifecycle adapter.
     #[inline(always)]
-    pub(crate) const fn file(value: native_files::LocalTempFile, rooted: bool) -> Self {
+    pub(crate) fn file(
+        value: native_files::LocalTempFile,
+        rooted: bool,
+        provider_id: String,
+    ) -> Self {
         Self::File {
             resource: Some(value),
             rooted,
+            provider_id,
         }
     }
 
@@ -71,10 +90,15 @@ impl LocalTempResourceSpi {
     ///
     /// An active temporary-directory lifecycle adapter.
     #[inline(always)]
-    pub(crate) const fn directory(value: native_files::LocalTempDirectory, rooted: bool) -> Self {
+    pub(crate) fn directory(
+        value: native_files::LocalTempDirectory,
+        rooted: bool,
+        provider_id: String,
+    ) -> Self {
         Self::Directory {
             resource: Some(value),
             rooted,
+            provider_id,
         }
     }
 
@@ -92,9 +116,14 @@ impl LocalTempResourceSpi {
     ///
     /// Returns `InvalidPath` when the logical target cannot be converted to
     /// the resource's native authority.
-    fn target(&self, target: &qubit_fs::Path) -> Result<(PathBuf, bool), SpiPersistFailure> {
+    fn target(
+        &self,
+        target: &qubit_fs::Path,
+    ) -> Result<(PathBuf, bool), SpiPersistFailure> {
         let rooted = match self {
-            Self::File { rooted, .. } | Self::Directory { rooted, .. } => *rooted,
+            Self::File { rooted, .. } | Self::Directory { rooted, .. } => {
+                *rooted
+            }
         };
         let target = if rooted {
             local_path_mapper::rooted(target)
@@ -128,10 +157,18 @@ impl TempResourceSpi for LocalTempResourceSpi {
         request: PersistRequest<'_>,
     ) -> Result<PersistOutcome, SpiPersistFailure> {
         let (target, rooted) = self.target(request.target())?;
+        let provider_id = match self {
+            Self::File { provider_id, .. }
+            | Self::Directory { provider_id, .. } => provider_id.to_owned(),
+        };
         let options = persist_options(request.options().overwrite);
         let result = match self {
-            Self::File { resource: slot, .. } => persist_file(slot, &target, options),
-            Self::Directory { resource: slot, .. } => persist_directory(slot, &target, options),
+            Self::File { resource: slot, .. } => {
+                persist_file(slot, &target, options, &provider_id)
+            }
+            Self::Directory { resource: slot, .. } => {
+                persist_directory(slot, &target, options, &provider_id)
+            }
         }?;
         map_persist_outcome(result, rooted)
     }
@@ -193,7 +230,9 @@ impl TempResourceSpi for LocalTempResourceSpi {
     fn cleanup(&mut self) -> FsResult<()> {
         match self {
             Self::File {
-                resource: value, ..
+                resource: value,
+                provider_id,
+                ..
             } => value
                 .as_mut()
                 .ok_or_else(|| {
@@ -204,9 +243,11 @@ impl TempResourceSpi for LocalTempResourceSpi {
                     )
                 })?
                 .cleanup()
-                .map_err(file_cleanup_error),
+                .map_err(|error| file_cleanup_error(error, provider_id)),
             Self::Directory {
-                resource: value, ..
+                resource: value,
+                provider_id,
+                ..
             } => value
                 .as_mut()
                 .ok_or_else(|| {
@@ -217,7 +258,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
                     )
                 })?
                 .cleanup()
-                .map_err(directory_cleanup_error),
+                .map_err(|error| directory_cleanup_error(error, provider_id)),
         }
     }
 }
@@ -273,7 +314,9 @@ fn map_persist_outcome(
             AchievedAtomicity::NonAtomic
         },
         match result.method() {
-            native_files::LocalPersistMethod::AtomicRename => PublicationMethod::AtomicRename,
+            native_files::LocalPersistMethod::AtomicRename => {
+                PublicationMethod::AtomicRename
+            }
             _ => PublicationMethod::Direct,
         },
     ))
@@ -299,18 +342,21 @@ fn persist_file(
     slot: &mut Option<native_files::LocalTempFile>,
     target: &std::path::Path,
     options: native_files::LocalPersistOptions,
+    provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.persist_with_outcome(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let (io, resource, _, _, _, state) = error.into_parts_with_state();
+            let (error, resource, _, _, _, state) =
+                error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
                 error_mapper::map_io(
-                    io,
+                    error.into_io_error(),
                     FsOperation::PersistTemp,
                     "temporary file persistence failed",
+                    provider_id,
                 ),
                 persist_failure_state(state),
             ))
@@ -339,18 +385,21 @@ fn persist_directory(
     slot: &mut Option<native_files::LocalTempDirectory>,
     target: &std::path::Path,
     options: native_files::LocalPersistOptions,
+    provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.persist_with_outcome(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let (io, resource, _, _, _, state) = error.into_parts_with_state();
+            let (error, resource, _, _, _, state) =
+                error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
                 error_mapper::map_io(
-                    io,
+                    error.into_io_error(),
                     FsOperation::PersistTemp,
                     "temporary directory persistence failed",
+                    provider_id,
                 ),
                 persist_failure_state(state),
             ))
@@ -369,13 +418,19 @@ fn persist_directory(
 /// The equivalent portable state; unknown future native states map to
 /// `Indeterminate`.
 #[inline]
-fn persist_failure_state(state: native_files::LocalPersistFailureState) -> PersistFailureState {
+fn persist_failure_state(
+    state: native_files::LocalPersistFailureState,
+) -> PersistFailureState {
     match state {
-        native_files::LocalPersistFailureState::NotPublished => PersistFailureState::NotPublished,
+        native_files::LocalPersistFailureState::NotPublished => {
+            PersistFailureState::NotPublished
+        }
         native_files::LocalPersistFailureState::PublishedSourceRetained => {
             PersistFailureState::PublishedSourceRetained
         }
-        native_files::LocalPersistFailureState::Indeterminate => PersistFailureState::Indeterminate,
+        native_files::LocalPersistFailureState::Indeterminate => {
+            PersistFailureState::Indeterminate
+        }
         _ => PersistFailureState::Indeterminate,
     }
 }
@@ -437,8 +492,12 @@ fn logical_persist_error(error: FsError) -> SpiPersistFailure {
 ///
 /// A facade cleanup error.
 #[inline(always)]
-fn cleanup_error(error: std::io::Error, message: &'static str) -> FsError {
-    error_mapper::map_io(error, FsOperation::CleanupTemp, message)
+fn cleanup_error(
+    error: std::io::Error,
+    message: &'static str,
+    provider_id: &str,
+) -> FsError {
+    error_mapper::map_io(error, FsOperation::CleanupTemp, message, provider_id)
 }
 
 /// Maps a native temporary-file cleanup failure.
@@ -451,8 +510,8 @@ fn cleanup_error(error: std::io::Error, message: &'static str) -> FsError {
 ///
 /// A facade cleanup error identifying temporary-file cleanup.
 #[inline(always)]
-fn file_cleanup_error(error: std::io::Error) -> FsError {
-    cleanup_error(error, "temporary file cleanup failed")
+fn file_cleanup_error(error: std::io::Error, provider_id: &str) -> FsError {
+    cleanup_error(error, "temporary file cleanup failed", provider_id)
 }
 
 /// Maps a native temporary-directory cleanup failure.
@@ -465,6 +524,9 @@ fn file_cleanup_error(error: std::io::Error) -> FsError {
 ///
 /// A facade cleanup error identifying temporary-directory cleanup.
 #[inline(always)]
-fn directory_cleanup_error(error: std::io::Error) -> FsError {
-    cleanup_error(error, "temporary directory cleanup failed")
+fn directory_cleanup_error(
+    error: std::io::Error,
+    provider_id: &str,
+) -> FsError {
+    cleanup_error(error, "temporary directory cleanup failed", provider_id)
 }

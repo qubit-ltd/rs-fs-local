@@ -8,19 +8,61 @@
 //! Behavioral coverage for host and rooted local filesystem adapters.
 
 use qubit_fs::{
-    Checksum, ChecksumAlgorithm, CopyConflictPolicy, CopyOptions, CreateDirectoryOptions,
-    DeleteOptions, FsErrorKind, ListOptions, MetadataPreservePolicy, Path, RenameOptions,
-    ServerSidePreference, TempDirectoryOptions, TempFileOptions, UserMetadata, WriteOptions,
+    Checksum,
+    ChecksumAlgorithm,
+    CopyConflictPolicy,
+    CopyOptions,
+    CreateDirectoryOptions,
+    DeleteOptions,
+    FsErrorKind,
+    ListOptions,
+    MetadataPreservePolicy,
+    Path,
+    RenameOptions,
+    ServerSidePreference,
+    TempDirectoryOptions,
+    TempFileOptions,
+    UserMetadata,
+    WriteOptions,
     WritePrecondition,
 };
-use qubit_fs_local::{LocalFileSystems, host_path_to_logical};
+use qubit_fs_local::{
+    LocalFileSystems,
+    host_path_to_logical,
+};
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
 fn rooted_file_system() -> (tempfile::TempDir, qubit_fs::FileSystem) {
     let root = tempfile::tempdir().expect("test root must be created");
-    let file_system =
-        LocalFileSystems::rooted(root.path()).expect("rooted local filesystem must be opened");
+    let file_system = LocalFileSystems::rooted(root.path())
+        .expect("rooted local filesystem must be opened");
     (root, file_system)
+}
+
+/// Native I/O categories survive translation when a path component is not a
+/// directory.
+#[test]
+fn test_stat_maps_not_a_directory_io_kind() {
+    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let file_system =
+        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let component = root.path().join("component");
+    std::fs::write(&component, b"payload")
+        .expect("file fixture must be written");
+    file_system
+        .stat(
+            &host_path_to_logical(&component)
+                .expect("component path must be logical"),
+        )
+        .expect("file fixture metadata must be readable");
+
+    let error = file_system
+        .stat(
+            &host_path_to_logical(&component.join("child"))
+                .expect("child path must be logical"),
+        )
+        .expect_err("a child below a regular file must fail");
+    assert_eq!(error.kind(), FsErrorKind::NotDirectory);
 }
 
 /// Unsupported provider-level metadata policies fail before filesystem side
@@ -277,7 +319,8 @@ fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
 #[test]
 fn test_host_operations_map_missing_native_entries() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
-    let file_system = LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host().expect("host local filesystem must be opened");
     let missing = host_path(&root, "missing");
 
     let stat = file_system
@@ -317,7 +360,8 @@ fn test_host_operations_map_missing_native_entries() {
     assert_eq!(FsErrorKind::NotFound, writer.kind());
 
     let regular_file = root.path().join("regular-file");
-    std::fs::write(&regular_file, b"file").expect("regular fixture file must be written");
+    std::fs::write(&regular_file, b"file")
+        .expect("regular fixture file must be written");
     let create_directory = file_system
         .create_directory(
             &host_path(&root, "regular-file"),
@@ -350,7 +394,8 @@ fn test_host_metadata_maps_symbolic_link_kind() {
     use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().expect("host fixture root must exist");
-    let file_system = LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host().expect("host local filesystem must be opened");
     let referent = root.path().join("referent");
     let link = root.path().join("link");
     std::fs::write(&referent, b"payload").expect("referent should be written");
@@ -370,9 +415,11 @@ fn test_host_metadata_maps_unix_socket_kind() {
     use std::os::unix::net::UnixListener;
 
     let root = tempfile::tempdir().expect("host fixture root must exist");
-    let file_system = LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host().expect("host local filesystem must be opened");
     let socket = root.path().join("socket");
-    let _listener = UnixListener::bind(&socket).expect("Unix-domain socket should be created");
+    let _listener = UnixListener::bind(&socket)
+        .expect("Unix-domain socket should be created");
 
     let metadata = file_system
         .stat(&host_path(&root, "socket"))

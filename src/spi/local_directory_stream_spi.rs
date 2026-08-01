@@ -11,8 +11,17 @@
 
 use std::path::Path as NativePath;
 
-use qubit_fs::spi::{DirectoryStreamSpi, ResolvedListOptions};
-use qubit_fs::{DirEntry, FsError, FsOperation, FsResult, Path};
+use qubit_fs::spi::{
+    DirectoryStreamSpi,
+    ResolvedListOptions,
+};
+use qubit_fs::{
+    DirEntry,
+    FsError,
+    FsOperation,
+    FsResult,
+    Path,
+};
 use qubit_local_files as native_files;
 
 use super::error_mapper;
@@ -29,6 +38,8 @@ pub(crate) enum LocalDirectoryStreamSpi {
         native_files::LocalDirectoryWalker,
         /// Facade filtering and metadata behavior retained for the stream.
         ListingOptions,
+        /// Provider identity attached to lazy traversal failures.
+        String,
     ),
     /// Walks entries below one logical path in a rooted filesystem.
     Rooted(
@@ -38,6 +49,8 @@ pub(crate) enum LocalDirectoryStreamSpi {
         Path,
         /// Facade filtering and metadata behavior retained for the stream.
         ListingOptions,
+        /// Provider identity attached to lazy traversal failures.
+        String,
     ),
 }
 
@@ -56,8 +69,9 @@ impl LocalDirectoryStreamSpi {
     pub(crate) fn host(
         walker: native_files::LocalDirectoryWalker,
         options: &ResolvedListOptions,
+        provider_id: &str,
     ) -> Self {
-        Self::Host(walker, ListingOptions::new(options))
+        Self::Host(walker, ListingOptions::new(options), provider_id.to_owned())
     }
 
     /// Creates a stream that maps entries below a rooted logical path.
@@ -76,8 +90,14 @@ impl LocalDirectoryStreamSpi {
         walker: native_files::LocalDirectoryWalker,
         root: Path,
         options: &ResolvedListOptions,
+        provider_id: &str,
     ) -> Self {
-        Self::Rooted(walker, root, ListingOptions::new(options))
+        Self::Rooted(
+            walker,
+            root,
+            ListingOptions::new(options),
+            provider_id.to_owned(),
+        )
     }
 }
 
@@ -95,22 +115,35 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
     /// represented as a canonical logical path.
     fn next_entry(&mut self) -> FsResult<Option<DirEntry>> {
         loop {
-            let (entry, rooted, options) = match self {
-                Self::Host(walker, options) => (walker.next(), None, options),
-                Self::Rooted(walker, root, options) => (walker.next(), Some(root.clone()), options),
+            let (entry, rooted, options, provider_id) = match self {
+                Self::Host(walker, options, provider_id) => {
+                    (walker.next(), None, options, provider_id)
+                }
+                Self::Rooted(walker, root, options, provider_id) => {
+                    (walker.next(), Some(root.clone()), options, provider_id)
+                }
             };
             let Some(entry) = entry else {
                 return Ok(None);
             };
-            let entry = entry.map_err(entry_error)?;
-            let logical_relative = local_path_mapper::rooted_logical(entry.relative_path())?;
+            let entry =
+                entry.map_err(|error| entry_error(error, provider_id))?;
+            let logical_relative =
+                local_path_mapper::rooted_logical(entry.relative_path())?;
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = output_path(rooted.as_ref(), &logical_relative, entry.diagnostic_path())?;
-            let mut result = DirEntry::new(path, output_kind(entry.metadata().kind()));
+            let path = output_path(
+                rooted.as_ref(),
+                &logical_relative,
+                entry.diagnostic_path(),
+            )?;
+            let mut result =
+                DirEntry::new(path, output_kind(entry.metadata().kind()));
             if options.include_metadata() {
-                result.metadata = Some(local_outcome_mapper::metadata(entry.metadata().clone()));
+                result.metadata = Some(local_outcome_mapper::metadata(
+                    entry.metadata().clone(),
+                ));
             }
             return Ok(Some(result));
         }
@@ -127,8 +160,16 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 ///
 /// A facade listing error with local provider context.
 #[inline(always)]
-fn entry_error(error: native_files::LocalFileError) -> FsError {
-    error_mapper::map_without_path(error, FsOperation::List, "native directory walk failed")
+fn entry_error(
+    error: native_files::LocalFileError,
+    provider_id: &str,
+) -> FsError {
+    error_mapper::map_without_path(
+        error,
+        FsOperation::List,
+        "native directory walk failed",
+        provider_id,
+    )
 }
 
 /// Resolves one native entry path into caller-visible logical output.
@@ -147,11 +188,19 @@ fn entry_error(error: native_files::LocalFileError) -> FsError {
 ///
 /// Returns `InvalidPath` when joining or native-path conversion cannot produce
 /// a canonical logical path.
-fn output_path(root: Option<&Path>, relative: &Path, native: &NativePath) -> FsResult<Path> {
+fn output_path(
+    root: Option<&Path>,
+    relative: &Path,
+    native: &NativePath,
+) -> FsResult<Path> {
     match root {
         Some(root) if relative == &Path::root() => Ok(root.clone()),
         Some(root) if root == &Path::root() => Ok(relative.clone()),
-        Some(root) => Path::parse(&format!("{}/{}", root.as_str(), &relative.as_str()[1..])),
+        Some(root) => Path::parse(&format!(
+            "{}/{}",
+            root.as_str(),
+            &relative.as_str()[1..]
+        )),
         None => local_path_mapper::host_logical(native),
     }
 }
@@ -170,6 +219,8 @@ fn output_kind(kind: native_files::LocalFileKind) -> qubit_fs::FileKind {
         native_files::LocalFileKind::File => qubit_fs::FileKind::File,
         native_files::LocalFileKind::Directory => qubit_fs::FileKind::Directory,
         native_files::LocalFileKind::Symlink => qubit_fs::FileKind::Symlink,
-        native_files::LocalFileKind::Other => qubit_fs::FileKind::Other("local".to_owned()),
+        native_files::LocalFileKind::Other => {
+            qubit_fs::FileKind::Other("local".to_owned())
+        }
     }
 }

@@ -9,12 +9,24 @@
 // contract tests.
 //! Stateful writer adapter delegated to `qubit-local-files`.
 
-use std::io::{Result as IoResult, Write};
+use std::io::{
+    Result as IoResult,
+    Write,
+};
 
-use qubit_fs::spi::{FileWriterSpi, SpiWriteFailure};
+use qubit_fs::spi::{
+    FileWriterSpi,
+    SpiWriteFailure,
+};
 use qubit_fs::{
-    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PublicationMethod,
-    WriteFailureState, WriteOutcome,
+    AchievedAtomicity,
+    FsError,
+    FsErrorKind,
+    FsOperation,
+    FsResult,
+    PublicationMethod,
+    WriteFailureState,
+    WriteOutcome,
 };
 use qubit_io::Output;
 use qubit_local_files as native_files;
@@ -27,6 +39,8 @@ pub(crate) struct LocalFileWriterSpi {
     /// Native writer retained until commit, abort, or an unrecoverable
     /// failure.
     writer: Option<native_files::LocalFileWriter>,
+    /// Provider identity attached to lifecycle errors.
+    provider_id: String,
 }
 
 impl LocalFileWriterSpi {
@@ -40,9 +54,13 @@ impl LocalFileWriterSpi {
     ///
     /// An active facade writer session.
     #[inline(always)]
-    pub(crate) const fn new(writer: native_files::LocalFileWriter) -> Self {
+    pub(crate) fn new(
+        writer: native_files::LocalFileWriter,
+        provider_id: String,
+    ) -> Self {
         Self {
             writer: Some(writer),
+            provider_id,
         }
     }
 
@@ -168,6 +186,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         native,
                         FsOperation::CommitWriter,
                         "native writer commit failed",
+                        &self.provider_id,
                     ),
                     state,
                 ))
@@ -195,7 +214,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
         };
         match writer.abort() {
             Ok(_) => Ok(()),
-            Err(error) => Err(abort_error(error)),
+            Err(error) => Err(abort_error(error, &self.provider_id)),
         }
     }
 }
@@ -211,13 +230,20 @@ impl FileWriterSpi for LocalFileWriterSpi {
 ///
 /// The most precise portable writer failure state supported by both values.
 #[inline]
-fn write_failure_state(state: native_files::LocalWriterState, retained: bool) -> WriteFailureState {
+fn write_failure_state(
+    state: native_files::LocalWriterState,
+    retained: bool,
+) -> WriteFailureState {
     match state {
         native_files::LocalWriterState::NotPublished if retained => {
             WriteFailureState::RetryableNotPublished
         }
-        native_files::LocalWriterState::NotPublished => WriteFailureState::NotPublished,
-        native_files::LocalWriterState::Published => WriteFailureState::Published,
+        native_files::LocalWriterState::NotPublished => {
+            WriteFailureState::NotPublished
+        }
+        native_files::LocalWriterState::Published => {
+            WriteFailureState::Published
+        }
         _ => WriteFailureState::Indeterminate,
     }
 }
@@ -232,10 +258,14 @@ fn write_failure_state(state: native_files::LocalWriterState, retained: bool) ->
 ///
 /// A facade abort error with local provider context.
 #[inline(always)]
-fn abort_error(error: native_files::LocalFileError) -> FsError {
+fn abort_error(
+    error: native_files::LocalFileError,
+    provider_id: &str,
+) -> FsError {
     error_mapper::map_without_path(
         error,
         FsOperation::AbortWriter,
         "native writer abort failed",
+        provider_id,
     )
 }
