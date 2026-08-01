@@ -9,26 +9,10 @@
 
 use std::path::Path;
 
-use qubit_fs::{
-    FileSystemId,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    Path as FsPath,
-    Uri,
-};
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use qubit_fs::{FileSystemId, FsError, FsErrorKind, FsOperation, Path as FsPath, Uri};
+use qubit_fs_registry::{FileSystemConfig, FileSystemResolution, FileSystemSpec};
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderMetadata,
-    ServiceProvider,
-    provider_descriptor,
-};
+use qubit_spi::{ProviderDescriptor, ProviderMetadata, ServiceProvider, provider_descriptor};
 
 use crate::LocalFileSystems;
 
@@ -90,15 +74,12 @@ impl LocalFileSystemProvider {
         id: FileSystemId,
         root: &Path,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(
-            id,
-            descriptor.id().as_str(),
-            root,
+        LocalFileSystems::rooted_with_provider_id(id, descriptor.id().as_str(), root).map(
+            |file_system| Self {
+                mode: LocalProviderMode::Rooted { file_system },
+                descriptor: Some(descriptor),
+            },
         )
-        .map(|file_system| Self {
-            mode: LocalProviderMode::Rooted { file_system },
-            descriptor: Some(descriptor),
-        })
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -117,9 +98,7 @@ impl LocalFileSystemProvider {
     /// Returns an invalid-configuration failure when the configuration
     /// contains options, metadata, credentials, a non-`file` scheme, a remote
     /// authority, a query, malformed URI text, or a non-absolute path.
-    fn decode_config(
-        config: &FileSystemConfig,
-    ) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
+    fn decode_config(config: &FileSystemConfig) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
         if !config.options().is_empty()
             || !config.metadata().is_empty()
             || config.credential().is_some()
@@ -179,9 +158,9 @@ impl ProviderMetadata for LocalFileSystemProvider {
     /// alias.
     #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
-        self.descriptor.clone().unwrap_or_else(|| {
-            provider_descriptor!("local-file", aliases: ["file"])
-        })
+        self.descriptor
+            .clone()
+            .unwrap_or_else(|| provider_descriptor!("local-file", aliases: ["file"]))
     }
 }
 
@@ -208,9 +187,7 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(),
-            LocalProviderMode::Rooted { file_system } => {
-                Ok(file_system.clone())
-            }
+            LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
         }
         .map_err(ProviderFailure::initialization_failed)?;
         FileSystemResolution::try_new(file_system, path, uri)

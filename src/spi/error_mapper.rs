@@ -9,18 +9,9 @@
 // contract tests.
 //! Native error translation with public request context.
 
-use qubit_fs::spi::{
-    SpiCopyFailure,
-    SpiRenameFailure,
-};
+use qubit_fs::spi::{SpiCopyFailure, SpiRenameFailure};
 use qubit_fs::{
-    CopyFailureState,
-    CopyStats,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    Path,
-    RenameFailureState,
+    CopyFailureState, CopyStats, FsError, FsErrorKind, FsOperation, Path, RenameFailureState,
 };
 use qubit_local_files as native_files;
 
@@ -44,14 +35,9 @@ pub(crate) fn map(
     target: Option<&Path>,
 ) -> FsError {
     let kind = native_kind(error.kind());
-    let error = FsError::with_source(
-        kind,
-        operation,
-        "local filesystem operation failed",
-        error,
-    )
-    .with_path(path.clone())
-    .with_provider("local-file");
+    let error = FsError::with_source(kind, operation, "local filesystem operation failed", error)
+        .with_path(path.clone())
+        .with_provider("local-file");
     match target {
         Some(target) => error.with_target(target.clone()),
         None => error,
@@ -111,11 +97,7 @@ pub(crate) fn map_without_path(
 /// A copy failure with unchanged namespace state and empty statistics.
 #[inline(always)]
 pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
-    SpiCopyFailure::new(
-        error,
-        CopyFailureState::Unchanged,
-        CopyStats::default(),
-    )
+    SpiCopyFailure::new(error, CopyFailureState::Unchanged, CopyStats::default())
 }
 
 /// Converts a complete native copy failure without discarding staging or
@@ -159,32 +141,16 @@ pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
 /// map to `Other`.
 fn native_kind(kind: native_files::LocalFileErrorKind) -> FsErrorKind {
     match kind {
-        native_files::LocalFileErrorKind::InvalidInput => {
-            FsErrorKind::InvalidPath
-        }
+        native_files::LocalFileErrorKind::InvalidInput => FsErrorKind::InvalidPath,
         native_files::LocalFileErrorKind::NotFound => FsErrorKind::NotFound,
-        native_files::LocalFileErrorKind::AlreadyExists => {
-            FsErrorKind::AlreadyExists
-        }
+        native_files::LocalFileErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
         native_files::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
-        native_files::LocalFileErrorKind::PermissionDenied => {
-            FsErrorKind::PermissionDenied
-        }
-        native_files::LocalFileErrorKind::Unsupported => {
-            FsErrorKind::UnsupportedOperation
-        }
-        native_files::LocalFileErrorKind::RequirementNotMet => {
-            FsErrorKind::RequirementNotMet
-        }
-        native_files::LocalFileErrorKind::ResourceLimit => {
-            FsErrorKind::ResourceLimitExceeded
-        }
-        native_files::LocalFileErrorKind::PublicationIncomplete => {
-            FsErrorKind::Io
-        }
-        native_files::LocalFileErrorKind::Indeterminate => {
-            FsErrorKind::Indeterminate
-        }
+        native_files::LocalFileErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
+        native_files::LocalFileErrorKind::Unsupported => FsErrorKind::UnsupportedOperation,
+        native_files::LocalFileErrorKind::RequirementNotMet => FsErrorKind::RequirementNotMet,
+        native_files::LocalFileErrorKind::ResourceLimit => FsErrorKind::ResourceLimitExceeded,
+        native_files::LocalFileErrorKind::PublicationIncomplete => FsErrorKind::Io,
+        native_files::LocalFileErrorKind::Indeterminate => FsErrorKind::Indeterminate,
         native_files::LocalFileErrorKind::Io => FsErrorKind::Io,
         _ => FsErrorKind::Other,
     }

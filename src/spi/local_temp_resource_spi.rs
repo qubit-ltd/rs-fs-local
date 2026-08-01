@@ -11,20 +11,10 @@
 
 use std::path::PathBuf;
 
-use qubit_fs::spi::{
-    PersistRequest,
-    SpiPersistFailure,
-    TempResourceSpi,
-};
+use qubit_fs::spi::{PersistRequest, SpiPersistFailure, TempResourceSpi};
 use qubit_fs::{
-    AchievedAtomicity,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsResult,
-    PersistFailureState,
-    PersistOutcome,
-    PublicationMethod,
+    AchievedAtomicity, FsError, FsErrorKind, FsOperation, FsResult, PersistFailureState,
+    PersistOutcome, PublicationMethod,
 };
 use qubit_local_files as native_files;
 
@@ -63,10 +53,7 @@ impl LocalTempResourceSpi {
     ///
     /// An active temporary-file lifecycle adapter.
     #[inline(always)]
-    pub(crate) const fn file(
-        value: native_files::LocalTempFile,
-        rooted: bool,
-    ) -> Self {
+    pub(crate) const fn file(value: native_files::LocalTempFile, rooted: bool) -> Self {
         Self::File {
             resource: Some(value),
             rooted,
@@ -84,10 +71,7 @@ impl LocalTempResourceSpi {
     ///
     /// An active temporary-directory lifecycle adapter.
     #[inline(always)]
-    pub(crate) const fn directory(
-        value: native_files::LocalTempDirectory,
-        rooted: bool,
-    ) -> Self {
+    pub(crate) const fn directory(value: native_files::LocalTempDirectory, rooted: bool) -> Self {
         Self::Directory {
             resource: Some(value),
             rooted,
@@ -108,14 +92,9 @@ impl LocalTempResourceSpi {
     ///
     /// Returns `InvalidPath` when the logical target cannot be converted to
     /// the resource's native authority.
-    fn target(
-        &self,
-        target: &qubit_fs::Path,
-    ) -> Result<(PathBuf, bool), SpiPersistFailure> {
+    fn target(&self, target: &qubit_fs::Path) -> Result<(PathBuf, bool), SpiPersistFailure> {
         let rooted = match self {
-            Self::File { rooted, .. } | Self::Directory { rooted, .. } => {
-                *rooted
-            }
+            Self::File { rooted, .. } | Self::Directory { rooted, .. } => *rooted,
         };
         let target = if rooted {
             local_path_mapper::rooted(target)
@@ -151,12 +130,8 @@ impl TempResourceSpi for LocalTempResourceSpi {
         let (target, rooted) = self.target(request.target())?;
         let options = persist_options(request.options().overwrite);
         let result = match self {
-            Self::File { resource: slot, .. } => {
-                persist_file(slot, &target, options)
-            }
-            Self::Directory { resource: slot, .. } => {
-                persist_directory(slot, &target, options)
-            }
+            Self::File { resource: slot, .. } => persist_file(slot, &target, options),
+            Self::Directory { resource: slot, .. } => persist_directory(slot, &target, options),
         }?;
         map_persist_outcome(result, rooted)
     }
@@ -298,9 +273,7 @@ fn map_persist_outcome(
             AchievedAtomicity::NonAtomic
         },
         match result.method() {
-            native_files::LocalPersistMethod::AtomicRename => {
-                PublicationMethod::AtomicRename
-            }
+            native_files::LocalPersistMethod::AtomicRename => PublicationMethod::AtomicRename,
             _ => PublicationMethod::Direct,
         },
     ))
@@ -396,19 +369,13 @@ fn persist_directory(
 /// The equivalent portable state; unknown future native states map to
 /// `Indeterminate`.
 #[inline]
-fn persist_failure_state(
-    state: native_files::LocalPersistFailureState,
-) -> PersistFailureState {
+fn persist_failure_state(state: native_files::LocalPersistFailureState) -> PersistFailureState {
     match state {
-        native_files::LocalPersistFailureState::NotPublished => {
-            PersistFailureState::NotPublished
-        }
+        native_files::LocalPersistFailureState::NotPublished => PersistFailureState::NotPublished,
         native_files::LocalPersistFailureState::PublishedSourceRetained => {
             PersistFailureState::PublishedSourceRetained
         }
-        native_files::LocalPersistFailureState::Indeterminate => {
-            PersistFailureState::Indeterminate
-        }
+        native_files::LocalPersistFailureState::Indeterminate => PersistFailureState::Indeterminate,
         _ => PersistFailureState::Indeterminate,
     }
 }
