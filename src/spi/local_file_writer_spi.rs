@@ -231,20 +231,22 @@ impl FileWriterSpi for LocalFileWriterSpi {
 /// The most precise portable writer failure state supported by both values.
 #[inline]
 fn write_failure_state(
-    state: native_files::LocalWriterState,
+    state: native_files::LocalWriteFailureState,
     retained: bool,
 ) -> WriteFailureState {
     match state {
-        native_files::LocalWriterState::NotPublished if retained => {
+        native_files::LocalWriteFailureState::NotPublished if retained => {
             WriteFailureState::RetryableNotPublished
         }
-        native_files::LocalWriterState::NotPublished => {
+        native_files::LocalWriteFailureState::NotPublished => {
             WriteFailureState::NotPublished
         }
-        native_files::LocalWriterState::Published => {
+        native_files::LocalWriteFailureState::Published => {
             WriteFailureState::Published
         }
-        _ => WriteFailureState::Indeterminate,
+        native_files::LocalWriteFailureState::Indeterminate => {
+            WriteFailureState::Indeterminate
+        }
     }
 }
 
