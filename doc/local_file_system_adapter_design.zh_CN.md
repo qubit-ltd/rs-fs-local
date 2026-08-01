@@ -282,8 +282,9 @@ native copy 已被调用且失败
 `Unsupported` 转成 `Declined`。
 
 Native local copy 内部使用流复制、clone 或跨设备 fallback，仍属于 provider-native
-attempt。Adapter 按事实映射 `CopyMethod`、`used_fallback`、atomicity、durability、
-metadata 和统计，不把所有 local 完成都标成 `Native`。
+attempt。当前 `qubit-fs` 将 provider 已接管的这些原语统一表示为
+`CopyMethod::Native`；“native”描述的是调用边界，不要求底层一定使用单次系统调用。
+Adapter 仍按事实映射 atomicity、durability、metadata 和统计。
 
 `LocalCopyFailureState::{Unchanged, PartiallyPublished, Published, Indeterminate}` 与
 partial stats 一一映射到 `SpiCopyFailure`。Native staging cleanup failure 保留为
@@ -356,12 +357,11 @@ Host SPI 委托 host native temp 入口；rooted SPI 必须委托
 persist、cleanup 和 child 操作继续使用原 root authority，不能把 diagnostic host
 path 当作 cleanup 权限。
 
-Persist state 一一映射：
+Persist failure state 一一映射：
 
 | Native state | `qubit-fs` state |
 | --- | --- |
 | `NotPublished` | `NotPublished` |
-| `Published` | `Published` |
 | `PublishedSourceRetained` | `PublishedSourceRetained` |
 | `Indeterminate` | `Indeterminate` |
 
@@ -395,8 +395,9 @@ target context；host 与 rooted SPI 共享这组映射函数。
   source 时才回退到 native kind；`PathCodec` 失败保持 `InvalidPath`；
 - `InvalidPath`/`InvalidOptions` 与 `NotDirectory`/`IsDirectory` 保持各自分类，不折叠为
   `Conflict` 或普通 I/O；
-- public operation、source path 和 target path 取自 request；provider id 固定使用
-  adapter 属性声明的 canonical `local-file`；
+- public operation、source path 和 target path 取自 request；provider id 使用 adapter
+  属性声明的 provider descriptor（host 默认是 `local-file`，rooted provider 可使用
+  自定义 descriptor identity）；
 - native path 仅在确认不会越过安全边界时进入 message；
 - `std::io::Error` 保留为 source，不自动格式化；copy failure 还保留完整的
   `LocalCopyFailure`，因此 staging path 与 cleanup error 可通过 typed source 诊断；
@@ -415,6 +416,8 @@ target context；host 与 rooted SPI 共享这组映射函数。
 - 接受无 authority 或空 authority 的 `file:` URI；
 - 拒绝 remote authority、未支持 query 和 secret；
 - provider-specific 解码 URI path；
+- 将等价的绝对 `file:` 输入重新编码为唯一的 canonical URI（空 authority、规范化
+  percent escape）；
 - 根据配置选择 host 或 rooted filesystem；
 - rooted provider 在构造阶段打开并保留 descriptor-backed authority，resolution 只 clone
   已打开的 `FileSystem`；
@@ -438,6 +441,7 @@ durability 的 `cfg(unix)` / `cfg(windows)` 分支。
 
 ```text
 src/
+├── constants.rs
 ├── local_file_systems.rs
 ├── spi/
 │   ├── local_file_system_spi.rs
@@ -449,7 +453,8 @@ src/
 ├── path/
 │   └── local_path_mapper.rs
 └── registry/
-    └── local_file_system_provider.rs
+    ├── local_file_system_provider.rs
+    └── local_file_uri_path.rs
 ```
 
 重构以此模块布局为目标。共享转换逻辑只能进入列出的私有 mapper/session 模块，不能
