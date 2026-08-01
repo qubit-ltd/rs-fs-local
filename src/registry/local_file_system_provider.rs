@@ -181,9 +181,7 @@ impl ProviderMetadata for LocalFileSystemProvider {
     /// alias.
     #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
-        self.descriptor.clone().unwrap_or_else(
-            || default_descriptor(),
-        )
+        self.descriptor.clone().unwrap_or_else(default_descriptor)
     }
 }
 
