@@ -31,7 +31,10 @@ use qubit_spi::{
 };
 
 use crate::LocalFileSystems;
-use crate::constants::{FILE_SCHEME, LOCAL_PROVIDER_ID};
+use crate::constants::{
+    FILE_SCHEME,
+    LOCAL_PROVIDER_ID,
+};
 
 use super::internal::LocalProviderMode;
 use super::local_file_uri_path;
@@ -74,11 +77,7 @@ impl LocalFileSystemProvider {
     /// A provider that resolves accepted paths below the opened `root`.
     #[inline]
     pub fn rooted(id: FileSystemId, root: &Path) -> Result<Self, FsError> {
-        Self::rooted_with_descriptor(
-            default_descriptor(),
-            id,
-            root,
-        )
+        Self::rooted_with_descriptor(default_descriptor(), id, root)
     }
 
     /// Creates a rooted provider with caller-specified registration metadata.
@@ -189,7 +188,8 @@ impl ProviderMetadata for LocalFileSystemProvider {
 #[inline]
 fn default_descriptor() -> ProviderDescriptor {
     ProviderDescriptor::new(
-        ProviderId::new(LOCAL_PROVIDER_ID).expect("static provider identity is valid"),
+        ProviderId::new(LOCAL_PROVIDER_ID)
+            .expect("static provider identity is valid"),
     )
     .with_aliases([FILE_SCHEME])
     .expect("static provider alias is valid")

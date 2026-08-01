@@ -163,12 +163,20 @@ impl TempResourceSpi for LocalTempResourceSpi {
         };
         let options = persist_options(request.options().overwrite);
         let result = match self {
-            Self::File { resource: slot, .. } => {
-                persist_file(slot, &target, options, &provider_id)
-            }
-            Self::Directory { resource: slot, .. } => {
-                persist_directory(slot, &target, options, &provider_id)
-            }
+            Self::File { resource: slot, .. } => persist_file(
+                slot,
+                &target,
+                request.target(),
+                options,
+                &provider_id,
+            ),
+            Self::Directory { resource: slot, .. } => persist_directory(
+                slot,
+                &target,
+                request.target(),
+                options,
+                &provider_id,
+            ),
         }?;
         map_persist_outcome(result, rooted)
     }
@@ -301,9 +309,12 @@ fn map_persist_outcome(
     rooted: bool,
 ) -> Result<PersistOutcome, SpiPersistFailure> {
     let logical = if rooted {
-        local_path_mapper::rooted_logical(result.path())
+        local_path_mapper::rooted_logical(
+            result.path(),
+            FsOperation::PersistTemp,
+        )
     } else {
-        local_path_mapper::host_logical(result.path())
+        local_path_mapper::host_logical(result.path(), FsOperation::PersistTemp)
     }
     .map_err(logical_persist_error)?;
     Ok(PersistOutcome::new(
@@ -328,6 +339,7 @@ fn map_persist_outcome(
 ///
 /// - `slot`: Adapter storage for the active native temporary file.
 /// - `target`: Authority-local native publication target.
+/// - `logical_target`: Caller-visible publication target retained on failure.
 /// - `options`: Native overwrite policy.
 ///
 /// # Returns
@@ -341,6 +353,7 @@ fn map_persist_outcome(
 fn persist_file(
     slot: &mut Option<native_files::LocalTempFile>,
     target: &std::path::Path,
+    logical_target: &qubit_fs::Path,
     options: native_files::LocalPersistOptions,
     provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
@@ -352,10 +365,11 @@ fn persist_file(
                 error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
-                error_mapper::map_io(
-                    error.into_io_error(),
+                error_mapper::map(
+                    error,
                     FsOperation::PersistTemp,
-                    "temporary file persistence failed",
+                    logical_target,
+                    None,
                     provider_id,
                 ),
                 persist_failure_state(state),
@@ -371,6 +385,7 @@ fn persist_file(
 ///
 /// - `slot`: Adapter storage for the active native temporary directory.
 /// - `target`: Authority-local native publication target.
+/// - `logical_target`: Caller-visible publication target retained on failure.
 /// - `options`: Native overwrite policy.
 ///
 /// # Returns
@@ -384,6 +399,7 @@ fn persist_file(
 fn persist_directory(
     slot: &mut Option<native_files::LocalTempDirectory>,
     target: &std::path::Path,
+    logical_target: &qubit_fs::Path,
     options: native_files::LocalPersistOptions,
     provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
@@ -395,10 +411,11 @@ fn persist_directory(
                 error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
-                error_mapper::map_io(
-                    error.into_io_error(),
+                error_mapper::map(
+                    error,
                     FsOperation::PersistTemp,
-                    "temporary directory persistence failed",
+                    logical_target,
+                    None,
                     provider_id,
                 ),
                 persist_failure_state(state),

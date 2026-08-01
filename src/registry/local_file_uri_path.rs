@@ -7,7 +7,10 @@
 // =============================================================================
 //! Decoding of raw `file:` URI paths into local canonical path text.
 
-use qubit_fs::{Path, Uri};
+use qubit_fs::{
+    Path,
+    Uri,
+};
 
 use super::local_file_system_provider::invalid_path;
 
@@ -76,8 +79,9 @@ pub(super) fn canonical_uri(
         }
         index += scalar.len_utf8();
     }
-    Uri::parse(&format!("file://{encoded}"))
-        .map_err(|_| invalid_path("local file URI path cannot be canonicalized"))
+    Uri::parse(&format!("file://{encoded}")).map_err(|_| {
+        invalid_path("local file URI path cannot be canonicalized")
+    })
 }
 
 /// Returns whether a scalar can appear unescaped in a URI path segment.
@@ -85,8 +89,21 @@ fn is_uri_pchar(scalar: char) -> bool {
     scalar.is_ascii_alphanumeric()
         || matches!(
             scalar,
-            '-' | '.' | '_' | '~' | '!' | '$' | '&' | '\'' | '(' | ')' | '*' | '+' | ','
-                | ';' | ':' | '@'
+            '-' | '.'
+                | '_'
+                | '~'
+                | '!'
+                | '$'
+                | '&'
+                | '\''
+                | '('
+                | ')'
+                | '*'
+                | '+'
+                | ','
+                | ';'
+                | ':'
+                | '@'
         )
 }
 

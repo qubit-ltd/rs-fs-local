@@ -128,8 +128,10 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             };
             let entry =
                 entry.map_err(|error| entry_error(error, provider_id))?;
-            let logical_relative =
-                local_path_mapper::rooted_logical(entry.relative_path())?;
+            let logical_relative = local_path_mapper::rooted_logical(
+                entry.relative_path(),
+                FsOperation::List,
+            )?;
             if !options.matches(&logical_relative) {
                 continue;
             }
@@ -201,7 +203,7 @@ fn output_path(
             root.as_str(),
             &relative.as_str()[1..]
         )),
-        None => local_path_mapper::host_logical(native),
+        None => local_path_mapper::host_logical(native, FsOperation::List),
     }
 }
 

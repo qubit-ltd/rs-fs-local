@@ -178,13 +178,13 @@ pub(crate) fn delete(
 ///
 /// # Returns
 ///
-/// Native overwrite and atomicity policy.
+/// Native overwrite policy. The native rename primitive is always atomic, so
+/// the adapter does not forward the facade's redundant atomicity preference.
 #[inline]
 pub(crate) fn rename(
     options: &ResolvedRenameOptions,
 ) -> native_files::LocalRenameOptions {
-    let mut native = native_files::LocalRenameOptions::new()
-        .with_atomicity(atomicity(options.options().atomicity));
+    let mut native = native_files::LocalRenameOptions::new();
     if options.options().overwrite {
         native = native.with_overwrite();
     }
