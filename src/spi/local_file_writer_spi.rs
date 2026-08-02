@@ -25,6 +25,7 @@ use qubit_fs::{
     FsOperation,
     FsResult,
     PublicationMethod,
+    WriteAbortOutcome,
     WriteFailureState,
     WriteOutcome,
 };
@@ -39,6 +40,8 @@ pub(crate) struct LocalFileWriterSpi {
     /// Native writer retained until commit, abort, or an unrecoverable
     /// failure.
     writer: Option<native_files::LocalFileWriter>,
+    /// Confirmed terminal publication state after an unrecoverable commit.
+    terminal_abort_outcome: Option<WriteAbortOutcome>,
     /// Provider identity attached to lifecycle errors.
     provider_id: String,
 }
@@ -60,6 +63,7 @@ impl LocalFileWriterSpi {
     ) -> Self {
         Self {
             writer: Some(writer),
+            terminal_abort_outcome: None,
             provider_id,
         }
     }
@@ -181,6 +185,10 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 let (native, state, retained) = error.into_parts();
                 self.writer = retained;
                 let state = write_failure_state(state, self.writer.is_some());
+                if self.writer.is_none() {
+                    self.terminal_abort_outcome =
+                        Some(abort_outcome_from_failure(state));
+                }
                 Err(SpiWriteFailure::new(
                     error_mapper::map_without_path(
                         native,
@@ -196,25 +204,61 @@ impl FileWriterSpi for LocalFileWriterSpi {
 
     /// Aborts an active writer and makes the session terminal.
     ///
-    /// Calling this method after a terminal transition succeeds without
-    /// further native I/O.
-    ///
     /// # Returns
     ///
-    /// `Ok(())` after active native resources are released, including when the
-    /// session was already terminal.
+    /// The provider-confirmed destination state after native cleanup.
     ///
     /// # Errors
     ///
     /// Returns a mapped native abort error if cleanup of an active writer
     /// fails.
-    fn abort(&mut self) -> FsResult<()> {
-        let Some(writer) = self.writer.take() else {
-            return Ok(());
+    fn abort(&mut self) -> FsResult<WriteAbortOutcome> {
+        let Some(writer) = self.writer.as_mut() else {
+            if let Some(outcome) = self.terminal_abort_outcome.take() {
+                return Ok(outcome);
+            }
+            return Err(FsError::new(
+                FsErrorKind::InvalidState,
+                FsOperation::AbortWriter,
+                "writer session is terminal",
+            ));
         };
         match writer.abort() {
-            Ok(_) => Ok(()),
+            Ok(outcome) => {
+                let outcome = abort_outcome(outcome.failure_state());
+                self.writer = None;
+                Ok(outcome)
+            }
             Err(error) => Err(abort_error(error, &self.provider_id)),
+        }
+    }
+}
+
+/// Converts a terminal portable commit state into its abort outcome.
+#[inline]
+fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
+    match state {
+        WriteFailureState::RetryableNotPublished
+        | WriteFailureState::NotPublished => WriteAbortOutcome::NotPublished,
+        WriteFailureState::Published => WriteAbortOutcome::Published,
+        WriteFailureState::Indeterminate => WriteAbortOutcome::Indeterminate,
+    }
+}
+
+/// Converts native abort publication certainty to the portable outcome.
+#[inline]
+fn abort_outcome(
+    state: Option<native_files::LocalWriteFailureState>,
+) -> WriteAbortOutcome {
+    match state {
+        None | Some(native_files::LocalWriteFailureState::NotPublished) => {
+            WriteAbortOutcome::NotPublished
+        }
+        Some(native_files::LocalWriteFailureState::Published) => {
+            WriteAbortOutcome::Published
+        }
+        Some(native_files::LocalWriteFailureState::Indeterminate) => {
+            WriteAbortOutcome::Indeterminate
         }
     }
 }

@@ -104,12 +104,12 @@ impl RootedLocalFileSystemSpi {
     ///
     /// The provider identity is kept separate from the configured filesystem
     /// identity so multiple rooted providers can coexist in one registry.
-    pub fn open_with_provider_id(
+    pub(crate) fn open_with_provider_id(
         id: FileSystemId,
-        provider_id: impl std::fmt::Display,
+        provider_id: &str,
         root: &NativePath,
     ) -> FsResult<Self> {
-        let provider_id = provider_id.to_string();
+        let provider_id = provider_id.to_owned();
         let native = native_files::RootedLocalFileSystem::open(root).map_err(
             |error| {
                 FsError::with_source(
