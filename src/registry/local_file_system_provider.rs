@@ -90,15 +90,11 @@ impl LocalFileSystemProvider {
         id: FileSystemId,
         root: &Path,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(
-            id,
-            descriptor.id(),
-            root,
-        )
-        .map(|file_system| Self {
-            mode: LocalProviderMode::Rooted { file_system },
-            descriptor: Some(descriptor),
-        })
+        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root)
+            .map(|file_system| Self {
+                mode: LocalProviderMode::Rooted { file_system },
+                descriptor: Some(descriptor),
+            })
     }
 
     /// Validates and decodes a registry configuration into a logical path and

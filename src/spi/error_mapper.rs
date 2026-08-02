@@ -170,7 +170,9 @@ fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
         }
         _ => match error.source_kind() {
             Some(LocalFileErrorSource::Io(source)) => io_kind(source.kind()),
-            Some(LocalFileErrorSource::PathCodec(_)) => FsErrorKind::InvalidPath,
+            Some(LocalFileErrorSource::PathCodec(_)) => {
+                FsErrorKind::InvalidPath
+            }
             Some(_) | None => native_kind(error.kind()),
         },
     }

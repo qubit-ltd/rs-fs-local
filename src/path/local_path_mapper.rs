@@ -73,52 +73,6 @@ pub(crate) fn rooted(path: &Path) -> FsResult<PathBuf> {
     }
 }
 
-/// Converts a source-target pair to process-host native paths.
-///
-/// # Parameters
-///
-/// - `source`: Absolute logical source path.
-/// - `target`: Absolute logical target path.
-///
-/// # Returns
-///
-/// The converted native source and target paths in the same order.
-///
-/// # Errors
-///
-/// Returns `InvalidPath` when either logical path is relative or contains an
-/// unrepresentable component. Any error retains the failing logical path.
-#[inline(always)]
-pub(crate) fn host_pair(
-    source: &Path,
-    target: &Path,
-) -> FsResult<(PathBuf, PathBuf)> {
-    Ok((host(source)?, host(target)?))
-}
-
-/// Converts a source-target pair to rooted-authority native paths.
-///
-/// # Parameters
-///
-/// - `source`: Absolute logical source path within the rooted authority.
-/// - `target`: Absolute logical target path within the rooted authority.
-///
-/// # Returns
-///
-/// The converted relative native source and target paths in the same order.
-///
-/// # Errors
-///
-/// Returns `InvalidPath` when either logical path is relative or contains an
-/// unrepresentable component. Any error retains the failing logical path.
-#[inline(always)]
-pub(crate) fn rooted_pair(
-    source: &Path,
-    target: &Path,
-) -> FsResult<(PathBuf, PathBuf)> {
-    Ok((rooted(source)?, rooted(target)?))
-}
-
 /// Converts an absolute process-host native path to a logical path.
 ///
 /// # Parameters
