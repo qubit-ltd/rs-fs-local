@@ -114,10 +114,7 @@ fn test_temp_directory_persist_overwrites_empty_destination() {
         .expect("temporary directory must be created");
 
     let outcome = temporary
-        .persist(
-            &target,
-            PersistOptions::default().with_overwrite(true),
-        )
+        .persist(&target, PersistOptions::default().with_overwrite(true))
         .expect("overwrite persistence must replace the empty destination");
 
     assert_eq!(outcome.target(), &target);
@@ -142,10 +139,7 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
         .create_temp_file(TempFileOptions::default())
         .expect("temporary file must be created");
     let outcome = temporary
-        .persist(
-            &target,
-            PersistOptions::default().with_overwrite(true),
-        )
+        .persist(&target, PersistOptions::default().with_overwrite(true))
         .expect("overwrite persistence must replace the destination file");
 
     assert_eq!(outcome.target(), &target);
@@ -192,10 +186,7 @@ fn test_temp_file_persist_install_failure_is_indeterminate() {
         .create_temp_file(TempFileOptions::default())
         .expect("temporary file must be created");
     let failure = temporary
-        .persist(
-            &target,
-            PersistOptions::default().with_overwrite(true),
-        )
+        .persist(&target, PersistOptions::default().with_overwrite(true))
         .expect_err("file persistence cannot replace a directory");
 
     assert_eq!(failure.state(), PersistFailureState::NotPublished);

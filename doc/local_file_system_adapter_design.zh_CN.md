@@ -56,12 +56,8 @@ qubit_fs_local::spi::LocalFileSystemSpi
 qubit_local_files::LocalFileSystem
 ```
 
-Rooted 类型同理：
-
-```text
-qubit_fs_local::spi::RootedLocalFileSystemSpi
-qubit_local_files::RootedLocalFileSystem
-```
+Host 与 rooted 不对应两套 SPI 类型。`LocalFileSystemSpi` 内部持有已配置的
+`native_files::LocalFileSystem`，由 native instance 决定 namespace。
 
 ## 4. 普通调用入口
 
@@ -112,11 +108,7 @@ SPI 实现位于明确命名空间：
 ```rust
 pub mod spi {
     pub struct LocalFileSystemSpi {
-        // configured local identity/codec data
-    }
-
-    pub struct RootedLocalFileSystemSpi {
-        native: native_files::RootedLocalFileSystem,
+        native: native_files::LocalFileSystem,
         // configured local identity/codec data
     }
 }
@@ -124,7 +116,7 @@ pub mod spi {
 
 SPI 类型可以公开，便于 provider 开发与测试，但不在 crate 根部作为普通使用入口。
 
-`LocalFileSystems::host` 和 `rooted` 分别：
+`LocalFileSystems::host` 和 `rooted` 都：
 
 1. 构造 native filesystem/context；
 2. 构造对应 SPI；
@@ -208,9 +200,9 @@ absolute path：
 
 ### 7.3 Rooted filesystem
 
-Rooted SPI 去除逻辑 absolute root，把剩余 component 转为相对于 native root 的安全
+Rooted 模式去除逻辑 absolute root，把剩余 component 转为相对于 native root 的安全
 序列，交给 `native_files::LocalPaths::from_canonical_relative_components`，再调用
-`native_files::RootedLocalFileSystem`。
+已通过 `native_files::LocalFileSystem::rooted` 配置的统一 native service。
 
 Adapter 只执行 provider representation 转换；symlink/reparse containment、descriptor
 traversal 和 race-sensitive 逻辑全部由 native 层完成。
@@ -260,8 +252,8 @@ Local SPI 的 `try_copy` 采用两阶段规则：
 
 1. 在零副作用阶段完成 source/target 全量路径转换，并把
    `ResolvedCopyOptions` 分类为 native local copy 可完整表达或不可表达；
-2. 只有可完整表达时才调用 `native_files::LocalFileSystem::copy` 或
-   `native_files::RootedLocalFileSystem::copy`。
+2. 只有可完整表达时才调用已配置 native
+   `LocalFileSystem` 实例的 `copy`。
 
 结果映射如下：
 
@@ -351,9 +343,9 @@ LocalTempFile / LocalTempDirectory
 filesystem 实例。Adapter 不重新调用 `LocalFileSystems::host()` 来伪造 owning
 filesystem。
 
-Host SPI 委托 host native temp 入口；rooted SPI 必须委托
-`native_files::RootedLocalFileSystem::create_temp_file` /
-`create_temp_directory`。Rooted session 持有 native rooted temp handle，其
+Host 模式委托 host native temp 入口；rooted 模式委托同一 native service
+实例的 `create_temp_file` / `create_temp_directory`。Rooted session 持有 native rooted
+temp handle，其
 persist、cleanup 和 child 操作继续使用原 root authority，不能把 diagnostic host
 path 当作 cleanup 权限。
 

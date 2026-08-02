@@ -21,10 +21,7 @@ use qubit_fs::{
 #[cfg(feature = "registry")]
 use qubit_spi::ProviderId;
 
-use crate::spi::{
-    LocalFileSystemSpi,
-    RootedLocalFileSystemSpi,
-};
+use crate::spi::LocalFileSystemSpi;
 
 /// Monotonic process-local suffix for generated rooted filesystem identities.
 static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -110,7 +107,7 @@ impl LocalFileSystems {
         id: FileSystemId,
         root: &Path,
     ) -> FsResult<FileSystem> {
-        FileSystem::from_spi(RootedLocalFileSystemSpi::open(id, root)?)
+        FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root)?)
     }
 
     /// Opens `root` with a registry-validated provider identity.
@@ -123,7 +120,7 @@ impl LocalFileSystems {
         provider_id: &ProviderId,
         root: &Path,
     ) -> FsResult<FileSystem> {
-        FileSystem::from_spi(RootedLocalFileSystemSpi::open_with_provider_id(
+        FileSystem::from_spi(LocalFileSystemSpi::rooted_with_provider_id(
             id,
             provider_id.as_str(),
             root,

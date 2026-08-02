@@ -122,8 +122,9 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
                     | FileSystemCapability::TempDirectory
                     | FileSystemCapability::AtomicRename
                     | FileSystemCapability::AtomicReplace
+                    | FileSystemCapability::AtomicFileCopy
                     | FileSystemCapability::AtomicTempPersist
-                    | FileSystemCapability::DurableCopy
+                    | FileSystemCapability::DurableFileCopy
             );
             if !expected {
                 assert!(!capabilities.contains(capability));

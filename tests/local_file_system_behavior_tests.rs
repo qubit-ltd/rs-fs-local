@@ -19,8 +19,8 @@ use qubit_fs::{
     ListOptions,
     MetadataPreservePolicy,
     Path,
-    RenameOptions,
     RenameFailureState,
+    RenameOptions,
     ServerSidePreference,
     TempDirectoryOptions,
     TempFileOptions,
@@ -29,11 +29,11 @@ use qubit_fs::{
     WriteOptions,
     WritePrecondition,
 };
-use qubit_io::Output;
 use qubit_fs_local::{
     LocalFileSystems,
     host_path_to_logical,
 };
+use qubit_io::Output;
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
 fn rooted_file_system() -> (tempfile::TempDir, qubit_fs::FileSystem) {
@@ -54,8 +54,7 @@ fn test_rooted_append_abort_reports_published_destination() {
     let mut writer = file_system
         .open_writer(
             &target,
-            WriteOptions::default()
-                .with_disposition(WriteDisposition::Append),
+            WriteOptions::default().with_disposition(WriteDisposition::Append),
         )
         .expect("append writer must open");
     Output::write_fully(&mut writer, b"-published")
@@ -93,10 +92,7 @@ fn test_host_commit_conflict_preserves_not_published_state() {
         .commit()
         .expect_err("concurrent destination must fail create-new commit");
 
-    assert_eq!(
-        qubit_fs::WriteFailureState::NotPublished,
-        failure.state(),
-    );
+    assert_eq!(qubit_fs::WriteFailureState::NotPublished, failure.state(),);
     assert_eq!(qubit_fs::WriterState::NotPublished, writer.state());
     assert_eq!(
         qubit_fs::WriteAbortOutcome::NotPublished,
