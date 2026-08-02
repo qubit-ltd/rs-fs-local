@@ -120,13 +120,13 @@ fn is_uri_pchar(scalar: char) -> bool {
 /// # Errors
 ///
 /// Returns an invalid-path failure for malformed percent escapes, NUL bytes,
-/// or bytes decoding to a slash or backslash.
+/// or bytes decoding to a native path separator.
 fn decode_component(
     component: &str,
 ) -> Result<String, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
     let canonical = canonicalize_uri_bytes(&decode_uri_bytes(component)?);
     let bytes = canonical.as_bytes();
-    if bytes.contains(&b'/') || bytes.contains(&b'\\') {
+    if bytes.contains(&b'/') || cfg!(windows) && bytes.contains(&b'\\') {
         return Err(invalid_path(
             "local file URI path must not encode a path separator",
         ));

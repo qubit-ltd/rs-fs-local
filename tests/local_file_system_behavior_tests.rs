@@ -11,6 +11,7 @@ use qubit_fs::{
     Checksum,
     ChecksumAlgorithm,
     CopyConflictPolicy,
+    CopyFailureState,
     CopyOptions,
     CreateDirectoryOptions,
     DeleteOptions,
@@ -19,13 +20,16 @@ use qubit_fs::{
     MetadataPreservePolicy,
     Path,
     RenameOptions,
+    RenameFailureState,
     ServerSidePreference,
     TempDirectoryOptions,
     TempFileOptions,
     UserMetadata,
+    WriteDisposition,
     WriteOptions,
     WritePrecondition,
 };
+use qubit_io::Output;
 use qubit_fs_local::{
     LocalFileSystems,
     host_path_to_logical,
@@ -37,6 +41,101 @@ fn rooted_file_system() -> (tempfile::TempDir, qubit_fs::FileSystem) {
     let file_system = LocalFileSystems::rooted(root.path())
         .expect("rooted local filesystem must be opened");
     (root, file_system)
+}
+
+/// Direct append cannot be rolled back, so abort must retain Published state.
+#[test]
+fn test_rooted_append_abort_reports_published_destination() {
+    let (_root, file_system) = rooted_file_system();
+    let target = path("/append-target");
+    file_system
+        .write_all(&target, b"base", WriteOptions::default())
+        .expect("append fixture must be written");
+    let mut writer = file_system
+        .open_writer(
+            &target,
+            WriteOptions::default()
+                .with_disposition(WriteDisposition::Append),
+        )
+        .expect("append writer must open");
+    Output::write_fully(&mut writer, b"-published")
+        .expect("append writer must accept bytes");
+
+    let outcome = writer.abort().expect("append abort must flush");
+
+    assert_eq!(qubit_fs::WriteAbortOutcome::Published, outcome);
+    assert_eq!(qubit_fs::WriterState::Published, writer.state());
+}
+
+/// A terminal pre-publication conflict retains its confirmed destination state
+/// for explicit facade cleanup without inventing a retryable native writer.
+#[test]
+fn test_host_commit_conflict_preserves_not_published_state() {
+    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let target = root.path().join("target");
+    let logical = host_path_to_logical(&target)
+        .expect("host target path must be logical");
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must open");
+    let mut writer = file_system
+        .open_writer(
+            &logical,
+            WriteOptions::default()
+                .with_disposition(WriteDisposition::CreateNew),
+        )
+        .expect("create-new writer must open before the conflict");
+    Output::write_fully(&mut writer, b"staged")
+        .expect("writer must accept staged bytes");
+    std::fs::write(&target, b"concurrent")
+        .expect("concurrent destination must be installed");
+
+    let failure = writer
+        .commit()
+        .expect_err("concurrent destination must fail create-new commit");
+
+    assert_eq!(
+        qubit_fs::WriteFailureState::NotPublished,
+        failure.state(),
+    );
+    assert_eq!(qubit_fs::WriterState::NotPublished, writer.state());
+    assert_eq!(
+        qubit_fs::WriteAbortOutcome::NotPublished,
+        writer.abort().expect("retained staging must abort"),
+    );
+}
+
+/// Definite native cleanup failures retain the adapter session, so retrying
+/// abort performs native cleanup again instead of reporting false success.
+#[test]
+fn test_host_abort_failure_retains_writer_for_retry() {
+    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let target = root.path().join("target");
+    let logical = host_path_to_logical(&target)
+        .expect("host target path must be logical");
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must open");
+    let mut writer = file_system
+        .open_writer(
+            &logical,
+            WriteOptions::default()
+                .with_disposition(WriteDisposition::CreateNew),
+        )
+        .expect("create-new writer must open");
+    let staging = std::fs::read_dir(root.path())
+        .expect("staging directory must be readable")
+        .map(|entry| entry.expect("staging entry must be readable").path())
+        .find(|path| path != &target)
+        .expect("writer must create one staging entry");
+    std::fs::remove_file(staging)
+        .expect("external actor must remove the staging entry");
+
+    for _ in 0..2 {
+        let error = writer
+            .abort()
+            .expect_err("missing staging cleanup must remain retryable");
+        assert_eq!(FsErrorKind::NotFound, error.kind());
+        assert_eq!(qubit_fs::WriterState::Open, writer.state());
+    }
 }
 
 /// Native I/O categories survive translation when a path component is not a
@@ -240,22 +339,16 @@ fn test_rooted_operations_map_missing_entries() {
             .kind()
     );
     let target = path("/target");
-    assert_eq!(
-        FsErrorKind::NotFound,
-        file_system
-            .rename(&missing, &target, RenameOptions::default())
-            .expect_err("missing rename must fail")
-            .error()
-            .kind()
-    );
-    assert_eq!(
-        FsErrorKind::NotFound,
-        file_system
-            .copy(&missing, &target, CopyOptions::file())
-            .expect_err("missing copy must fail")
-            .error()
-            .kind()
-    );
+    let rename = file_system
+        .rename(&missing, &target, RenameOptions::default())
+        .expect_err("missing rename must fail");
+    assert_eq!(FsErrorKind::NotFound, rename.error().kind());
+    assert_eq!(RenameFailureState::Unchanged, rename.state());
+    let copy = file_system
+        .copy(&missing, &target, CopyOptions::file())
+        .expect_err("missing copy must fail");
+    assert_eq!(FsErrorKind::NotFound, copy.error().kind());
+    assert_eq!(CopyFailureState::Unchanged, copy.state());
     let writer = file_system
         .open_writer(&path("/absent-parent/output"), WriteOptions::default())
         .expect_err("writer without a parent must fail");
@@ -273,13 +366,13 @@ fn test_rooted_operations_map_missing_entries() {
             TempFileOptions::default().with_parent(Some(regular_file.clone())),
         )
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::InvalidPath, temporary_file.kind());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
     let temporary_directory = file_system
         .create_temp_directory(
             TempDirectoryOptions::default().with_parent(Some(regular_file)),
         )
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::InvalidPath, temporary_directory.kind());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
 }
 
 /// Parses one absolute logical path used by the rooted adapter.
@@ -328,10 +421,12 @@ fn test_host_operations_map_missing_native_entries() {
         .rename(&missing, &renamed, RenameOptions::default())
         .expect_err("missing rename source must fail");
     assert_eq!(FsErrorKind::NotFound, rename.error().kind());
+    assert_eq!(RenameFailureState::Unchanged, rename.state());
     let copy = file_system
         .copy(&missing, &renamed, CopyOptions::file())
         .expect_err("missing copy source must fail");
     assert_eq!(FsErrorKind::NotFound, copy.error().kind());
+    assert_eq!(CopyFailureState::Unchanged, copy.state());
 
     let missing_child = host_path(&root, "absent-parent/output");
     let writer = file_system
@@ -356,13 +451,13 @@ fn test_host_operations_map_missing_native_entries() {
             TempFileOptions::default().with_parent(Some(file_parent.clone())),
         )
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::AlreadyExists, temporary_file.kind());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
     let temporary_directory = file_system
         .create_temp_directory(
             TempDirectoryOptions::default().with_parent(Some(file_parent)),
         )
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::AlreadyExists, temporary_directory.kind());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.

@@ -146,6 +146,22 @@ pub(crate) fn copy_failure(
 #[inline]
 fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
     match error.kind() {
+        native_files::LocalFileErrorKind::InvalidPath => {
+            FsErrorKind::InvalidPath
+        }
+        native_files::LocalFileErrorKind::InvalidOptions => {
+            FsErrorKind::InvalidOptions
+        }
+        native_files::LocalFileErrorKind::InvalidState => {
+            FsErrorKind::InvalidState
+        }
+        native_files::LocalFileErrorKind::NotDirectory => {
+            FsErrorKind::NotDirectory
+        }
+        native_files::LocalFileErrorKind::IsDirectory => {
+            FsErrorKind::IsDirectory
+        }
+        native_files::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
         native_files::LocalFileErrorKind::Indeterminate => {
             FsErrorKind::Indeterminate
         }
@@ -186,12 +202,24 @@ pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
 /// map to `Other`.
 fn native_kind(kind: native_files::LocalFileErrorKind) -> FsErrorKind {
     match kind {
-        native_files::LocalFileErrorKind::InvalidInput => {
+        native_files::LocalFileErrorKind::InvalidPath => {
             FsErrorKind::InvalidPath
+        }
+        native_files::LocalFileErrorKind::InvalidOptions => {
+            FsErrorKind::InvalidOptions
+        }
+        native_files::LocalFileErrorKind::InvalidState => {
+            FsErrorKind::InvalidState
         }
         native_files::LocalFileErrorKind::NotFound => FsErrorKind::NotFound,
         native_files::LocalFileErrorKind::AlreadyExists => {
             FsErrorKind::AlreadyExists
+        }
+        native_files::LocalFileErrorKind::NotDirectory => {
+            FsErrorKind::NotDirectory
+        }
+        native_files::LocalFileErrorKind::IsDirectory => {
+            FsErrorKind::IsDirectory
         }
         native_files::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
         native_files::LocalFileErrorKind::PermissionDenied => {
@@ -205,6 +233,9 @@ fn native_kind(kind: native_files::LocalFileErrorKind) -> FsErrorKind {
         }
         native_files::LocalFileErrorKind::ResourceLimit => {
             FsErrorKind::ResourceLimitExceeded
+        }
+        native_files::LocalFileErrorKind::DataCorruption => {
+            FsErrorKind::DataCorruption
         }
         native_files::LocalFileErrorKind::PublicationIncomplete => {
             FsErrorKind::Io

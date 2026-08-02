@@ -18,6 +18,8 @@ use qubit_fs::{
     FileSystemId,
     FsResult,
 };
+#[cfg(feature = "registry")]
+use qubit_spi::ProviderId;
 
 use crate::spi::{
     LocalFileSystemSpi,
@@ -111,18 +113,19 @@ impl LocalFileSystems {
         FileSystem::from_spi(RootedLocalFileSystemSpi::open(id, root)?)
     }
 
-    /// Opens `root` with a caller-specified provider identity.
+    /// Opens `root` with a registry-validated provider identity.
     ///
     /// This is intended for applications that register multiple rooted local
     /// providers in one provider registry.
-    pub fn rooted_with_provider_id(
+    #[cfg(feature = "registry")]
+    pub(crate) fn rooted_with_provider_id(
         id: FileSystemId,
-        provider_id: impl std::fmt::Display,
+        provider_id: &ProviderId,
         root: &Path,
     ) -> FsResult<FileSystem> {
         FileSystem::from_spi(RootedLocalFileSystemSpi::open_with_provider_id(
             id,
-            provider_id,
+            provider_id.as_str(),
             root,
         )?)
     }

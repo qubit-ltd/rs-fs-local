@@ -92,7 +92,7 @@ impl LocalFileSystemProvider {
     ) -> Result<Self, FsError> {
         LocalFileSystems::rooted_with_provider_id(
             id,
-            descriptor.id().as_str(),
+            descriptor.id(),
             root,
         )
         .map(|file_system| Self {
