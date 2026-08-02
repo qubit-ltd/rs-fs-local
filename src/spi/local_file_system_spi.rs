@@ -204,7 +204,7 @@ impl LocalFileSystemSpi {
             native_files::LocalFileSystemScope::Host => {
                 local_path_mapper::host(path)
             }
-            native_files::LocalFileSystemScope::Rooted { .. } => {
+            native_files::LocalFileSystemScope::Rooted => {
                 local_path_mapper::rooted(path)
             }
         }
@@ -229,7 +229,7 @@ impl LocalFileSystemSpi {
             native_files::LocalFileSystemScope::Host => {
                 local_path_mapper::host_logical(path, operation)
             }
-            native_files::LocalFileSystemScope::Rooted { .. } => {
+            native_files::LocalFileSystemScope::Rooted => {
                 local_path_mapper::rooted_logical(path, operation)
             }
         }
@@ -240,7 +240,7 @@ impl LocalFileSystemSpi {
     fn is_rooted(&self) -> bool {
         matches!(
             self.native.scope(),
-            native_files::LocalFileSystemScope::Rooted { .. }
+            native_files::LocalFileSystemScope::Rooted
         )
     }
 

@@ -60,28 +60,6 @@ pub(crate) fn map(
     }
 }
 
-/// Maps an I/O failure that has no caller-visible logical path.
-///
-/// # Parameters
-///
-/// - `error`: Standard I/O failure to preserve as the source.
-/// - `operation`: Facade operation that failed.
-/// - `message`: Static context describing the failed local action.
-///
-/// # Returns
-///
-/// A facade error with translated kind and local provider identity.
-#[inline]
-pub(crate) fn map_io(
-    error: std::io::Error,
-    operation: FsOperation,
-    message: &'static str,
-    provider_id: &str,
-) -> FsError {
-    FsError::with_source(io_kind(error.kind()), operation, message, error)
-        .with_provider(provider_id)
-}
-
 /// Maps a native local-files failure without inventing a logical path.
 ///
 /// # Parameters

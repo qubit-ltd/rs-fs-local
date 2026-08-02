@@ -498,7 +498,7 @@ fn logical_persist_error(error: FsError) -> SpiPersistFailure {
     SpiPersistFailure::new(error, PersistFailureState::Indeterminate)
 }
 
-/// Maps temporary-resource cleanup I/O with local provider context.
+/// Maps temporary-resource cleanup with local provider context.
 ///
 /// # Parameters
 ///
@@ -510,11 +510,16 @@ fn logical_persist_error(error: FsError) -> SpiPersistFailure {
 /// A facade cleanup error.
 #[inline(always)]
 fn cleanup_error(
-    error: std::io::Error,
+    error: native_files::LocalFileError,
     message: &'static str,
     provider_id: &str,
 ) -> FsError {
-    error_mapper::map_io(error, FsOperation::CleanupTemp, message, provider_id)
+    error_mapper::map_without_path(
+        error,
+        FsOperation::CleanupTemp,
+        message,
+        provider_id,
+    )
 }
 
 /// Maps a native temporary-file cleanup failure.
@@ -527,7 +532,10 @@ fn cleanup_error(
 ///
 /// A facade cleanup error identifying temporary-file cleanup.
 #[inline(always)]
-fn file_cleanup_error(error: std::io::Error, provider_id: &str) -> FsError {
+fn file_cleanup_error(
+    error: native_files::LocalFileError,
+    provider_id: &str,
+) -> FsError {
     cleanup_error(error, "temporary file cleanup failed", provider_id)
 }
 
@@ -542,10 +550,10 @@ fn file_cleanup_error(error: std::io::Error, provider_id: &str) -> FsError {
 /// A facade cleanup error identifying temporary-directory cleanup.
 #[inline(always)]
 fn directory_cleanup_error(
-    error: std::io::Error,
+    error: native_files::LocalFileError,
     provider_id: &str,
 ) -> FsError {
-    if error.kind() == std::io::ErrorKind::InvalidInput {
+    if error.kind() == native_files::LocalFileErrorKind::InvalidPath {
         return FsError::with_source(
             FsErrorKind::NotDirectory,
             FsOperation::CleanupTemp,
