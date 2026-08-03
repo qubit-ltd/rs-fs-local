@@ -11,6 +11,7 @@ use qubit_fs::{
     FileSystemId,
     Path,
     PathSemantics,
+    SymlinkPolicy,
     TempFileOptions,
 };
 use qubit_fs_local::LocalFileSystems;
@@ -24,6 +25,10 @@ fn test_host_factory_returns_concrete_file_system() {
     assert_eq!(
         file_system.properties().info().path_semantics(),
         PathSemantics::Hierarchical
+    );
+    assert_eq!(
+        file_system.properties().symlink_policy(),
+        SymlinkPolicy::FollowWithinFileSystem
     );
 }
 
@@ -105,7 +110,7 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
         let capabilities = file_system.properties().capabilities();
         assert!(capabilities.contains(FileSystemCapability::EmptyDirectory));
         assert!(!capabilities.contains(FileSystemCapability::Symlink));
-        for capability in FileSystemCapability::ALL {
+        for capability in FileSystemCapability::ALL.iter().copied() {
             let expected = matches!(
                 capability,
                 FileSystemCapability::List

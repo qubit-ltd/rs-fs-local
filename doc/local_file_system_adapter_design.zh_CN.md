@@ -354,7 +354,6 @@ Persist failure state 一一映射：
 | Native state | `qubit-fs` state |
 | --- | --- |
 | `NotPublished` | `NotPublished` |
-| `PublishedSourceRetained` | `PublishedSourceRetained` |
 | `Indeterminate` | `Indeterminate` |
 
 `ResolvedPersistOptions` 的 overwrite、atomicity 和 metadata preservation 映射到
