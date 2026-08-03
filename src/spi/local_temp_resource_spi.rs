@@ -442,9 +442,6 @@ fn persist_failure_state(
         native_files::LocalPersistFailureState::NotPublished => {
             PersistFailureState::NotPublished
         }
-        native_files::LocalPersistFailureState::PublishedSourceRetained => {
-            PersistFailureState::PublishedSourceRetained
-        }
         native_files::LocalPersistFailureState::Indeterminate => {
             PersistFailureState::Indeterminate
         }
