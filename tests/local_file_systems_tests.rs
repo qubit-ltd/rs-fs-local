@@ -124,6 +124,7 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
                     | FileSystemCapability::AtomicReplace
                     | FileSystemCapability::AtomicFileCopy
                     | FileSystemCapability::AtomicTempPersist
+                    | FileSystemCapability::DurableRename
                     | FileSystemCapability::DurableFileCopy
             );
             if !expected {

@@ -215,14 +215,28 @@ fn output_path(
 ///
 /// # Returns
 ///
-/// The equivalent facade kind; platform-specific kinds use `Other("local")`.
+/// The equivalent facade kind; platform-specific kinds use a `local-*`
+/// `Other` name.
 fn output_kind(kind: native_files::LocalFileKind) -> qubit_fs::FileKind {
     match kind {
         native_files::LocalFileKind::File => qubit_fs::FileKind::File,
         native_files::LocalFileKind::Directory => qubit_fs::FileKind::Directory,
         native_files::LocalFileKind::Symlink => qubit_fs::FileKind::Symlink,
+        native_files::LocalFileKind::Fifo => {
+            qubit_fs::FileKind::Other("local-fifo".to_owned())
+        }
+        native_files::LocalFileKind::Socket => {
+            qubit_fs::FileKind::Other("local-socket".to_owned())
+        }
+        native_files::LocalFileKind::BlockDevice => {
+            qubit_fs::FileKind::Other("local-block-device".to_owned())
+        }
+        native_files::LocalFileKind::CharDevice => {
+            qubit_fs::FileKind::Other("local-char-device".to_owned())
+        }
         native_files::LocalFileKind::Other => {
             qubit_fs::FileKind::Other("local".to_owned())
         }
+        _ => qubit_fs::FileKind::Other("local".to_owned()),
     }
 }
