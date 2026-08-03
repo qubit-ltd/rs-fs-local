@@ -18,6 +18,7 @@ use qubit_fs::{
     FsErrorKind,
     ListOptions,
     MetadataPreservePolicy,
+    PublicationMethod,
     Path,
     RenameFailureState,
     RenameOptions,
@@ -132,6 +133,126 @@ fn test_host_abort_failure_retains_writer_for_retry() {
         assert_eq!(FsErrorKind::NotFound, error.kind());
         assert_eq!(qubit_fs::WriterState::Open, writer.state());
     }
+}
+
+/// Host listing maps the facade symlink option into recursive traversal.
+#[cfg(unix)]
+#[test]
+fn test_host_list_symlink_policy_controls_directory_traversal() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempfile::tempdir().expect("listing root must be created");
+    let outside = tempfile::tempdir().expect("listing target must be created");
+    std::fs::write(outside.path().join("child"), b"payload")
+        .expect("listing child must be written");
+    symlink(outside.path(), root.path().join("link"))
+        .expect("listing symlink must be created");
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must open");
+    let logical_root = host_path_to_logical(root.path())
+        .expect("listing root must be logical");
+
+    let mut without_following_stream = file_system
+        .list(
+            &logical_root,
+            ListOptions::default()
+                .with_recursive(true)
+                .with_follow_symlinks(false),
+        )
+        .expect("non-following listing must open");
+    let mut without_following = Vec::new();
+    while let Some(entry) = without_following_stream
+        .next_entry()
+        .expect("non-following listing must succeed")
+    {
+        without_following.push(entry);
+    }
+    assert!(without_following.iter().all(|entry| {
+        !entry.path.as_str().ends_with("/link/child")
+    }));
+
+    let mut with_following_stream = file_system
+        .list(
+            &logical_root,
+            ListOptions::default()
+                .with_recursive(true)
+                .with_follow_symlinks(true),
+        )
+        .expect("following listing must open");
+    let mut with_following = Vec::new();
+    while let Some(entry) = with_following_stream
+        .next_entry()
+        .expect("following listing must succeed")
+    {
+        with_following.push(entry);
+    }
+    assert!(with_following
+        .iter()
+        .any(|entry| entry.path.as_str().ends_with("/link/child")));
+}
+
+/// Host tree copy maps the facade symlink option into the native copy policy.
+#[cfg(unix)]
+#[test]
+fn test_host_copy_symlink_policy_controls_directory_traversal() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempfile::tempdir().expect("copy root must be created");
+    let outside = tempfile::tempdir().expect("copy target must be created");
+    std::fs::write(outside.path().join("child"), b"payload")
+        .expect("copy child must be written");
+    let source = root.path().join("source");
+    std::fs::create_dir(&source).expect("copy source must be created");
+    symlink(outside.path(), source.join("link"))
+        .expect("copy symlink must be created");
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must open");
+    let source = host_path_to_logical(&source)
+        .expect("copy source must be logical");
+
+    let no_follow_target = root.path().join("no-follow");
+    file_system
+        .copy(
+            &source,
+            &host_path_to_logical(&no_follow_target)
+                .expect("copy target must be logical"),
+            CopyOptions::tree().with_follow_symlinks(false),
+        )
+        .expect("non-following tree copy must succeed");
+    assert!(std::fs::symlink_metadata(no_follow_target.join("link"))
+        .expect("copied link must be present")
+        .file_type()
+        .is_symlink());
+
+    let follow_target = root.path().join("follow");
+    file_system
+        .copy(
+            &source,
+            &host_path_to_logical(&follow_target)
+                .expect("copy target must be logical"),
+            CopyOptions::tree().with_follow_symlinks(true),
+        )
+        .expect("following tree copy must succeed");
+    assert_eq!(
+        std::fs::read(follow_target.join("link/child"))
+            .expect("followed copy child must be present"),
+        b"payload",
+    );
+}
+
+/// Successful local writer commits expose their concrete publication method.
+#[test]
+fn test_rooted_writer_commit_reports_atomic_rename_publication() {
+    let (_root, file_system) = rooted_file_system();
+    let mut writer = file_system
+        .open_writer(&path("/published"), WriteOptions::default())
+        .expect("writer must open");
+    Output::write_fully(&mut writer, b"payload")
+        .expect("writer must accept payload");
+
+    let outcome = writer.commit().expect("writer commit must succeed");
+
+    assert_eq!(PublicationMethod::AtomicRename, outcome.method());
 }
 
 /// Native I/O categories survive translation when a path component is not a
