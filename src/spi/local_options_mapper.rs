@@ -26,6 +26,7 @@ use qubit_fs::{
     FsErrorKind,
     FsOperation,
     MetadataPreservePolicy,
+    SymlinkPolicy,
     WriteDisposition,
     WritePrecondition,
 };
@@ -64,17 +65,19 @@ pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::LocalReadOptions {
 #[inline]
 pub(crate) fn list(
     options: &ResolvedListOptions,
+    scope: native_files::LocalFileSystemScope,
 ) -> Result<native_files::LocalListOptions, FsError> {
     let mut native = native_files::LocalListOptions::new();
     if options.options().recursive() || options.options().prefix().is_some() {
         native = native.with_recursive();
     }
-    native =
-        native.with_symlink_policy(if options.options().follow_symlinks() {
-            native_files::LocalSymlinkPolicy::FollowWithinScope
-        } else {
-            native_files::LocalSymlinkPolicy::Reject
-        });
+    if let Some(policy) = options.options().symlink_policy_override() {
+        native = native.with_symlink_policy(native_symlink_policy(
+            policy,
+            scope,
+            FsOperation::List,
+        )?);
+    }
     Ok(native)
 }
 
@@ -223,7 +226,9 @@ pub(crate) fn rename(
 /// execution, or metadata preservation beyond portable permissions.
 pub(crate) fn copy(
     options: &qubit_fs::spi::ResolvedCopyOptions,
+    scope: native_files::LocalFileSystemScope,
 ) -> Result<native_files::LocalCopyOptions, FsError> {
+    let symlink_policy = options.symlink_policy();
     let options = options.options();
     if options.continue_on_error()
         || options.server_side() == qubit_fs::ServerSidePreference::Require
@@ -237,11 +242,13 @@ pub(crate) fn copy(
         )?)
         .with_atomicity(atomicity(options.atomicity()))
         .with_durability(durability(options.durability()));
-    native = native.with_symlink_policy(if options.follow_symlinks() {
-        native_files::LocalSymlinkPolicy::FollowWithinScope
-    } else {
-        native_files::LocalSymlinkPolicy::Reject
-    });
+    if options.symlink_policy_override().is_some() {
+        native = native.with_symlink_policy(native_symlink_policy(
+            symlink_policy,
+            scope,
+            FsOperation::Copy,
+        )?);
+    }
     native = match options.mode() {
         CopyMode::File => native.with_file_source(),
         CopyMode::Tree => native.with_tree_source(),
@@ -260,6 +267,26 @@ pub(crate) fn copy(
         native = native.with_parent();
     }
     Ok(native)
+}
+
+/// Maps an abstract operation override to the native scope-aware policy.
+fn native_symlink_policy(
+    policy: SymlinkPolicy,
+    scope: native_files::LocalFileSystemScope,
+    operation: FsOperation,
+) -> Result<native_files::LocalSymlinkPolicy, FsError> {
+    match policy {
+        SymlinkPolicy::Reject => Ok(native_files::LocalSymlinkPolicy::Reject),
+        SymlinkPolicy::FollowWithinFileSystem => Ok(match scope {
+            native_files::LocalFileSystemScope::Host => {
+                native_files::LocalSymlinkPolicy::FollowAcrossScope
+            }
+            native_files::LocalFileSystemScope::Rooted => {
+                native_files::LocalSymlinkPolicy::FollowWithinScope
+            }
+        }),
+        _ => Err(unsupported(operation)),
+    }
 }
 
 /// Converts portable copy conflict policy to native policy.

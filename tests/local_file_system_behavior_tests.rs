@@ -25,6 +25,7 @@ use qubit_fs::{
     RenameFailureState,
     RenameOptions,
     ServerSidePreference,
+    SymlinkPolicy,
     TempDirectoryOptions,
     TempFileOptions,
     UserMetadata,
@@ -159,7 +160,7 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
             &logical_root,
             ListOptions::default()
                 .with_recursive(true)
-                .with_follow_symlinks(false),
+                .with_symlink_policy(SymlinkPolicy::Reject),
         )
         .expect("non-following listing must open");
     let mut without_following = Vec::new();
@@ -180,7 +181,7 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
             &logical_root,
             ListOptions::default()
                 .with_recursive(true)
-                .with_follow_symlinks(true),
+                .with_symlink_policy(SymlinkPolicy::FollowWithinFileSystem),
         )
         .expect("following listing must open");
     let mut with_following = Vec::new();
@@ -222,7 +223,7 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
             &source,
             &host_path_to_logical(&no_follow_target)
                 .expect("copy target must be logical"),
-            CopyOptions::tree().with_follow_symlinks(false),
+            CopyOptions::tree().with_symlink_policy(SymlinkPolicy::Reject),
         )
         .expect("non-following tree copy must succeed");
     assert!(
@@ -238,7 +239,8 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
             &source,
             &host_path_to_logical(&follow_target)
                 .expect("copy target must be logical"),
-            CopyOptions::tree().with_follow_symlinks(true),
+            CopyOptions::tree()
+                .with_symlink_policy(SymlinkPolicy::FollowWithinFileSystem),
         )
         .expect("following tree copy must succeed");
     assert_eq!(
