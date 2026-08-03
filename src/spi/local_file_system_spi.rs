@@ -56,6 +56,7 @@ use qubit_fs::{
     OpenedFileInfo,
     PathConstraints,
     PathSemantics,
+    SymlinkPolicy,
 };
 use qubit_local_files as native_files;
 
@@ -196,6 +197,15 @@ impl LocalFileSystemSpi {
             capabilities,
             FileSystemLimits::unknown(),
             PathConstraints::absolute(),
+            match native.symlink_policy() {
+                native_files::LocalSymlinkPolicy::Reject => {
+                    SymlinkPolicy::Reject
+                }
+                native_files::LocalSymlinkPolicy::FollowWithinScope
+                | native_files::LocalSymlinkPolicy::FollowAcrossScope => {
+                    SymlinkPolicy::FollowWithinFileSystem
+                }
+            },
         )
     }
 
@@ -349,7 +359,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
         request: ListRequest<'_>,
     ) -> FsResult<OpenedDirectoryStream> {
         let path = self.native_path(request.path())?;
-        let options = local_options_mapper::list(request.options())?;
+        let options =
+            local_options_mapper::list(request.options(), self.native.scope())?;
         let rooted = self.is_rooted();
         self.native
             .list(&path, &options)
@@ -543,7 +554,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         &self,
         request: CopyRequest<'_>,
     ) -> Result<CopyAttempt, SpiCopyFailure> {
-        let options = match local_options_mapper::copy(request.options()) {
+        let options = match local_options_mapper::copy(
+            request.options(),
+            self.native.scope(),
+        ) {
             Ok(options) => options,
             Err(error) => {
                 return Err(SpiCopyFailure::new(
