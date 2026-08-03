@@ -39,9 +39,22 @@ pub(crate) fn metadata(value: native_files::LocalFileMetadata) -> FileMetadata {
         native_files::LocalFileKind::File => FileKind::File,
         native_files::LocalFileKind::Directory => FileKind::Directory,
         native_files::LocalFileKind::Symlink => FileKind::Symlink,
+        native_files::LocalFileKind::Fifo => {
+            FileKind::Other("local-fifo".to_owned())
+        }
+        native_files::LocalFileKind::Socket => {
+            FileKind::Other("local-socket".to_owned())
+        }
+        native_files::LocalFileKind::BlockDevice => {
+            FileKind::Other("local-block-device".to_owned())
+        }
+        native_files::LocalFileKind::CharDevice => {
+            FileKind::Other("local-char-device".to_owned())
+        }
         native_files::LocalFileKind::Other => {
             FileKind::Other("local".to_owned())
         }
+        _ => FileKind::Other("local".to_owned()),
     };
     FileMetadata::new(kind)
         .with_len(Some(value.len()))
@@ -98,8 +111,8 @@ pub(crate) fn copy(value: native_files::LocalCopyOutcome) -> CopyOutcome {
 ///
 /// # Parameters
 ///
-/// - `_value`: Native completion marker; the native API guarantees atomic
-///   rename semantics for successful outcomes.
+/// - `value`: Native completion marker containing atomicity and durability
+///   facts from the completed operation.
 /// - `source`: Logical source path supplied by the caller.
 /// - `target`: Logical target path supplied by the caller.
 ///
@@ -108,7 +121,7 @@ pub(crate) fn copy(value: native_files::LocalCopyOutcome) -> CopyOutcome {
 /// An atomic-rename outcome retaining both logical paths.
 #[inline]
 pub(crate) fn rename(
-    _value: native_files::LocalRenameOutcome,
+    value: native_files::LocalRenameOutcome,
     source: &qubit_fs::Path,
     target: &qubit_fs::Path,
 ) -> RenameOutcome {
@@ -118,6 +131,7 @@ pub(crate) fn rename(
         AchievedAtomicity::Atomic,
         PublicationMethod::AtomicRename,
     )
+    .with_durable(value.durable())
 }
 
 /// Converts native copy failure state to its portable equivalent.

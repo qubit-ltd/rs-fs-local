@@ -186,8 +186,9 @@ impl LocalFileSystemSpi {
                 capabilities.with(FileSystemCapability::AtomicTempPersist);
         }
         if native_capabilities.directory_durability_implemented() {
-            capabilities =
-                capabilities.with(FileSystemCapability::DurableFileCopy);
+            capabilities = capabilities
+                .with(FileSystemCapability::DurableFileCopy)
+                .with(FileSystemCapability::DurableRename);
         }
         FileSystemProperties::new(
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)

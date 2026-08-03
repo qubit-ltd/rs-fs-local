@@ -15,11 +15,13 @@ use qubit_fs::{
     CopyOptions,
     CreateDirectoryOptions,
     DeleteOptions,
+    DurabilityRequirement,
+    FileKind,
     FsErrorKind,
     ListOptions,
     MetadataPreservePolicy,
-    PublicationMethod,
     Path,
+    PublicationMethod,
     RenameFailureState,
     RenameOptions,
     ServerSidePreference,
@@ -167,9 +169,11 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
     {
         without_following.push(entry);
     }
-    assert!(without_following.iter().all(|entry| {
-        !entry.path.as_str().ends_with("/link/child")
-    }));
+    assert!(
+        without_following
+            .iter()
+            .all(|entry| { !entry.path.as_str().ends_with("/link/child") })
+    );
 
     let mut with_following_stream = file_system
         .list(
@@ -186,9 +190,11 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
     {
         with_following.push(entry);
     }
-    assert!(with_following
-        .iter()
-        .any(|entry| entry.path.as_str().ends_with("/link/child")));
+    assert!(
+        with_following
+            .iter()
+            .any(|entry| entry.path.as_str().ends_with("/link/child"))
+    );
 }
 
 /// Host tree copy maps the facade symlink option into the native copy policy.
@@ -207,8 +213,8 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
         .expect("copy symlink must be created");
     let file_system =
         LocalFileSystems::host().expect("host filesystem must open");
-    let source = host_path_to_logical(&source)
-        .expect("copy source must be logical");
+    let source =
+        host_path_to_logical(&source).expect("copy source must be logical");
 
     let no_follow_target = root.path().join("no-follow");
     file_system
@@ -219,10 +225,12 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
             CopyOptions::tree().with_follow_symlinks(false),
         )
         .expect("non-following tree copy must succeed");
-    assert!(std::fs::symlink_metadata(no_follow_target.join("link"))
-        .expect("copied link must be present")
-        .file_type()
-        .is_symlink());
+    assert!(
+        std::fs::symlink_metadata(no_follow_target.join("link"))
+            .expect("copied link must be present")
+            .file_type()
+            .is_symlink()
+    );
 
     let follow_target = root.path().join("follow");
     file_system
@@ -253,6 +261,50 @@ fn test_rooted_writer_commit_reports_atomic_rename_publication() {
     let outcome = writer.commit().expect("writer commit must succeed");
 
     assert_eq!(PublicationMethod::AtomicRename, outcome.method());
+}
+
+/// Required host rename reports the durability synchronization it completed.
+#[cfg(unix)]
+#[test]
+fn test_host_rename_reports_durability() {
+    let root = tempfile::tempdir().expect("rename root must be created");
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    std::fs::write(&source, b"payload").expect("rename source must be written");
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must open");
+
+    let outcome = file_system
+        .rename(
+            &host_path_to_logical(&source)
+                .expect("source path must be logical"),
+            &host_path_to_logical(&target)
+                .expect("target path must be logical"),
+            RenameOptions::default()
+                .with_durability(DurabilityRequirement::Required),
+        )
+        .expect("required durable rename must succeed");
+
+    assert!(outcome.durable());
+}
+
+/// Host metadata retains the native special-entry category in provider kind.
+#[cfg(unix)]
+#[test]
+fn test_host_stat_preserves_character_device_kind() {
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem must open");
+    let path = host_path_to_logical(std::path::Path::new("/dev/null"))
+        .expect("null-device path must be logical");
+
+    let metadata = file_system
+        .stat(&path)
+        .expect("null-device metadata must be readable");
+
+    assert_eq!(
+        &FileKind::Other("local-char-device".to_owned()),
+        metadata.kind(),
+    );
 }
 
 /// Native I/O categories survive translation when a path component is not a
@@ -597,8 +649,7 @@ fn test_host_metadata_maps_symbolic_link_kind() {
     assert_eq!(metadata.kind(), &qubit_fs::FileKind::Symlink);
 }
 
-/// Host metadata maps Unix-domain sockets to the adapter's generic local
-/// entry kind.
+/// Host metadata maps Unix-domain sockets to the adapter's local socket kind.
 #[cfg(unix)]
 #[test]
 fn test_host_metadata_maps_unix_socket_kind() {
@@ -616,6 +667,6 @@ fn test_host_metadata_maps_unix_socket_kind() {
         .expect("socket metadata should be readable");
     assert_eq!(
         metadata.kind(),
-        &qubit_fs::FileKind::Other("local".to_owned())
+        &qubit_fs::FileKind::Other("local-socket".to_owned())
     );
 }

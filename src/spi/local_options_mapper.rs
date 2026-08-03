@@ -181,8 +181,9 @@ pub(crate) fn delete(
 ///
 /// # Returns
 ///
-/// Native overwrite policy. The native rename primitive is always atomic, so
-/// the adapter does not forward the facade's redundant atomicity preference.
+/// Native overwrite and durability policies. The native rename primitive is
+/// always atomic, so the adapter does not forward the facade's redundant
+/// atomicity preference.
 #[inline]
 pub(crate) fn rename(
     options: &ResolvedRenameOptions,
@@ -191,6 +192,17 @@ pub(crate) fn rename(
     if options.options().overwrite() {
         native = native.with_overwrite();
     }
+    native = native.with_durability(match options.options().durability() {
+        DurabilityRequirement::Required => {
+            native_files::LocalDurabilityRequirement::Required
+        }
+        DurabilityRequirement::Preferred => {
+            native_files::LocalDurabilityRequirement::Preferred
+        }
+        DurabilityRequirement::NotRequired => {
+            native_files::LocalDurabilityRequirement::NotRequired
+        }
+    });
     native
 }
 
