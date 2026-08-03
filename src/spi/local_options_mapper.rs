@@ -69,9 +69,12 @@ pub(crate) fn list(
     if options.options().recursive() || options.options().prefix().is_some() {
         native = native.with_recursive();
     }
-    if options.options().follow_symlinks() {
-        native = native.with_follow_symlinks();
-    }
+    native =
+        native.with_symlink_policy(if options.options().follow_symlinks() {
+            native_files::LocalSymlinkPolicy::FollowWithinScope
+        } else {
+            native_files::LocalSymlinkPolicy::Reject
+        });
     Ok(native)
 }
 
@@ -220,9 +223,13 @@ pub(crate) fn copy(
         .with_metadata_preservation(metadata_preservation(
             options.preserve_metadata(),
         )?)
-        .with_symlink_policy(symlink_policy(options.follow_symlinks()))
         .with_atomicity(atomicity(options.atomicity()))
         .with_durability(durability(options.durability()));
+    native = native.with_symlink_policy(if options.follow_symlinks() {
+        native_files::LocalSymlinkPolicy::FollowWithinScope
+    } else {
+        native_files::LocalSymlinkPolicy::Reject
+    });
     native = match options.mode() {
         CopyMode::File => native.with_file_source(),
         CopyMode::Tree => native.with_tree_source(),
@@ -293,24 +300,6 @@ fn metadata_preservation(
         MetadataPreservePolicy::UserMetadata
         | MetadataPreservePolicy::ProviderNative
         | MetadataPreservePolicy::All => Err(unsupported(FsOperation::Copy)),
-    }
-}
-
-/// Converts the facade symlink flag to native copy policy.
-///
-/// # Parameters
-///
-/// - `follow`: Whether the copy request follows symbolic links.
-///
-/// # Returns
-///
-/// Native follow or reject behavior.
-#[inline]
-const fn symlink_policy(follow: bool) -> native_files::LocalSymlinkPolicy {
-    if follow {
-        native_files::LocalSymlinkPolicy::Follow
-    } else {
-        native_files::LocalSymlinkPolicy::Reject
     }
 }
 
