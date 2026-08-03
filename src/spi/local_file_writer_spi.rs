@@ -172,10 +172,20 @@ impl FileWriterSpi for LocalFileWriterSpi {
                     } else {
                         AchievedAtomicity::NonAtomic
                     },
-                    if outcome.atomic() {
-                        PublicationMethod::AtomicRename
-                    } else {
-                        PublicationMethod::Direct
+                    match outcome.publication_method() {
+                        native_files::LocalWritePublicationMethod::AtomicRename => {
+                            PublicationMethod::AtomicRename
+                        }
+                        native_files::LocalWritePublicationMethod::DirectAppend => {
+                            PublicationMethod::Direct
+                        }
+                        _ => {
+                            if outcome.atomic() {
+                                PublicationMethod::AtomicRename
+                            } else {
+                                PublicationMethod::Direct
+                            }
+                        }
                     },
                 );
                 result = result.with_bytes_written(outcome.bytes_written());
