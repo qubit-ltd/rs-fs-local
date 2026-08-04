@@ -48,6 +48,7 @@ use qubit_fs::{
     FileSystemCapability,
     FileSystemId,
     FileSystemInfo,
+    FileSystemLimit,
     FileSystemLimits,
     FileSystemProperties,
     FsError,
@@ -198,7 +199,7 @@ impl LocalFileSystemSpi {
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
                 .with_scheme(FILE_SCHEME)?,
             capabilities,
-            FileSystemLimits::unknown(),
+            native_limits(native.limits()),
             PathConstraints::absolute(),
             match native.symlink_policy() {
                 native_files::LocalSymlinkPolicy::Reject => {
@@ -291,6 +292,30 @@ impl LocalFileSystemSpi {
         path: &qubit_fs::Path,
     ) -> FsError {
         error_mapper::map(error, operation, path, None, &self.provider_id)
+    }
+}
+
+/// Maps native authority path limits into portable logical path limits.
+#[inline(always)]
+fn native_limits(
+    limits: native_files::LocalFileSystemLimits,
+) -> FileSystemLimits {
+    FileSystemLimits::unknown()
+        .with_max_path_text_bytes(native_limit(limits.max_path_bytes()))
+        .with_max_component_text_bytes(native_limit(
+            limits.max_file_name_bytes(),
+        ))
+}
+
+/// Preserves finite, unbounded, and unavailable native limit semantics.
+#[inline(always)]
+const fn native_limit(limit: native_files::SizeLimit) -> FileSystemLimit {
+    match limit {
+        native_files::SizeLimit::Maximum(value) => {
+            FileSystemLimit::Maximum(value)
+        }
+        native_files::SizeLimit::Unrestricted => FileSystemLimit::Unbounded,
+        native_files::SizeLimit::Unknown => FileSystemLimit::Unknown,
     }
 }
 
@@ -679,6 +704,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
         }
+        if request.options().creates_parent() {
+            options = options.with_create_parent();
+        }
         let value =
             self.native.create_temp_file(&options).map_err(|error| {
                 error_mapper::map_without_path(
@@ -727,6 +755,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .with_suffix(request.options().suffix());
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
+        }
+        if request.options().creates_parent() {
+            options = options.with_create_parent();
         }
         let value =
             self.native
