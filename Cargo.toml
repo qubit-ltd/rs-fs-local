@@ -15,6 +15,7 @@ include = [
   "/LICENSE",
   "/README.md",
   "/README.zh_CN.md",
+  "/benches/**",
   "/doc/**",
   "/src/**",
   "/tests/**",
@@ -42,6 +43,10 @@ name = "local_provider_mode_tests"
 path = "tests/local_provider_mode_tests.rs"
 required-features = ["registry"]
 
+[[bench]]
+name = "local_filesystem_facade"
+harness = false
+
 [dependencies]
 qubit-fs = { path = "../rs-fs", version = "0.2", default-features = false }
 qubit-local-files = { path = "../rs-local-files", version = "0.3" }
@@ -54,6 +59,7 @@ default = []
 registry = ["dep:qubit-fs-registry", "dep:qubit-spi"]
 
 [dev-dependencies]
+criterion = "0.5"
 tempfile = "3.27"
 qubit-io = "0.14"
 qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.1" }
