@@ -161,7 +161,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
             Self::File { provider_id, .. }
             | Self::Directory { provider_id, .. } => provider_id.to_owned(),
         };
-        let options = persist_options(request.options().overwrite());
+        let options = persist_options(request.options());
         let result = match self {
             Self::File { resource: slot, .. } => persist_file(
                 slot,
@@ -281,12 +281,17 @@ impl TempResourceSpi for LocalTempResourceSpi {
 ///
 /// Native persistence options with the requested replacement policy.
 #[inline(always)]
-fn persist_options(overwrite: bool) -> native_files::LocalPersistOptions {
-    if overwrite {
-        native_files::LocalPersistOptions::new().with_overwrite()
-    } else {
-        native_files::LocalPersistOptions::new()
+fn persist_options(
+    options: &qubit_fs::PersistOptions,
+) -> native_files::LocalPersistOptions {
+    let mut native = native_files::LocalPersistOptions::new();
+    if options.overwrite() {
+        native = native.with_overwrite();
     }
+    if options.creates_parent() {
+        native = native.with_create_parent();
+    }
+    native
 }
 
 /// Maps a completed native persistence outcome to the facade representation.
