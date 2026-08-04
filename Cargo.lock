@@ -185,7 +185,7 @@ checksum = "d49f7760498a997e081e164910f7fb9d2732dd0eb6571d272ca2b0eb6681b01e"
 
 [[package]]
 name = "qubit-local-files"
-version = "0.8.0"
+version = "0.3.0"
 dependencies = [
  "getrandom",
  "libc",
