@@ -265,10 +265,10 @@ fn test_rooted_writer_commit_reports_atomic_rename_publication() {
     assert_eq!(PublicationMethod::AtomicRename, outcome.method());
 }
 
-/// Required host rename reports the durability synchronization it completed.
+/// Required host rename is rejected until runtime durability is verified.
 #[cfg(unix)]
 #[test]
-fn test_host_rename_reports_durability() {
+fn test_host_rename_rejects_unverified_durability() {
     let root = tempfile::tempdir().expect("rename root must be created");
     let source = root.path().join("source");
     let target = root.path().join("target");
@@ -276,7 +276,7 @@ fn test_host_rename_reports_durability() {
     let file_system =
         LocalFileSystems::host().expect("host filesystem must open");
 
-    let outcome = file_system
+    let error = file_system
         .rename(
             &host_path_to_logical(&source)
                 .expect("source path must be logical"),
@@ -285,9 +285,11 @@ fn test_host_rename_reports_durability() {
             RenameOptions::default()
                 .with_durability(DurabilityRequirement::Required),
         )
-        .expect("required durable rename must succeed");
+        .expect_err("unverified durable rename must be rejected");
 
-    assert!(outcome.durable());
+    assert_eq!(FsErrorKind::RequirementNotMet, error.error().kind());
+    assert!(source.exists());
+    assert!(!target.exists());
 }
 
 /// Host metadata retains the native special-entry category in provider kind.

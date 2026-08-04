@@ -186,7 +186,10 @@ impl LocalFileSystemSpi {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicTempPersist);
         }
-        if native_capabilities.directory_durability_implemented() {
+        if matches!(
+            native_capabilities.durable_rename_support(),
+            native_files::LocalFileSystemCapabilitySupport::RuntimeVerified
+        ) {
             capabilities = capabilities
                 .with(FileSystemCapability::DurableFileCopy)
                 .with(FileSystemCapability::DurableRename);

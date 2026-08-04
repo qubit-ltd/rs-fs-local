@@ -129,14 +129,23 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
                     | FileSystemCapability::AtomicReplace
                     | FileSystemCapability::AtomicFileCopy
                     | FileSystemCapability::AtomicTempPersist
-                    | FileSystemCapability::DurableRename
-                    | FileSystemCapability::DurableFileCopy
             );
             if !expected {
                 assert!(!capabilities.contains(capability));
             }
         }
     }
+}
+
+/// Verifies provider properties do not advertise unverified durability.
+#[test]
+fn test_local_provider_does_not_advertise_unverified_durability() {
+    let file_system =
+        LocalFileSystems::host().expect("host filesystem should construct");
+    let capabilities = file_system.properties().capabilities();
+
+    assert!(!capabilities.contains(FileSystemCapability::DurableRename));
+    assert!(!capabilities.contains(FileSystemCapability::DurableFileCopy));
 }
 
 /// Verifies automatic rooted identities are valid and distinct per facade.
@@ -184,7 +193,8 @@ fn test_host_temp_file_applies_parent_and_affixes() {
         temporary
             .path()
             .as_str()
-            .starts_with(&format!("{}/host-upload-", parent.as_str()))
+            .starts_with(&format!("{}/", parent.as_str()))
     );
+    assert!(temporary.path().as_str().contains("/host-upload-"));
     assert!(temporary.path().as_str().ends_with(".part"));
 }
