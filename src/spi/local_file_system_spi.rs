@@ -307,14 +307,14 @@ fn native_limits(
         ))
 }
 
-/// Preserves finite, unbounded, and unavailable native limit semantics.
+/// Preserves finite, path-dependent, and unavailable native limit semantics.
 #[inline(always)]
 const fn native_limit(limit: native_files::SizeLimit) -> FileSystemLimit {
     match limit {
         native_files::SizeLimit::Maximum(value) => {
             FileSystemLimit::Maximum(value)
         }
-        native_files::SizeLimit::Unrestricted => FileSystemLimit::Unbounded,
+        native_files::SizeLimit::VariesByPath => FileSystemLimit::Unknown,
         native_files::SizeLimit::Unknown => FileSystemLimit::Unknown,
     }
 }

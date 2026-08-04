@@ -143,11 +143,11 @@ Capability 只声明当前平台和当前配置真正保证的语义。例如：
 - no-replace atomic rename 只在 native 层证明支持时声明；
 - rooted containment 只在使用可靠 descriptor/handle-relative 实现时声明；
 - temp atomic persist 取决于同目录 staging 与 publication 能力；
-- unknown native path limit 仍表示 unknown，不使用猜测常量。
+- `SizeLimit::VariesByPath` 和 `SizeLimit::Unknown` 都保守映射为
+  `FileSystemLimit::Unknown`，不使用猜测常量。
 
-Native limit 只有在 `LocalPathLimit` 的单位经 codec 可证明地换算为 provider-local
-`Path` canonical text bytes 时才写入 `FileSystemLimits`；UTF-16 code units 不直接
-当 byte。
+只有 `SizeLimit::Maximum(value)` 才会写入 `FileSystemLimits`；provider 不会把
+host-wide 的 path-dependent 值当成全局上限。
 
 两个 local configured filesystem 都使用 hierarchical、absolute logical path：
 
