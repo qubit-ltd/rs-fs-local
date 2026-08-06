@@ -111,25 +111,29 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
         assert!(capabilities.contains(FileSystemCapability::EmptyDirectory));
         assert!(!capabilities.contains(FileSystemCapability::Symlink));
         for capability in FileSystemCapability::ALL.iter().copied() {
-            let expected = matches!(
-                capability,
-                FileSystemCapability::List
-                    | FileSystemCapability::Read
-                    | FileSystemCapability::Write
-                    | FileSystemCapability::Append
-                    | FileSystemCapability::CreateDirectory
-                    | FileSystemCapability::EmptyDirectory
-                    | FileSystemCapability::Delete
-                    | FileSystemCapability::RecursiveDelete
-                    | FileSystemCapability::Rename
-                    | FileSystemCapability::Copy
-                    | FileSystemCapability::TempFile
-                    | FileSystemCapability::TempDirectory
-                    | FileSystemCapability::AtomicRename
-                    | FileSystemCapability::AtomicReplace
-                    | FileSystemCapability::AtomicFileCopy
-                    | FileSystemCapability::AtomicTempPersist
-            );
+            let expected = match capability {
+                FileSystemCapability::DurableRename
+                | FileSystemCapability::DurableFileCopy => cfg!(unix),
+                _ => matches!(
+                    capability,
+                    FileSystemCapability::List
+                        | FileSystemCapability::Read
+                        | FileSystemCapability::Write
+                        | FileSystemCapability::Append
+                        | FileSystemCapability::CreateDirectory
+                        | FileSystemCapability::EmptyDirectory
+                        | FileSystemCapability::Delete
+                        | FileSystemCapability::RecursiveDelete
+                        | FileSystemCapability::Rename
+                        | FileSystemCapability::Copy
+                        | FileSystemCapability::TempFile
+                        | FileSystemCapability::TempDirectory
+                        | FileSystemCapability::AtomicRename
+                        | FileSystemCapability::AtomicReplace
+                        | FileSystemCapability::AtomicFileCopy
+                        | FileSystemCapability::AtomicTempPersist
+                ),
+            };
             if !expected {
                 assert!(!capabilities.contains(capability));
             }
@@ -137,15 +141,21 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
     }
 }
 
-/// Verifies provider properties do not advertise unverified durability.
+/// Verifies provider properties expose the two durable publication protocols.
 #[test]
-fn test_local_provider_does_not_advertise_unverified_durability() {
+fn test_local_provider_advertises_supported_durability() {
     let file_system =
         LocalFileSystems::host().expect("host filesystem should construct");
     let capabilities = file_system.properties().capabilities();
 
-    assert!(!capabilities.contains(FileSystemCapability::DurableRename));
-    assert!(!capabilities.contains(FileSystemCapability::DurableFileCopy));
+    assert_eq!(
+        cfg!(unix),
+        capabilities.contains(FileSystemCapability::DurableRename),
+    );
+    assert_eq!(
+        cfg!(unix),
+        capabilities.contains(FileSystemCapability::DurableFileCopy),
+    );
 }
 
 /// Verifies automatic rooted identities are valid and distinct per facade.

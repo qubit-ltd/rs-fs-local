@@ -174,26 +174,26 @@ impl LocalFileSystemSpi {
             .with(FileSystemCapability::Copy)
             .with(FileSystemCapability::TempFile)
             .with(FileSystemCapability::TempDirectory);
-        if native_capabilities.atomic_rename_implemented() {
+        if native_capabilities.supports_atomic_rename() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicRename);
         }
-        if native_capabilities.atomic_replace_implemented() {
+        if native_capabilities.supports_atomic_replace() {
             capabilities = capabilities
                 .with(FileSystemCapability::AtomicReplace)
                 .with(FileSystemCapability::AtomicFileCopy);
         }
-        if native_capabilities.atomic_temp_persist_implemented() {
+        if native_capabilities.supports_atomic_temp_persist() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicTempPersist);
         }
-        if matches!(
-            native_capabilities.durable_rename_support(),
-            native_files::LocalFileSystemCapabilitySupport::RuntimeVerified
-        ) {
-            capabilities = capabilities
-                .with(FileSystemCapability::DurableFileCopy)
-                .with(FileSystemCapability::DurableRename);
+        if native_capabilities.supports_durable_rename() {
+            capabilities =
+                capabilities.with(FileSystemCapability::DurableRename);
+        }
+        if native_capabilities.supports_durable_file_copy() {
+            capabilities =
+                capabilities.with(FileSystemCapability::DurableFileCopy);
         }
         FileSystemProperties::new(
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
