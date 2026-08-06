@@ -36,6 +36,8 @@ pub(crate) enum LocalDirectoryStreamSpi {
     Host(
         /// Native lazy walker that owns the underlying directory traversal.
         native_files::LocalDirectoryWalker,
+        /// Logical path requested as the listing root.
+        Path,
         /// Facade filtering and metadata behavior retained for the stream.
         ListingOptions,
         /// Provider identity attached to lazy traversal failures.
@@ -68,10 +70,16 @@ impl LocalDirectoryStreamSpi {
     #[inline]
     pub(crate) fn host(
         walker: native_files::LocalDirectoryWalker,
+        root: Path,
         options: &ResolvedListOptions,
         provider_id: &str,
     ) -> Self {
-        Self::Host(walker, ListingOptions::new(options), provider_id.to_owned())
+        Self::Host(
+            walker,
+            root,
+            ListingOptions::new(options),
+            provider_id.to_owned(),
+        )
     }
 
     /// Creates a stream that maps entries below a rooted logical path.
@@ -116,8 +124,8 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
     fn next_entry(&mut self) -> FsResult<Option<DirEntry>> {
         loop {
             let (entry, rooted, options, provider_id) = match self {
-                Self::Host(walker, options, provider_id) => {
-                    (walker.next(), None, options, provider_id)
+                Self::Host(walker, root, options, provider_id) => {
+                    (walker.next(), Some(root.clone()), options, provider_id)
                 }
                 Self::Rooted(walker, root, options, provider_id) => {
                     (walker.next(), Some(root.clone()), options, provider_id)
