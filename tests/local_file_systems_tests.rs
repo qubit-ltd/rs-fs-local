@@ -170,9 +170,10 @@ fn test_rooted_factory_assigns_distinct_process_local_identities() {
 #[test]
 fn test_host_temp_file_applies_parent_and_affixes() {
     let parent = tempfile::tempdir().expect("temporary parent should exist");
+    let canonical_parent = std::fs::canonicalize(parent.path())
+        .expect("temporary parent should canonicalize");
     let parent = Path::parse(
-        parent
-            .path()
+        canonical_parent
             .to_str()
             .expect("test temporary path should be UTF-8"),
     )
