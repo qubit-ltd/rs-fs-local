@@ -403,6 +403,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 } else {
                     LocalDirectoryStreamSpi::host(
                         value,
+                        request.path().clone(),
                         request.options(),
                         &self.provider_id,
                     )
