@@ -174,24 +174,24 @@ impl LocalFileSystemSpi {
             .with(FileSystemCapability::Copy)
             .with(FileSystemCapability::TempFile)
             .with(FileSystemCapability::TempDirectory);
-        if native_capabilities.supports_atomic_rename() {
+        if native_capabilities.implements_atomic_rename() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicRename);
         }
-        if native_capabilities.supports_atomic_replace() {
+        if native_capabilities.implements_atomic_replace() {
             capabilities = capabilities
                 .with(FileSystemCapability::AtomicReplace)
                 .with(FileSystemCapability::AtomicFileCopy);
         }
-        if native_capabilities.supports_atomic_temp_persist() {
+        if native_capabilities.implements_atomic_temp_persist() {
             capabilities =
                 capabilities.with(FileSystemCapability::AtomicTempPersist);
         }
-        if native_capabilities.supports_durable_rename() {
+        if native_capabilities.implements_durable_rename() {
             capabilities =
                 capabilities.with(FileSystemCapability::DurableRename);
         }
-        if native_capabilities.supports_durable_file_copy() {
+        if native_capabilities.implements_durable_file_copy() {
             capabilities =
                 capabilities.with(FileSystemCapability::DurableFileCopy);
         }
