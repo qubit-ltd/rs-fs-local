@@ -50,7 +50,7 @@ harness = false
 [dependencies]
 qubit-fs = { path = "../rs-fs", version = "0.2", default-features = false }
 qubit-local-files = { path = "../rs-local-files", version = "0.3" }
-qubit-io = { path = "../rs-io", version = "0.15" }
+qubit-io = "0.15"
 qubit-fs-registry = { path = "../rs-fs-registry", version = "0.1", optional = true }
 qubit-spi = { path = "../rs-spi", version = "0.11", optional = true }
 
@@ -61,7 +61,7 @@ registry = ["dep:qubit-fs-registry", "dep:qubit-spi"]
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.27"
-qubit-io = { path = "../rs-io", version = "0.15" }
+qubit-io = "0.15"
 qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.1" }
 
 [lints.rust]
