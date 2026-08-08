@@ -35,10 +35,16 @@ use qubit_local_files as native_files;
 /// Returns `InvalidPath` when `path` is relative or a component cannot be
 /// represented by the native path layer.
 #[inline]
-pub(crate) fn native(scope: native_files::LocalFileSystemScope, path: &Path) -> FsResult<PathBuf> {
+pub(crate) fn native(
+    scope: native_files::LocalFileSystemScope,
+    path: &Path,
+) -> FsResult<PathBuf> {
     require_absolute(path)?;
-    native_files::LocalPaths::from_canonical_components(scope, path.components())
-        .map_err(|error| map(error, path, FsOperation::ParsePath))
+    native_files::LocalPaths::from_canonical_components(
+        scope,
+        path.components(),
+    )
+    .map_err(|error| map(error, path, FsOperation::ParsePath))
 }
 
 /// Converts a native path to a logical path in one authority scope.
@@ -57,14 +63,14 @@ pub(crate) fn native(scope: native_files::LocalFileSystemScope, path: &Path) -> 
 ///
 /// Returns `InvalidPath` when the native path is not absolute or cannot be
 /// represented in canonical logical form.
-///
 pub(crate) fn logical(
     scope: native_files::LocalFileSystemScope,
     path: &NativePath,
     operation: FsOperation,
 ) -> FsResult<Path> {
-    let components = native_files::LocalPaths::to_canonical_components(scope, path)
-        .map_err(|error| map_native(error, operation))?;
+    let components =
+        native_files::LocalPaths::to_canonical_components(scope, path)
+            .map_err(|error| map_native(error, operation))?;
     logical_components(&components)
 }
 
@@ -123,7 +129,11 @@ fn logical_components(components: &[String]) -> FsResult<Path> {
 ///
 /// An `InvalidPath` facade error retaining `path` and the native source.
 #[inline(always)]
-fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation) -> FsError {
+fn map(
+    error: native_files::LocalFileError,
+    path: &Path,
+    operation: FsOperation,
+) -> FsError {
     map_native(error, operation).with_path(path.clone())
 }
 
@@ -138,7 +148,10 @@ fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation)
 ///
 /// An `InvalidPath` facade error retaining the native source.
 #[inline(always)]
-fn map_native(error: native_files::LocalFileError, operation: FsOperation) -> FsError {
+fn map_native(
+    error: native_files::LocalFileError,
+    operation: FsOperation,
+) -> FsError {
     FsError::with_source(
         FsErrorKind::InvalidPath,
         operation,
