@@ -16,6 +16,7 @@ use qubit_fs::FileSystemId;
 use qubit_fs::FsOperation;
 use qubit_fs::FsResult;
 use qubit_fs::Path as LogicalPath;
+use qubit_local_files as native_files;
 #[cfg(feature = "registry")]
 use qubit_spi::ProviderId;
 
@@ -76,9 +77,8 @@ impl LocalFileSystems {
                 std::process::id(),
                 ROOTED_COUNTER.fetch_add(1, Ordering::Relaxed)
             );
-            FileSystemId::new(&value).expect(
-                "process id and monotonic counter form a valid filesystem id",
-            )
+            FileSystemId::new(&value)
+                .expect("process id and monotonic counter form a valid filesystem id")
         };
         Self::rooted_with_id(id, root)
     }
@@ -101,10 +101,7 @@ impl LocalFileSystems {
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id`.
     #[inline(always)]
-    pub fn rooted_with_id(
-        id: FileSystemId,
-        root: &Path,
-    ) -> FsResult<FileSystem> {
+    pub fn rooted_with_id(id: FileSystemId, root: &Path) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root)?)
     }
 
@@ -131,5 +128,9 @@ impl LocalFileSystems {
 /// This conversion preserves platform-native path components, including
 /// non-UTF-8 Unix names, without routing through lossy display text.
 pub fn host_path_to_logical(path: &Path) -> FsResult<LogicalPath> {
-    crate::path::local_path_mapper::host_logical(path, FsOperation::ParsePath)
+    crate::path::local_path_mapper::logical(
+        native_files::LocalFileSystemScope::Host,
+        path,
+        FsOperation::ParsePath,
+    )
 }

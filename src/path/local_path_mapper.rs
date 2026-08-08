@@ -19,10 +19,11 @@ use qubit_fs::FsResult;
 use qubit_fs::Path;
 use qubit_local_files as native_files;
 
-/// Converts an absolute logical path to a process-host native path.
+/// Converts an absolute logical path to a native path in one authority scope.
 ///
 /// # Parameters
 ///
+/// - `scope`: Native authority in which to interpret the logical path.
 /// - `path`: Absolute logical path to convert.
 ///
 /// # Returns
@@ -34,46 +35,18 @@ use qubit_local_files as native_files;
 /// Returns `InvalidPath` when `path` is relative or a component cannot be
 /// represented by the native path layer.
 #[inline]
-pub(crate) fn host(path: &Path) -> FsResult<PathBuf> {
+pub(crate) fn native(scope: native_files::LocalFileSystemScope, path: &Path) -> FsResult<PathBuf> {
     require_absolute(path)?;
-    native_files::LocalPaths::from_canonical_absolute_components(
-        std::iter::once("").chain(path.components()),
-    )
-    .map_err(|error| map(error, path, FsOperation::ParsePath))
-}
-
-/// Converts an absolute logical path to a rooted-authority relative path.
-///
-/// # Parameters
-///
-/// - `path`: Absolute logical path within a rooted filesystem.
-///
-/// # Returns
-///
-/// An empty path for the logical root or a relative native descendant path.
-///
-/// # Errors
-///
-/// Returns `InvalidPath` when `path` is relative or a component cannot be
-/// represented by the native path layer.
-pub(crate) fn rooted(path: &Path) -> FsResult<PathBuf> {
-    require_absolute(path)?;
-    let mut components = path.components();
-    if components.next().is_none() {
-        Ok(PathBuf::new())
-    } else {
-        native_files::LocalPaths::from_canonical_relative_components(
-            path.components(),
-        )
+    native_files::LocalPaths::from_canonical_components(scope, path.components())
         .map_err(|error| map(error, path, FsOperation::ParsePath))
-    }
 }
 
-/// Converts an absolute process-host native path to a logical path.
+/// Converts a native path to a logical path in one authority scope.
 ///
 /// # Parameters
 ///
-/// - `path`: Absolute native host path to convert.
+/// - `scope`: Native authority that owns `path`.
+/// - `path`: Native path to convert.
 /// - `operation`: Facade operation requesting the conversion.
 ///
 /// # Returns
@@ -85,54 +58,14 @@ pub(crate) fn rooted(path: &Path) -> FsResult<PathBuf> {
 /// Returns `InvalidPath` when the native path is not absolute or cannot be
 /// represented in canonical logical form.
 ///
-/// # Panics
-///
-/// Panics if `qubit-local-files` violates its contract by returning an
-/// absolute component sequence without a root component.
-pub(crate) fn host_logical(
+pub(crate) fn logical(
+    scope: native_files::LocalFileSystemScope,
     path: &NativePath,
     operation: FsOperation,
 ) -> FsResult<Path> {
-    let components =
-        native_files::LocalPaths::to_canonical_absolute_components(path)
-            .map_err(|error| map_native(error, operation))?;
-    let (root, rest) = components
-        .split_first()
-        .expect("LocalPaths returns an absolute canonical path with its root");
-    debug_assert!(
-        root.is_empty(),
-        "LocalPaths absolute canonical paths begin with an empty root"
-    );
-    logical(rest)
-}
-
-/// Converts a rooted-authority relative native path to a logical path.
-///
-/// # Parameters
-///
-/// - `path`: Relative native descendant path, or an empty path for the root.
-/// - `operation`: Facade operation requesting the conversion.
-///
-/// # Returns
-///
-/// The canonical absolute logical path inside the rooted authority.
-///
-/// # Errors
-///
-/// Returns `InvalidPath` when the native path is not a canonical relative
-/// path or cannot be represented in logical form.
-#[inline]
-pub(crate) fn rooted_logical(
-    path: &NativePath,
-    operation: FsOperation,
-) -> FsResult<Path> {
-    if path.as_os_str().is_empty() {
-        return Ok(Path::root());
-    }
-    let components =
-        native_files::LocalPaths::to_canonical_relative_components(path)
-            .map_err(|error| map_native(error, operation))?;
-    logical(&components)
+    let components = native_files::LocalPaths::to_canonical_components(scope, path)
+        .map_err(|error| map_native(error, operation))?;
+    logical_components(&components)
 }
 
 /// Ensures a facade path is absolute before native conversion.
@@ -164,7 +97,7 @@ fn require_absolute(path: &Path) -> FsResult<()> {
 ///
 /// # Parameters
 ///
-/// - `components`: Canonical component text without the logical root marker.
+/// - `components`: Canonical component text beneath the logical root.
 ///
 /// # Returns
 ///
@@ -174,7 +107,7 @@ fn require_absolute(path: &Path) -> FsResult<()> {
 ///
 /// Returns `InvalidPath` when the joined canonical text cannot be parsed.
 #[inline]
-fn logical(components: &[String]) -> FsResult<Path> {
+fn logical_components(components: &[String]) -> FsResult<Path> {
     Path::parse(&format!("/{}", components.join("/")))
 }
 
@@ -190,11 +123,7 @@ fn logical(components: &[String]) -> FsResult<Path> {
 ///
 /// An `InvalidPath` facade error retaining `path` and the native source.
 #[inline(always)]
-fn map(
-    error: native_files::LocalFileError,
-    path: &Path,
-    operation: FsOperation,
-) -> FsError {
+fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation) -> FsError {
     map_native(error, operation).with_path(path.clone())
 }
 
@@ -209,10 +138,7 @@ fn map(
 ///
 /// An `InvalidPath` facade error retaining the native source.
 #[inline(always)]
-fn map_native(
-    error: native_files::LocalFileError,
-    operation: FsOperation,
-) -> FsError {
+fn map_native(error: native_files::LocalFileError, operation: FsOperation) -> FsError {
     FsError::with_source(
         FsErrorKind::InvalidPath,
         operation,

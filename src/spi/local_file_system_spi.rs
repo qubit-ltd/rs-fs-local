@@ -90,8 +90,7 @@ impl LocalFileSystemSpi {
         let native = native_files::LocalFileSystem::host();
         Self {
             properties: Self::properties_snapshot(
-                FileSystemId::new("local-host")
-                    .expect("static filesystem identity is valid"),
+                FileSystemId::new("local-host").expect("static filesystem identity is valid"),
                 LOCAL_PROVIDER_ID,
                 &native,
             )
@@ -122,15 +121,14 @@ impl LocalFileSystemSpi {
         provider_id: &str,
         root: &NativePath,
     ) -> FsResult<Self> {
-        let native =
-            native_files::LocalFileSystem::rooted(root).map_err(|error| {
-                FsError::with_source(
-                    FsErrorKind::ProviderUnavailable,
-                    FsOperation::Provider,
-                    "cannot open rooted local filesystem",
-                    error,
-                )
-            })?;
+        let native = native_files::LocalFileSystem::rooted(root).map_err(|error| {
+            FsError::with_source(
+                FsErrorKind::ProviderUnavailable,
+                FsOperation::Provider,
+                "cannot open rooted local filesystem",
+                error,
+            )
+        })?;
         let properties = Self::properties_snapshot(id, provider_id, &native)?;
         Ok(Self {
             native,
@@ -170,8 +168,7 @@ impl LocalFileSystemSpi {
             .with(FileSystemCapability::TempFile)
             .with(FileSystemCapability::TempDirectory);
         if native_capabilities.implements_atomic_rename() {
-            capabilities =
-                capabilities.with(FileSystemCapability::AtomicRename);
+            capabilities = capabilities.with(FileSystemCapability::AtomicRename);
         }
         if native_capabilities.implements_atomic_replace() {
             capabilities = capabilities
@@ -179,16 +176,13 @@ impl LocalFileSystemSpi {
                 .with(FileSystemCapability::AtomicFileCopy);
         }
         if native_capabilities.implements_atomic_temp_persist() {
-            capabilities =
-                capabilities.with(FileSystemCapability::AtomicTempPersist);
+            capabilities = capabilities.with(FileSystemCapability::AtomicTempPersist);
         }
         if native_capabilities.implements_durable_rename() {
-            capabilities =
-                capabilities.with(FileSystemCapability::DurableRename);
+            capabilities = capabilities.with(FileSystemCapability::DurableRename);
         }
         if native_capabilities.implements_durable_file_copy() {
-            capabilities =
-                capabilities.with(FileSystemCapability::DurableFileCopy);
+            capabilities = capabilities.with(FileSystemCapability::DurableFileCopy);
         }
         FileSystemProperties::new(
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
@@ -197,9 +191,7 @@ impl LocalFileSystemSpi {
             native_limits(native.limits()),
             PathConstraints::absolute(),
             match native.symlink_policy() {
-                native_files::LocalSymlinkPolicy::Reject => {
-                    SymlinkPolicy::Reject
-                }
+                native_files::LocalSymlinkPolicy::Reject => SymlinkPolicy::Reject,
                 native_files::LocalSymlinkPolicy::FollowWithinScope
                 | native_files::LocalSymlinkPolicy::FollowAcrossScope => {
                     SymlinkPolicy::FollowWithinFileSystem
@@ -210,39 +202,17 @@ impl LocalFileSystemSpi {
 
     /// Converts one logical path for the configured native scope.
     fn native_path(&self, path: &Path) -> FsResult<PathBuf> {
-        match self.native.scope() {
-            native_files::LocalFileSystemScope::Host => {
-                local_path_mapper::host(path)
-            }
-            native_files::LocalFileSystemScope::Rooted => {
-                local_path_mapper::rooted(path)
-            }
-        }
+        local_path_mapper::native(self.native.scope(), path)
     }
 
     /// Converts a logical source-target pair for the configured scope.
-    fn native_pair(
-        &self,
-        source: &Path,
-        target: &Path,
-    ) -> FsResult<(PathBuf, PathBuf)> {
+    fn native_pair(&self, source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
         Ok((self.native_path(source)?, self.native_path(target)?))
     }
 
     /// Converts a returned native path to its logical representation.
-    fn logical_path(
-        &self,
-        path: &NativePath,
-        operation: FsOperation,
-    ) -> FsResult<Path> {
-        match self.native.scope() {
-            native_files::LocalFileSystemScope::Host => {
-                local_path_mapper::host_logical(path, operation)
-            }
-            native_files::LocalFileSystemScope::Rooted => {
-                local_path_mapper::rooted_logical(path, operation)
-            }
-        }
+    fn logical_path(&self, path: &NativePath, operation: FsOperation) -> FsResult<Path> {
+        local_path_mapper::logical(self.native.scope(), path, operation)
     }
 
     /// Reports whether native paths are Rooted descendants.
@@ -292,23 +262,17 @@ impl LocalFileSystemSpi {
 
 /// Maps native authority path limits into portable logical path limits.
 #[inline(always)]
-fn native_limits(
-    limits: native_files::LocalFileSystemLimits,
-) -> FileSystemLimits {
+fn native_limits(limits: native_files::LocalFileSystemLimits) -> FileSystemLimits {
     FileSystemLimits::unknown()
         .with_max_path_text_bytes(native_limit(limits.max_path_bytes()))
-        .with_max_component_text_bytes(native_limit(
-            limits.max_file_name_bytes(),
-        ))
+        .with_max_component_text_bytes(native_limit(limits.max_file_name_bytes()))
 }
 
 /// Preserves finite, path-dependent, and unavailable native limit semantics.
 #[inline(always)]
 const fn native_limit(limit: native_files::SizeLimit) -> FileSystemLimit {
     match limit {
-        native_files::SizeLimit::Maximum(value) => {
-            FileSystemLimit::Maximum(value)
-        }
+        native_files::SizeLimit::Maximum(value) => FileSystemLimit::Maximum(value),
         native_files::SizeLimit::VariesByPath => FileSystemLimit::Unknown,
         native_files::SizeLimit::Unknown => FileSystemLimit::Unknown,
     }
@@ -377,13 +341,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// Returns path or option conversion errors and mapped native list
     /// failures.
-    fn list(
-        &self,
-        request: ListRequest<'_>,
-    ) -> FsResult<OpenedDirectoryStream> {
+    fn list(&self, request: ListRequest<'_>) -> FsResult<OpenedDirectoryStream> {
         let path = self.native_path(request.path())?;
-        let options =
-            local_options_mapper::list(request.options(), self.native.scope())?;
+        let options = local_options_mapper::list(request.options(), self.native.scope())?;
         let rooted = self.is_rooted();
         self.native
             .list(&path, &options)
@@ -421,23 +381,13 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns path-conversion errors or mapped native open failures.
-    fn open_reader(
-        &self,
-        request: OpenReaderRequest<'_>,
-    ) -> FsResult<OpenedReader> {
+    fn open_reader(&self, request: OpenReaderRequest<'_>) -> FsResult<OpenedReader> {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::read(request.options());
         self.native
             .open_reader(&path, &options)
-            .map(|value| {
-                OpenedReader::new(
-                    self.info(request.path().clone()),
-                    Box::new(value),
-                )
-            })
-            .map_err(|error| {
-                self.map(error, FsOperation::OpenReader, request.path())
-            })
+            .map(|value| OpenedReader::new(self.info(request.path().clone()), Box::new(value)))
+            .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))
     }
 
     /// Opens a host file for stateful publication.
@@ -454,10 +404,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// Returns path or option conversion errors and mapped native open
     /// failures.
-    fn open_writer(
-        &self,
-        request: OpenWriterRequest<'_>,
-    ) -> FsResult<OpenedWriter> {
+    fn open_writer(&self, request: OpenWriterRequest<'_>) -> FsResult<OpenedWriter> {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::write(request.options())?;
         self.native
@@ -465,15 +412,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map(|value| {
                 OpenedWriter::new(
                     self.info(request.path().clone()),
-                    Box::new(LocalFileWriterSpi::new(
-                        value,
-                        self.provider_id.clone(),
-                    )),
+                    Box::new(LocalFileWriterSpi::new(value, self.provider_id.clone())),
                 )
             })
-            .map_err(|error| {
-                self.map(error, FsOperation::OpenWriter, request.path())
-            })
+            .map_err(|error| self.map(error, FsOperation::OpenWriter, request.path()))
     }
 
     /// Creates a host directory using resolved facade policy.
@@ -495,14 +437,11 @@ impl FileSystemSpi for LocalFileSystemSpi {
         request: CreateDirectoryRequest<'_>,
     ) -> FsResult<CreateDirectoryOutcome> {
         let path = self.native_path(request.path())?;
-        let options =
-            local_options_mapper::create_directory(request.options())?;
+        let options = local_options_mapper::create_directory(request.options())?;
         self.native
             .create_directory(&path, &options)
             .map(|value| CreateDirectoryOutcome::new(!value.created()))
-            .map_err(|error| {
-                self.map(error, FsOperation::CreateDir, request.path())
-            })
+            .map_err(|error| self.map(error, FsOperation::CreateDir, request.path()))
     }
 
     /// Deletes one host file.
@@ -518,18 +457,13 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns path-conversion errors or mapped native deletion failures.
-    fn delete_file(
-        &self,
-        request: DeleteFileRequest<'_>,
-    ) -> FsResult<DeleteOutcome> {
+    fn delete_file(&self, request: DeleteFileRequest<'_>) -> FsResult<DeleteOutcome> {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::delete(request.options());
         self.native
             .delete_file(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
-            .map_err(|error| {
-                self.map(error, FsOperation::Delete, request.path())
-            })
+            .map_err(|error| self.map(error, FsOperation::Delete, request.path()))
     }
 
     /// Deletes one host directory.
@@ -545,18 +479,13 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns path-conversion errors or mapped native deletion failures.
-    fn delete_directory(
-        &self,
-        request: DeleteDirectoryRequest<'_>,
-    ) -> FsResult<DeleteOutcome> {
+    fn delete_directory(&self, request: DeleteDirectoryRequest<'_>) -> FsResult<DeleteOutcome> {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::delete(request.options());
         self.native
             .delete_directory(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
-            .map_err(|error| {
-                self.map(error, FsOperation::Delete, request.path())
-            })
+            .map_err(|error| self.map(error, FsOperation::Delete, request.path()))
     }
 
     /// Attempts a native host copy when all requirements are expressible.
@@ -574,14 +503,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// Returns a structured copy failure for path conversion or native copy
     /// errors, preserving publication state and partial statistics.
-    fn try_copy(
-        &self,
-        request: CopyRequest<'_>,
-    ) -> Result<CopyAttempt, SpiCopyFailure> {
-        let options = match local_options_mapper::copy(
-            request.options(),
-            self.native.scope(),
-        ) {
+    fn try_copy(&self, request: CopyRequest<'_>) -> Result<CopyAttempt, SpiCopyFailure> {
+        let options = match local_options_mapper::copy(request.options(), self.native.scope()) {
             Ok(options) => options,
             Err(error) => {
                 return Err(SpiCopyFailure::new(
@@ -600,9 +523,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(error_mapper::copy_path_error)?;
         self.native
             .copy(&source, &target, &options)
-            .map(|value| {
-                CopyAttempt::Completed(local_outcome_mapper::copy(value))
-            })
+            .map(|value| CopyAttempt::Completed(local_outcome_mapper::copy(value)))
             .map_err(|error| {
                 let state = error.state();
                 let stats = *error.partial_stats();
@@ -640,23 +561,14 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// Returns a structured failure for path conversion or native rename
     /// errors, preserving the known namespace state.
-    fn rename(
-        &self,
-        request: RenameRequest<'_>,
-    ) -> Result<RenameOutcome, SpiRenameFailure> {
+    fn rename(&self, request: RenameRequest<'_>) -> Result<RenameOutcome, SpiRenameFailure> {
         let (source, target) = self
             .native_pair(request.source(), request.target())
             .map_err(error_mapper::rename_path_error)?;
         let options = local_options_mapper::rename(request.options());
         self.native
             .rename(&source, &target, &options)
-            .map(|value| {
-                local_outcome_mapper::rename(
-                    value,
-                    request.source(),
-                    request.target(),
-                )
-            })
+            .map(|value| local_outcome_mapper::rename(value, request.source(), request.target()))
             .map_err(|error| {
                 let (error, state) = error.into_parts();
                 SpiRenameFailure::new(
@@ -685,10 +597,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns path-conversion errors or mapped native creation failures.
-    fn create_temp_file(
-        &self,
-        request: CreateTempFileRequest,
-    ) -> FsResult<OpenedTempFile> {
+    fn create_temp_file(&self, request: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
         let parent = request
             .options()
             .parent()
@@ -703,15 +612,14 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
-        let value =
-            self.native.create_temp_file(&options).map_err(|error| {
-                error_mapper::map_without_path(
-                    error,
-                    FsOperation::CreateTemp,
-                    "native temporary file creation failed",
-                    &self.provider_id,
-                )
-            })?;
+        let value = self.native.create_temp_file(&options).map_err(|error| {
+            error_mapper::map_without_path(
+                error,
+                FsOperation::CreateTemp,
+                "native temporary file creation failed",
+                &self.provider_id,
+            )
+        })?;
         let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
         Ok(OpenedTempFile::new(
             self.info(path)
@@ -755,17 +663,17 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
-        let value =
-            self.native
-                .create_temp_directory(&options)
-                .map_err(|error| {
-                    error_mapper::map_without_path(
-                        error,
-                        FsOperation::CreateTemp,
-                        "native temporary directory creation failed",
-                        &self.provider_id,
-                    )
-                })?;
+        let value = self
+            .native
+            .create_temp_directory(&options)
+            .map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::CreateTemp,
+                    "native temporary directory creation failed",
+                    &self.provider_id,
+                )
+            })?;
         let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
         Ok(OpenedTempDirectory::new(
             self.info(path)
