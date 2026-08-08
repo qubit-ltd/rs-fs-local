@@ -7,19 +7,24 @@
 // =============================================================================
 //! Regression coverage for temporary-resource SPI recovery.
 
+use std::ffi::OsStr;
+
+use qubit_fs::CopyOptions;
 use qubit_fs::CreateDirectoryOptions;
 use qubit_fs::DeleteOptions;
 use qubit_fs::FileSystemId;
 use qubit_fs::FsErrorKind;
 use qubit_fs::Path;
-use qubit_fs::PersistFailureState;
 use qubit_fs::PersistCleanupState;
+use qubit_fs::PersistFailureState;
 use qubit_fs::PersistOptions;
 use qubit_fs::TempDirectoryOptions;
 use qubit_fs::TempFileOptions;
 use qubit_fs::TempResourceState;
 use qubit_fs::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::host_path_to_logical;
+use qubit_local_files::install_test_fault;
 
 fn run_in_test_fault_process<F>(test_name: &str, fault: &str, action: F)
 where
@@ -28,9 +33,9 @@ where
     const TEST_FAULT_ENV: &str = "QUBIT_LOCAL_FILES_TEST_FAULT";
     const TEST_FAULT_CHILD_ENV: &str = "QUBIT_LOCAL_FILES_TEST_FAULT_CHILD";
     if std::env::var_os(TEST_FAULT_ENV)
-        .is_some_and(|selected| selected == std::ffi::OsStr::new(fault))
+        .is_some_and(|selected| selected == OsStr::new(fault))
     {
-        let _fault = qubit_local_files::install_test_fault(fault)
+        let _fault = install_test_fault(fault)
             .expect("test fault controller should install");
         action();
         return;
@@ -49,6 +54,51 @@ where
         .status()
         .expect("test fault child should launch");
     assert!(status.success(), "test fault child should pass");
+}
+
+/// A recursive native copy failure exposes both the logical request root and
+/// the logical child entry that failed.
+#[test]
+fn test_copy_failure_maps_recursive_failed_child_paths() {
+    const TEST_NAME: &str =
+        "test_copy_failure_maps_recursive_failed_child_paths";
+    run_in_test_fault_process(TEST_NAME, "copy-staging-copy-second", || {
+        let directory = tempfile::tempdir()
+            .expect("copy fixture directory must be created");
+        let source = directory.path().join("source");
+        let target = directory.path().join("target");
+        std::fs::create_dir(&source).expect("copy source must be created");
+        std::fs::write(source.join("first"), b"first")
+            .expect("first source child must be written");
+        std::fs::write(source.join("second"), b"second")
+            .expect("second source child must be written");
+        let source_logical = host_path_to_logical(&source)
+            .expect("source path must convert to logical path");
+        let target_logical = host_path_to_logical(&target)
+            .expect("target path must convert to logical path");
+        let failed_source_logical =
+            host_path_to_logical(&source.join("second"))
+                .expect("failed source path must convert to logical path");
+        let failed_target_logical =
+            host_path_to_logical(&target.join("second"))
+                .expect("failed target path must convert to logical path");
+
+        let failure = LocalFileSystems::host()
+            .expect("host filesystem must be created")
+            .copy(&source_logical, &target_logical, CopyOptions::tree())
+            .expect_err("second child fault must fail the copy");
+
+        assert_eq!(Some(&source_logical), failure.error().path());
+        assert_eq!(Some(&target_logical), failure.error().target());
+        assert_eq!(
+            Some(&failed_source_logical),
+            failure.error().failure_path()
+        );
+        assert_eq!(
+            Some(&failed_target_logical),
+            failure.error().failure_target(),
+        );
+    });
 }
 
 /// A confirmed destination conflict retains the native temporary file for
@@ -222,9 +272,7 @@ fn test_temp_file_persist_reports_residual_cleanup_state() {
                 PersistCleanupState::ResidualTemporaryContainer,
                 outcome.cleanup_state()
             );
-            assert!(file_system
-                .stat(&target)
-                .is_ok());
+            assert!(file_system.stat(&target).is_ok());
         },
     );
 }

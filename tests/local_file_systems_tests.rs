@@ -7,6 +7,7 @@
 // =============================================================================
 
 use qubit_fs::FileSystemCapability;
+use qubit_fs::FileSystemCapabilitySupport;
 use qubit_fs::FileSystemId;
 use qubit_fs::Path;
 use qubit_fs::PathSemantics;
@@ -48,18 +49,19 @@ fn test_host_stat_error_uses_canonical_provider_id() {
     assert_eq!(error.provider(), Some("local-file"));
 }
 
-/// Local capabilities expose the native atomic rename guarantee when available.
+/// Local capabilities expose atomic rename as a conditional provider protocol.
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
 #[test]
 fn test_host_factory_advertises_atomic_rename() {
     let file_system =
         LocalFileSystems::host().expect("host filesystem should construct");
 
-    assert!(
+    assert_eq!(
         file_system
             .properties()
             .capabilities()
-            .contains(FileSystemCapability::AtomicRename)
+            .support(FileSystemCapability::AtomicRename),
+        FileSystemCapabilitySupport::Conditional,
     );
 }
 
@@ -106,13 +108,35 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
 
     for file_system in [&rooted, &host] {
         let capabilities = file_system.properties().capabilities();
-        assert!(capabilities.contains(FileSystemCapability::EmptyDirectory));
-        assert!(!capabilities.contains(FileSystemCapability::Symlink));
+        assert_eq!(
+            FileSystemCapabilitySupport::Guaranteed,
+            capabilities.support(FileSystemCapability::EmptyDirectory),
+        );
+        assert_eq!(
+            FileSystemCapabilitySupport::Unsupported,
+            capabilities.support(FileSystemCapability::Symlink),
+        );
         for capability in FileSystemCapability::ALL.iter().copied() {
             let expected = match capability {
                 FileSystemCapability::DurableRename
-                | FileSystemCapability::DurableFileCopy => cfg!(unix),
-                _ => matches!(
+                | FileSystemCapability::DurableFileCopy => {
+                    if cfg!(unix) {
+                        FileSystemCapabilitySupport::Conditional
+                    } else {
+                        FileSystemCapabilitySupport::Unsupported
+                    }
+                }
+                FileSystemCapability::AtomicRename
+                | FileSystemCapability::AtomicReplace
+                | FileSystemCapability::AtomicFileCopy
+                | FileSystemCapability::AtomicTempPersist => {
+                    if cfg!(any(unix, windows)) {
+                        FileSystemCapabilitySupport::Conditional
+                    } else {
+                        FileSystemCapabilitySupport::Unsupported
+                    }
+                }
+                _ if matches!(
                     capability,
                     FileSystemCapability::List
                         | FileSystemCapability::Read
@@ -126,33 +150,36 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
                         | FileSystemCapability::Copy
                         | FileSystemCapability::TempFile
                         | FileSystemCapability::TempDirectory
-                        | FileSystemCapability::AtomicRename
-                        | FileSystemCapability::AtomicReplace
-                        | FileSystemCapability::AtomicFileCopy
-                        | FileSystemCapability::AtomicTempPersist
-                ),
+                ) =>
+                {
+                    FileSystemCapabilitySupport::Guaranteed
+                }
+                _ => FileSystemCapabilitySupport::Unsupported,
             };
-            if !expected {
-                assert!(!capabilities.contains(capability));
-            }
+            assert_eq!(expected, capabilities.support(capability));
         }
     }
 }
 
-/// Verifies provider properties expose the two durable publication protocols.
+/// Verifies provider properties expose durable publication as conditional.
 #[test]
 fn test_local_provider_advertises_supported_durability() {
     let file_system =
         LocalFileSystems::host().expect("host filesystem should construct");
     let capabilities = file_system.properties().capabilities();
 
+    let expected = if cfg!(unix) {
+        FileSystemCapabilitySupport::Conditional
+    } else {
+        FileSystemCapabilitySupport::Unsupported
+    };
     assert_eq!(
-        cfg!(unix),
-        capabilities.contains(FileSystemCapability::DurableRename),
+        expected,
+        capabilities.support(FileSystemCapability::DurableRename),
     );
     assert_eq!(
-        cfg!(unix),
-        capabilities.contains(FileSystemCapability::DurableFileCopy),
+        expected,
+        capabilities.support(FileSystemCapability::DurableFileCopy),
     );
 }
 
