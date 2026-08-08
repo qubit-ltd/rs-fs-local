@@ -13,12 +13,43 @@ use qubit_fs::FileSystemId;
 use qubit_fs::FsErrorKind;
 use qubit_fs::Path;
 use qubit_fs::PersistFailureState;
+use qubit_fs::PersistCleanupState;
 use qubit_fs::PersistOptions;
 use qubit_fs::TempDirectoryOptions;
 use qubit_fs::TempFileOptions;
 use qubit_fs::TempResourceState;
 use qubit_fs::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
+
+fn run_in_test_fault_process<F>(test_name: &str, fault: &str, action: F)
+where
+    F: FnOnce(),
+{
+    const TEST_FAULT_ENV: &str = "QUBIT_LOCAL_FILES_TEST_FAULT";
+    const TEST_FAULT_CHILD_ENV: &str = "QUBIT_LOCAL_FILES_TEST_FAULT_CHILD";
+    if std::env::var_os(TEST_FAULT_ENV)
+        .is_some_and(|selected| selected == std::ffi::OsStr::new(fault))
+    {
+        let _fault = qubit_local_files::install_test_fault(fault)
+            .expect("test fault controller should install");
+        action();
+        return;
+    }
+    if std::env::var_os(TEST_FAULT_CHILD_ENV).is_some() {
+        return;
+    }
+    let executable =
+        std::env::current_exe().expect("test executable should be available");
+    let status = std::process::Command::new(executable)
+        .arg("--exact")
+        .arg(test_name)
+        .arg("--nocapture")
+        .env(TEST_FAULT_ENV, fault)
+        .env(TEST_FAULT_CHILD_ENV, "1")
+        .status()
+        .expect("test fault child should launch");
+    assert!(status.success(), "test fault child should pass");
+}
 
 /// A confirmed destination conflict retains the native temporary file for
 /// retry.
@@ -162,6 +193,39 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
             .expect_err("published temporary file must reject cleanup")
             .kind(),
         FsErrorKind::InvalidState
+    );
+}
+
+/// Verifies the local provider preserves residual native sandbox cleanup state.
+#[test]
+fn test_temp_file_persist_reports_residual_cleanup_state() {
+    run_in_test_fault_process(
+        "test_temp_file_persist_reports_residual_cleanup_state",
+        "temp-file-sandbox-remove",
+        || {
+            let root = tempfile::tempdir().expect("test root must be created");
+            let id = FileSystemId::new("persist-cleanup-state-root")
+                .expect("test identity must be valid");
+            let file_system = LocalFileSystems::rooted_with_id(id, root.path())
+                .expect("rooted filesystem must be created");
+            let target = Path::parse("/published.txt")
+                .expect("target path must be valid");
+            let mut temporary = file_system
+                .create_temp_file(TempFileOptions::default())
+                .expect("temporary file must be created");
+
+            let outcome = temporary
+                .persist(&target, PersistOptions::default())
+                .expect("publication should succeed");
+
+            assert_eq!(
+                PersistCleanupState::ResidualTemporaryContainer,
+                outcome.cleanup_state()
+            );
+            assert!(file_system
+                .stat(&target)
+                .is_ok());
+        },
     );
 }
 
