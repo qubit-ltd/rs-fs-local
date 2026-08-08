@@ -9,27 +9,25 @@
 // contract tests.
 //! Conversion of resolved core options to native local-files options.
 
-use qubit_fs::spi::{
-    ResolvedCreateDirectoryOptions,
-    ResolvedDeleteOptions,
-    ResolvedListOptions,
-    ResolvedReadOptions,
-    ResolvedRenameOptions,
-    ResolvedWriteOptions,
-};
-use qubit_fs::{
-    AtomicityRequirement,
-    CopyConflictPolicy,
-    CopyMode,
-    DurabilityRequirement,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    MetadataPreservePolicy,
-    SymlinkPolicy,
-    WriteDisposition,
-    WritePrecondition,
-};
+use qubit_fs::AtomicityRequirement;
+use qubit_fs::CopyConflictPolicy;
+use qubit_fs::CopyMode;
+use qubit_fs::DurabilityRequirement;
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs::MetadataPreservePolicy;
+use qubit_fs::ServerSidePreference;
+use qubit_fs::SymlinkPolicy;
+use qubit_fs::WriteDisposition;
+use qubit_fs::WritePrecondition;
+use qubit_fs::spi::ResolvedCopyOptions;
+use qubit_fs::spi::ResolvedCreateDirectoryOptions;
+use qubit_fs::spi::ResolvedDeleteOptions;
+use qubit_fs::spi::ResolvedListOptions;
+use qubit_fs::spi::ResolvedReadOptions;
+use qubit_fs::spi::ResolvedRenameOptions;
+use qubit_fs::spi::ResolvedWriteOptions;
 use qubit_local_files as native_files;
 
 /// Creates native read options for resolved facade options.
@@ -225,13 +223,13 @@ pub(crate) fn rename(
 /// Returns `RequirementNotMet` for continue-on-error, required server-side
 /// execution, or metadata preservation beyond portable permissions.
 pub(crate) fn copy(
-    options: &qubit_fs::spi::ResolvedCopyOptions,
+    options: &ResolvedCopyOptions,
     scope: native_files::LocalFileSystemScope,
 ) -> Result<native_files::LocalCopyOptions, FsError> {
     let symlink_policy = options.symlink_policy();
     let options = options.options();
     if options.continue_on_error()
-        || options.server_side() == qubit_fs::ServerSidePreference::Require
+        || options.server_side() == ServerSidePreference::Require
     {
         return Err(unsupported(FsOperation::Copy));
     }

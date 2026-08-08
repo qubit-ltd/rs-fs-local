@@ -11,17 +11,14 @@
 
 use std::path::Path as NativePath;
 
-use qubit_fs::spi::{
-    DirectoryStreamSpi,
-    ResolvedListOptions,
-};
-use qubit_fs::{
-    DirEntry,
-    FsError,
-    FsOperation,
-    FsResult,
-    Path,
-};
+use qubit_fs::DirEntry;
+use qubit_fs::FileKind;
+use qubit_fs::FsError;
+use qubit_fs::FsOperation;
+use qubit_fs::FsResult;
+use qubit_fs::Path;
+use qubit_fs::spi::DirectoryStreamSpi;
+use qubit_fs::spi::ResolvedListOptions;
 use qubit_local_files as native_files;
 
 use super::error_mapper;
@@ -225,26 +222,26 @@ fn output_path(
 ///
 /// The equivalent facade kind; platform-specific kinds use a `local-*`
 /// `Other` name.
-fn output_kind(kind: native_files::LocalFileKind) -> qubit_fs::FileKind {
+fn output_kind(kind: native_files::LocalFileKind) -> FileKind {
     match kind {
-        native_files::LocalFileKind::File => qubit_fs::FileKind::File,
-        native_files::LocalFileKind::Directory => qubit_fs::FileKind::Directory,
-        native_files::LocalFileKind::Symlink => qubit_fs::FileKind::Symlink,
+        native_files::LocalFileKind::File => FileKind::File,
+        native_files::LocalFileKind::Directory => FileKind::Directory,
+        native_files::LocalFileKind::Symlink => FileKind::Symlink,
         native_files::LocalFileKind::Fifo => {
-            qubit_fs::FileKind::Other("local-fifo".to_owned())
+            FileKind::Other("local-fifo".to_owned())
         }
         native_files::LocalFileKind::Socket => {
-            qubit_fs::FileKind::Other("local-socket".to_owned())
+            FileKind::Other("local-socket".to_owned())
         }
         native_files::LocalFileKind::BlockDevice => {
-            qubit_fs::FileKind::Other("local-block-device".to_owned())
+            FileKind::Other("local-block-device".to_owned())
         }
         native_files::LocalFileKind::CharDevice => {
-            qubit_fs::FileKind::Other("local-char-device".to_owned())
+            FileKind::Other("local-char-device".to_owned())
         }
         native_files::LocalFileKind::Other => {
-            qubit_fs::FileKind::Other("local".to_owned())
+            FileKind::Other("local".to_owned())
         }
-        _ => qubit_fs::FileKind::Other("local".to_owned()),
+        _ => FileKind::Other("local".to_owned()),
     }
 }

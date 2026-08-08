@@ -6,26 +6,18 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use std::{
-    fs,
-    hint::black_box,
-};
+use std::fs;
+use std::hint::black_box;
 
-use criterion::{
-    BatchSize,
-    Criterion,
-    Throughput,
-    criterion_group,
-    criterion_main,
-};
-use qubit_fs::{
-    CopyOptions,
-    ReadOptions,
-};
-use qubit_fs_local::{
-    LocalFileSystems,
-    host_path_to_logical,
-};
+use criterion::BatchSize;
+use criterion::Criterion;
+use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
+use qubit_fs::CopyOptions;
+use qubit_fs::ReadOptions;
+use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::host_path_to_logical;
 use tempfile::tempdir;
 
 fn bench_local_facade_read_prefix(c: &mut Criterion) {

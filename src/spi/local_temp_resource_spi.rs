@@ -9,23 +9,22 @@
 // contract tests.
 //! Temporary-resource lifecycle adapter retaining native authority.
 
+use std::path::Path;
 use std::path::PathBuf;
 
-use qubit_fs::spi::{
-    PersistRequest,
-    SpiPersistFailure,
-    TempResourceSpi,
-};
-use qubit_fs::{
-    AchievedAtomicity,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsResult,
-    PersistFailureState,
-    PersistOutcome,
-    PublicationMethod,
-};
+use qubit_fs::AchievedAtomicity;
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs::FsResult;
+use qubit_fs::Path as LogicalPath;
+use qubit_fs::PersistFailureState;
+use qubit_fs::PersistOptions;
+use qubit_fs::PersistOutcome;
+use qubit_fs::PublicationMethod;
+use qubit_fs::spi::PersistRequest;
+use qubit_fs::spi::SpiPersistFailure;
+use qubit_fs::spi::TempResourceSpi;
 use qubit_local_files as native_files;
 
 use crate::path::local_path_mapper;
@@ -118,7 +117,7 @@ impl LocalTempResourceSpi {
     /// the resource's native authority.
     fn target(
         &self,
-        target: &qubit_fs::Path,
+        target: &LogicalPath,
     ) -> Result<(PathBuf, bool), SpiPersistFailure> {
         let rooted = match self {
             Self::File { rooted, .. } | Self::Directory { rooted, .. } => {
@@ -282,7 +281,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
 /// Native persistence options with the requested replacement policy.
 #[inline(always)]
 fn persist_options(
-    options: &qubit_fs::PersistOptions,
+    options: &PersistOptions,
 ) -> native_files::LocalPersistOptions {
     let mut native = native_files::LocalPersistOptions::new();
     if options.overwrite() {
@@ -357,8 +356,8 @@ fn map_persist_outcome(
 /// with their recovery state and restore the returned resource into `slot`.
 fn persist_file(
     slot: &mut Option<native_files::LocalTempFile>,
-    target: &std::path::Path,
-    logical_target: &qubit_fs::Path,
+    target: &Path,
+    logical_target: &LogicalPath,
     options: native_files::LocalPersistOptions,
     provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
@@ -403,8 +402,8 @@ fn persist_file(
 /// with their recovery state and restore the returned resource into `slot`.
 fn persist_directory(
     slot: &mut Option<native_files::LocalTempDirectory>,
-    target: &std::path::Path,
-    logical_target: &qubit_fs::Path,
+    target: &Path,
+    logical_target: &LogicalPath,
     options: native_files::LocalPersistOptions,
     provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {

@@ -9,56 +9,53 @@
 // contract tests.
 //! Host namespace synchronous SPI delegated to `qubit-local-files`.
 
-use std::path::{
-    Path as NativePath,
-    PathBuf,
-};
+use std::path::Path as NativePath;
+use std::path::PathBuf;
 
-use qubit_fs::spi::{
-    CopyAttempt,
-    CopyRequest,
-    CreateDirectoryRequest,
-    CreateTempDirectoryRequest,
-    CreateTempFileRequest,
-    DeleteDirectoryRequest,
-    DeleteFileRequest,
-    FileSystemSpi,
-    ListRequest,
-    OpenReaderRequest,
-    OpenWriterRequest,
-    OpenedDirectoryStream,
-    OpenedReader,
-    OpenedTempDirectory,
-    OpenedTempFile,
-    OpenedWriter,
-    RenameRequest,
-    SpiCopyFailure,
-    SpiRenameFailure,
-    StatRequest,
-    StatResponse,
-};
-use qubit_fs::{
-    CopyFailureState,
-    CopyStats,
-    CreateDirectoryOutcome,
-    DeleteOutcome,
-    FileKind,
-    FileMetadata,
-    FileSystemCapabilities,
-    FileSystemCapability,
-    FileSystemId,
-    FileSystemInfo,
-    FileSystemLimit,
-    FileSystemLimits,
-    FileSystemProperties,
-    FsError,
-    FsOperation,
-    FsResult,
-    OpenedFileInfo,
-    PathConstraints,
-    PathSemantics,
-    SymlinkPolicy,
-};
+use qubit_fs::CopyFailureState;
+use qubit_fs::CopyStats;
+use qubit_fs::CreateDirectoryOutcome;
+use qubit_fs::DeleteOutcome;
+use qubit_fs::FileKind;
+use qubit_fs::FileMetadata;
+use qubit_fs::FileSystemCapabilities;
+use qubit_fs::FileSystemCapability;
+use qubit_fs::FileSystemId;
+use qubit_fs::FileSystemInfo;
+use qubit_fs::FileSystemLimit;
+use qubit_fs::FileSystemLimits;
+use qubit_fs::FileSystemProperties;
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs::FsResult;
+use qubit_fs::OpenedFileInfo;
+use qubit_fs::Path;
+use qubit_fs::PathConstraints;
+use qubit_fs::PathSemantics;
+use qubit_fs::RenameOutcome;
+use qubit_fs::SymlinkPolicy;
+use qubit_fs::spi::CopyAttempt;
+use qubit_fs::spi::CopyRequest;
+use qubit_fs::spi::CreateDirectoryRequest;
+use qubit_fs::spi::CreateTempDirectoryRequest;
+use qubit_fs::spi::CreateTempFileRequest;
+use qubit_fs::spi::DeleteDirectoryRequest;
+use qubit_fs::spi::DeleteFileRequest;
+use qubit_fs::spi::FileSystemSpi;
+use qubit_fs::spi::ListRequest;
+use qubit_fs::spi::OpenReaderRequest;
+use qubit_fs::spi::OpenWriterRequest;
+use qubit_fs::spi::OpenedDirectoryStream;
+use qubit_fs::spi::OpenedReader;
+use qubit_fs::spi::OpenedTempDirectory;
+use qubit_fs::spi::OpenedTempFile;
+use qubit_fs::spi::OpenedWriter;
+use qubit_fs::spi::RenameRequest;
+use qubit_fs::spi::SpiCopyFailure;
+use qubit_fs::spi::SpiRenameFailure;
+use qubit_fs::spi::StatRequest;
+use qubit_fs::spi::StatResponse;
 use qubit_local_files as native_files;
 
 use super::error_mapper;
@@ -67,10 +64,8 @@ use super::local_file_writer_spi::LocalFileWriterSpi;
 use super::local_options_mapper;
 use super::local_outcome_mapper;
 use super::local_temp_resource_spi::LocalTempResourceSpi;
-use crate::constants::{
-    FILE_SCHEME,
-    LOCAL_PROVIDER_ID,
-};
+use crate::constants::FILE_SCHEME;
+use crate::constants::LOCAL_PROVIDER_ID;
 use crate::path::local_path_mapper;
 
 /// Host-wide implementation of the synchronous local filesystem SPI.
@@ -130,7 +125,7 @@ impl LocalFileSystemSpi {
         let native =
             native_files::LocalFileSystem::rooted(root).map_err(|error| {
                 FsError::with_source(
-                    qubit_fs::FsErrorKind::ProviderUnavailable,
+                    FsErrorKind::ProviderUnavailable,
                     FsOperation::Provider,
                     "cannot open rooted local filesystem",
                     error,
@@ -214,7 +209,7 @@ impl LocalFileSystemSpi {
     }
 
     /// Converts one logical path for the configured native scope.
-    fn native_path(&self, path: &qubit_fs::Path) -> FsResult<PathBuf> {
+    fn native_path(&self, path: &Path) -> FsResult<PathBuf> {
         match self.native.scope() {
             native_files::LocalFileSystemScope::Host => {
                 local_path_mapper::host(path)
@@ -228,8 +223,8 @@ impl LocalFileSystemSpi {
     /// Converts a logical source-target pair for the configured scope.
     fn native_pair(
         &self,
-        source: &qubit_fs::Path,
-        target: &qubit_fs::Path,
+        source: &Path,
+        target: &Path,
     ) -> FsResult<(PathBuf, PathBuf)> {
         Ok((self.native_path(source)?, self.native_path(target)?))
     }
@@ -239,7 +234,7 @@ impl LocalFileSystemSpi {
         &self,
         path: &NativePath,
         operation: FsOperation,
-    ) -> FsResult<qubit_fs::Path> {
+    ) -> FsResult<Path> {
         match self.native.scope() {
             native_files::LocalFileSystemScope::Host => {
                 local_path_mapper::host_logical(path, operation)
@@ -269,7 +264,7 @@ impl LocalFileSystemSpi {
     ///
     /// Opened-file information containing the host filesystem identity.
     #[inline(always)]
-    fn info(&self, path: qubit_fs::Path) -> OpenedFileInfo {
+    fn info(&self, path: Path) -> OpenedFileInfo {
         OpenedFileInfo::new(self.properties.info().id().clone(), path)
     }
 
@@ -289,7 +284,7 @@ impl LocalFileSystemSpi {
         &self,
         error: native_files::LocalFileError,
         operation: FsOperation,
-        path: &qubit_fs::Path,
+        path: &Path,
     ) -> FsError {
         error_mapper::map(error, operation, path, None, &self.provider_id)
     }
@@ -619,7 +614,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         &self.provider_id,
                     ),
                     local_outcome_mapper::copy_failure_state(state),
-                    qubit_fs::CopyStats {
+                    CopyStats {
                         files: stats.files(),
                         directories: stats.directories(),
                         bytes: stats.bytes(),
@@ -648,7 +643,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     fn rename(
         &self,
         request: RenameRequest<'_>,
-    ) -> Result<qubit_fs::RenameOutcome, SpiRenameFailure> {
+    ) -> Result<RenameOutcome, SpiRenameFailure> {
         let (source, target) = self
             .native_pair(request.source(), request.target())
             .map_err(error_mapper::rename_path_error)?;

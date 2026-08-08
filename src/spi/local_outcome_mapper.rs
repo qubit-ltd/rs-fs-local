@@ -9,19 +9,18 @@
 // contract tests.
 //! Native outcome conversion helpers.
 
-use qubit_fs::{
-    AchievedAtomicity,
-    CopyFailureState,
-    CopyMethod,
-    CopyOutcome,
-    CopyStats,
-    FileKind,
-    FileMetadata,
-    MetadataPreservePolicy,
-    PublicationMethod,
-    RenameFailureState,
-    RenameOutcome,
-};
+use qubit_fs::AchievedAtomicity;
+use qubit_fs::CopyFailureState;
+use qubit_fs::CopyMethod;
+use qubit_fs::CopyOutcome;
+use qubit_fs::CopyStats;
+use qubit_fs::FileKind;
+use qubit_fs::FileMetadata;
+use qubit_fs::MetadataPreservePolicy;
+use qubit_fs::Path;
+use qubit_fs::PublicationMethod;
+use qubit_fs::RenameFailureState;
+use qubit_fs::RenameOutcome;
 use qubit_local_files as native_files;
 
 /// Converts a native metadata snapshot to portable facade metadata.
@@ -122,8 +121,8 @@ pub(crate) fn copy(value: native_files::LocalCopyOutcome) -> CopyOutcome {
 #[inline]
 pub(crate) fn rename(
     value: native_files::LocalRenameOutcome,
-    source: &qubit_fs::Path,
-    target: &qubit_fs::Path,
+    source: &Path,
+    target: &Path,
 ) -> RenameOutcome {
     RenameOutcome::new(
         source.clone(),

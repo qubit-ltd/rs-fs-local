@@ -7,10 +7,8 @@
 // =============================================================================
 //! Resolved listing behavior retained by a directory stream.
 
-use qubit_fs::{
-    Path,
-    spi::ResolvedListOptions,
-};
+use qubit_fs::Path;
+use qubit_fs::spi::ResolvedListOptions;
 
 /// Facade listing semantics applied to entries yielded by native I/O.
 #[must_use]
