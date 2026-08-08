@@ -19,6 +19,7 @@ use qubit_fs::FsOperation;
 use qubit_fs::FsResult;
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::PersistFailureState;
+use qubit_fs::PersistCleanupState;
 use qubit_fs::PersistOptions;
 use qubit_fs::PersistOutcome;
 use qubit_fs::PublicationMethod;
@@ -322,7 +323,16 @@ fn map_persist_outcome(
             native_files::LocalPersistMethod::AtomicRename => PublicationMethod::AtomicRename,
             _ => PublicationMethod::Direct,
         },
-    ))
+    )
+    .with_cleanup_state(match result.cleanup_state() {
+        native_files::LocalPersistCleanupState::Complete => {
+            PersistCleanupState::Complete
+        }
+        native_files::LocalPersistCleanupState::ResidualSandbox => {
+            PersistCleanupState::ResidualTemporaryContainer
+        }
+        _ => PersistCleanupState::ResidualTemporaryContainer,
+    }))
 }
 
 /// Persists a retained native temporary file and restores it after failure.
@@ -350,7 +360,7 @@ fn persist_file(
     provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
-    match resource.persist_with_outcome(target, options) {
+    match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
             let (error, resource, _, _, _, state) = error.into_parts_with_state();
@@ -395,7 +405,7 @@ fn persist_directory(
     provider_id: &str,
 ) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
-    match resource.persist_with_outcome(target, options) {
+    match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
             let (error, resource, _, _, _, state) = error.into_parts_with_state();
