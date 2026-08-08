@@ -7,15 +7,13 @@
 // =============================================================================
 //! Regression coverage for local `file:` URI path decoding.
 
-use qubit_fs::{
-    ConnectionUri,
-    FileSystemId,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FileSystemId;
+use qubit_fs::FsErrorKind;
 use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-};
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
 
 /// An encoded literal percent is converted to local canonical path text.
 #[test]
@@ -74,13 +72,11 @@ fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
                 ConnectionUri::parse(uri).expect("test URI must parse"),
             ))
             .expect_err("unsafe encoded path component must be rejected");
-        let qubit_fs_registry::FileSystemRegistryError::Creation(creation) =
-            error
-        else {
+        let FileSystemRegistryError::Creation(creation) = error else {
             panic!("expected provider creation error")
         };
         assert_eq!(
-            qubit_fs::FsErrorKind::InvalidPath,
+            FsErrorKind::InvalidPath,
             creation.decisive_attempt().failure().error().kind()
         );
     }

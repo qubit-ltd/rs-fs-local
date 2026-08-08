@@ -7,40 +7,40 @@
 // =============================================================================
 //! Behavioral coverage for host and rooted local filesystem adapters.
 
-use qubit_fs::{
-    Checksum,
-    ChecksumAlgorithm,
-    CopyConflictPolicy,
-    CopyFailureState,
-    CopyOptions,
-    CreateDirectoryOptions,
-    DeleteOptions,
-    DurabilityRequirement,
-    FileKind,
-    FsErrorKind,
-    ListOptions,
-    MetadataPreservePolicy,
-    Path,
-    PublicationMethod,
-    RenameFailureState,
-    RenameOptions,
-    ServerSidePreference,
-    SymlinkPolicy,
-    TempDirectoryOptions,
-    TempFileOptions,
-    UserMetadata,
-    WriteDisposition,
-    WriteOptions,
-    WritePrecondition,
-};
-use qubit_fs_local::{
-    LocalFileSystems,
-    host_path_to_logical,
-};
+use qubit_fs::Checksum;
+use qubit_fs::ChecksumAlgorithm;
+use qubit_fs::CopyConflictPolicy;
+use qubit_fs::CopyFailureState;
+use qubit_fs::CopyOptions;
+use qubit_fs::CreateDirectoryOptions;
+use qubit_fs::DeleteOptions;
+use qubit_fs::DurabilityRequirement;
+use qubit_fs::FileKind;
+use qubit_fs::FileSystem;
+use qubit_fs::FsErrorKind;
+use qubit_fs::ListOptions;
+use qubit_fs::MetadataPreservePolicy;
+use qubit_fs::Path;
+use qubit_fs::PublicationMethod;
+use qubit_fs::RenameFailureState;
+use qubit_fs::RenameOptions;
+use qubit_fs::ServerSidePreference;
+use qubit_fs::SymlinkPolicy;
+use qubit_fs::TempDirectoryOptions;
+use qubit_fs::TempFileOptions;
+use qubit_fs::UserMetadata;
+use qubit_fs::WriteAbortOutcome;
+use qubit_fs::WriteDisposition;
+use qubit_fs::WriteFailureState;
+use qubit_fs::WriteOptions;
+use qubit_fs::WritePrecondition;
+use qubit_fs::WriterState;
+use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
-fn rooted_file_system() -> (tempfile::TempDir, qubit_fs::FileSystem) {
+fn rooted_file_system() -> (tempfile::TempDir, FileSystem) {
     let root = tempfile::tempdir().expect("test root must be created");
     let file_system = LocalFileSystems::rooted(root.path())
         .expect("rooted local filesystem must be opened");
@@ -66,8 +66,8 @@ fn test_rooted_append_abort_reports_published_destination() {
 
     let outcome = writer.abort().expect("append abort must flush");
 
-    assert_eq!(qubit_fs::WriteAbortOutcome::Published, outcome);
-    assert_eq!(qubit_fs::WriterState::Published, writer.state());
+    assert_eq!(WriteAbortOutcome::Published, outcome);
+    assert_eq!(WriterState::Published, writer.state());
 }
 
 /// A terminal pre-publication conflict retains its confirmed destination state
@@ -96,10 +96,10 @@ fn test_host_commit_conflict_preserves_not_published_state() {
         .commit()
         .expect_err("concurrent destination must fail create-new commit");
 
-    assert_eq!(qubit_fs::WriteFailureState::NotPublished, failure.state(),);
-    assert_eq!(qubit_fs::WriterState::NotPublished, writer.state());
+    assert_eq!(WriteFailureState::NotPublished, failure.state(),);
+    assert_eq!(WriterState::NotPublished, writer.state());
     assert_eq!(
-        qubit_fs::WriteAbortOutcome::NotPublished,
+        WriteAbortOutcome::NotPublished,
         writer.abort().expect("retained staging must abort"),
     );
 }
@@ -134,7 +134,7 @@ fn test_host_abort_failure_retains_writer_for_retry() {
             .abort()
             .expect_err("missing staging cleanup must remain retryable");
         assert_eq!(FsErrorKind::NotFound, error.kind());
-        assert_eq!(qubit_fs::WriterState::Open, writer.state());
+        assert_eq!(WriterState::Open, writer.state());
     }
 }
 
@@ -650,7 +650,7 @@ fn test_host_metadata_maps_symbolic_link_kind() {
     let metadata = file_system
         .stat(&host_path(&root, "link"))
         .expect("symbolic link metadata should be readable");
-    assert_eq!(metadata.kind(), &qubit_fs::FileKind::Symlink);
+    assert_eq!(metadata.kind(), &FileKind::Symlink);
 }
 
 /// Host metadata maps Unix-domain sockets to the adapter's local socket kind.
@@ -669,8 +669,5 @@ fn test_host_metadata_maps_unix_socket_kind() {
     let metadata = file_system
         .stat(&host_path(&root, "socket"))
         .expect("socket metadata should be readable");
-    assert_eq!(
-        metadata.kind(),
-        &qubit_fs::FileKind::Other("local-socket".to_owned())
-    );
+    assert_eq!(metadata.kind(), &FileKind::Other("local-socket".to_owned()));
 }

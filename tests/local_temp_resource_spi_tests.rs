@@ -7,19 +7,17 @@
 // =============================================================================
 //! Regression coverage for temporary-resource SPI recovery.
 
-use qubit_fs::{
-    CreateDirectoryOptions,
-    DeleteOptions,
-    FileSystemId,
-    FsErrorKind,
-    Path,
-    PersistFailureState,
-    PersistOptions,
-    TempDirectoryOptions,
-    TempFileOptions,
-    TempResourceState,
-    WriteOptions,
-};
+use qubit_fs::CreateDirectoryOptions;
+use qubit_fs::DeleteOptions;
+use qubit_fs::FileSystemId;
+use qubit_fs::FsErrorKind;
+use qubit_fs::Path;
+use qubit_fs::PersistFailureState;
+use qubit_fs::PersistOptions;
+use qubit_fs::TempDirectoryOptions;
+use qubit_fs::TempFileOptions;
+use qubit_fs::TempResourceState;
+use qubit_fs::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 
 /// A confirmed destination conflict retains the native temporary file for

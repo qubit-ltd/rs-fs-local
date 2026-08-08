@@ -7,20 +7,17 @@
 // =============================================================================
 //! Registry integration tests for the local `file:` provider.
 
-use qubit_fs::{
-    ConnectionUri,
-    FileSystemId,
-    FsErrorKind,
-    NonSensitiveMetadata,
-    Path,
-    UserMetadata,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FileSystem;
+use qubit_fs::FileSystemId;
+use qubit_fs::FsErrorKind;
+use qubit_fs::NonSensitiveMetadata;
+use qubit_fs::Path;
+use qubit_fs::UserMetadata;
 use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-    FileSystemRegistryError,
-};
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
 
 /// A registered host provider resolves an absolute `file:` URI.
 #[test]
@@ -38,7 +35,7 @@ fn test_local_provider_returns_concrete_resolution() {
         .resolve_config(&config)
         .expect("the local provider must resolve a host file URI");
 
-    let _: &qubit_fs::FileSystem = resolution.file_system();
+    let _: &FileSystem = resolution.file_system();
     assert_eq!(resolution.canonical_uri().scheme(), "file");
 }
 

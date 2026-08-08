@@ -9,18 +9,14 @@
 // contract tests.
 //! Canonical conversion between public logical paths and native paths.
 
-use std::path::{
-    Path as NativePath,
-    PathBuf,
-};
+use std::path::Path as NativePath;
+use std::path::PathBuf;
 
-use qubit_fs::{
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    FsResult,
-    Path,
-};
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs::FsResult;
+use qubit_fs::Path;
 use qubit_local_files as native_files;
 
 /// Converts an absolute logical path to a process-host native path.

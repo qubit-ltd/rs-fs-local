@@ -9,35 +9,26 @@
 
 use std::path::Path;
 
-use qubit_fs::{
-    FileSystemId,
-    FsError,
-    FsErrorKind,
-    FsOperation,
-    Path as FsPath,
-    Uri,
-};
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemResolution,
-    FileSystemSpec,
-};
+use qubit_fs::FileSystemId;
+use qubit_fs::FsError;
+use qubit_fs::FsErrorKind;
+use qubit_fs::FsOperation;
+use qubit_fs::Path as FsPath;
+use qubit_fs::Uri;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderId,
-    ProviderMetadata,
-    ServiceProvider,
-};
-
-use crate::LocalFileSystems;
-use crate::constants::{
-    FILE_SCHEME,
-    LOCAL_PROVIDER_ID,
-};
 
 use super::internal::LocalProviderMode;
 use super::local_file_uri_path;
+use crate::LocalFileSystems;
+use crate::constants::FILE_SCHEME;
+use crate::constants::LOCAL_PROVIDER_ID;
 
 /// Creates local filesystem resolutions for accepted `file:` configurations.
 #[derive(Clone)]

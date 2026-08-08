@@ -6,14 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::{
-    FileSystemCapability,
-    FileSystemId,
-    Path,
-    PathSemantics,
-    SymlinkPolicy,
-    TempFileOptions,
-};
+use qubit_fs::FileSystemCapability;
+use qubit_fs::FileSystemId;
+use qubit_fs::Path;
+use qubit_fs::PathSemantics;
+use qubit_fs::SymlinkPolicy;
+use qubit_fs::TempFileOptions;
 use qubit_fs_local::LocalFileSystems;
 
 /// The host factory returns a concrete hierarchical local filesystem.

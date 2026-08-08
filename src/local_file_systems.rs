@@ -8,16 +8,14 @@
 //! Concrete facade factories for local filesystem adapters.
 
 use std::path::Path;
-use std::sync::atomic::{
-    AtomicU64,
-    Ordering,
-};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
-use qubit_fs::{
-    FileSystem,
-    FileSystemId,
-    FsResult,
-};
+use qubit_fs::FileSystem;
+use qubit_fs::FileSystemId;
+use qubit_fs::FsOperation;
+use qubit_fs::FsResult;
+use qubit_fs::Path as LogicalPath;
 #[cfg(feature = "registry")]
 use qubit_spi::ProviderId;
 
@@ -132,9 +130,6 @@ impl LocalFileSystems {
 ///
 /// This conversion preserves platform-native path components, including
 /// non-UTF-8 Unix names, without routing through lossy display text.
-pub fn host_path_to_logical(path: &Path) -> FsResult<qubit_fs::Path> {
-    crate::path::local_path_mapper::host_logical(
-        path,
-        qubit_fs::FsOperation::ParsePath,
-    )
+pub fn host_path_to_logical(path: &Path) -> FsResult<LogicalPath> {
+    crate::path::local_path_mapper::host_logical(path, FsOperation::ParsePath)
 }

@@ -7,10 +7,10 @@
 // =============================================================================
 //! Decoding of raw `file:` URI paths into local canonical path text.
 
-use qubit_fs::{
-    Path,
-    Uri,
-};
+use qubit_fs::FsError;
+use qubit_fs::Path;
+use qubit_fs::Uri;
+use qubit_spi::error::ProviderFailure;
 
 use super::local_file_system_provider::invalid_path;
 
@@ -32,9 +32,7 @@ use super::local_file_system_provider::invalid_path;
 ///
 /// Returns an invalid-configuration failure for malformed percent escapes,
 /// NUL bytes, encoded separators, or canonical text rejected by `Path`.
-pub(super) fn decode(
-    raw: &str,
-) -> Result<Path, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
+pub(super) fn decode(raw: &str) -> Result<Path, ProviderFailure<FsError>> {
     let mut canonical = String::with_capacity(raw.len());
     for (index, component) in raw.split('/').enumerate() {
         if index > 0 {
@@ -50,7 +48,7 @@ pub(super) fn decode(
 /// spelling used by registry resolutions.
 pub(super) fn canonical_uri(
     path: &Path,
-) -> Result<Uri, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
+) -> Result<Uri, ProviderFailure<FsError>> {
     let text = path.as_str();
     let mut encoded = String::with_capacity(text.len());
     let mut index = 0;
@@ -123,7 +121,7 @@ fn is_uri_pchar(scalar: char) -> bool {
 /// or bytes decoding to a native path separator.
 fn decode_component(
     component: &str,
-) -> Result<String, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
+) -> Result<String, ProviderFailure<FsError>> {
     let canonical = canonicalize_uri_bytes(&decode_uri_bytes(component)?);
     let bytes = canonical.as_bytes();
     if bytes.contains(&b'/') || cfg!(windows) && bytes.contains(&b'\\') {
@@ -137,7 +135,7 @@ fn decode_component(
 /// Strictly percent-decodes a URI component without treating `+` as a space.
 fn decode_uri_bytes(
     component: &str,
-) -> Result<Vec<u8>, qubit_spi::error::ProviderFailure<qubit_fs::FsError>> {
+) -> Result<Vec<u8>, ProviderFailure<FsError>> {
     let bytes = component.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;

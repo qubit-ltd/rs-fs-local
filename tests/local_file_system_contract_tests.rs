@@ -9,26 +9,21 @@
 
 use std::path::PathBuf;
 
-use qubit_fs::{
-    CopyOptions,
-    CreateDirectoryOptions,
-    FileSystem,
-    FileSystemId,
-    FsErrorKind,
-    ListOptions,
-    Path,
-    WriteOptions,
-};
-use qubit_fs_local::{
-    LocalFileSystems,
-    host_path_to_logical,
-};
-use qubit_fs_testkit::{
-    FileSystemFixture,
-    FixtureError,
-    FixtureResult,
-    FixtureSupport,
-};
+use qubit_fs::CopyOptions;
+use qubit_fs::CreateDirectoryOptions;
+use qubit_fs::FileSystem;
+use qubit_fs::FileSystemId;
+use qubit_fs::FsErrorKind;
+use qubit_fs::ListOptions;
+use qubit_fs::Path;
+use qubit_fs::WriteOptions;
+use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::host_path_to_logical;
+use qubit_fs_testkit::FileSystemFixture;
+use qubit_fs_testkit::FixtureError;
+use qubit_fs_testkit::FixtureResult;
+use qubit_fs_testkit::FixtureSupport;
+use qubit_fs_testkit::register_file_system_contract_tests;
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.
 struct RootedFixture {
@@ -206,12 +201,12 @@ impl FileSystemFixture for HostFixture {
 }
 
 #[cfg(unix)]
-qubit_fs_testkit::register_file_system_contract_tests! {
+register_file_system_contract_tests! {
     module: host_contracts,
     fixture: super::HostFixture::new,
 }
 
-qubit_fs_testkit::register_file_system_contract_tests! {
+register_file_system_contract_tests! {
     module: rooted_contracts,
     fixture: super::RootedFixture::new,
 }

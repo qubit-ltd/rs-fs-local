@@ -7,22 +7,16 @@
 // =============================================================================
 //! Public behavior coverage for host and rooted provider authority modes.
 
-use qubit_fs::{
-    ConnectionUri,
-    FileSystemId,
-    FsErrorKind,
-    Path,
-};
+use qubit_fs::ConnectionUri;
+use qubit_fs::FileSystemId;
+use qubit_fs::FsErrorKind;
+use qubit_fs::Path;
 use qubit_fs_local::LocalFileSystemProvider;
-use qubit_fs_registry::{
-    FileSystemConfig,
-    FileSystemRegistry,
-};
-use qubit_spi::{
-    ProviderDescriptor,
-    ProviderId,
-    ProviderSelection,
-};
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderSelection;
 
 /// Host and rooted providers expose the identity selected by their authority
 /// mode.
