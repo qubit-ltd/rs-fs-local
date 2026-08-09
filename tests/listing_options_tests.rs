@@ -18,18 +18,15 @@ use qubit_fs_local::LocalFileSystems;
 #[test]
 fn test_listing_options_filter_prefix_and_include_metadata() {
     let root = tempfile::tempdir().expect("listing root must be created");
-    let file_system = LocalFileSystems::rooted(root.path())
-        .expect("rooted filesystem must open");
-    let list_root =
-        Path::parse("/reports").expect("listing path must be valid");
-    let matching_directory =
-        Path::parse("/reports/nested").expect("matching path must be valid");
-    let matching_file = Path::parse("/reports/nested/report.txt")
-        .expect("matching file path must be valid");
-    let sibling_directory = Path::parse("/reports/nested-other")
-        .expect("sibling path must be valid");
-    let sibling_file = Path::parse("/reports/nested-other/report.txt")
-        .expect("sibling file path must be valid");
+    let file_system = LocalFileSystems::rooted(root.path()).expect("rooted filesystem must open");
+    let list_root = Path::parse("/reports").expect("listing path must be valid");
+    let matching_directory = Path::parse("/reports/nested").expect("matching path must be valid");
+    let matching_file =
+        Path::parse("/reports/nested/report.txt").expect("matching file path must be valid");
+    let sibling_directory =
+        Path::parse("/reports/nested-other").expect("sibling path must be valid");
+    let sibling_file =
+        Path::parse("/reports/nested-other/report.txt").expect("sibling file path must be valid");
 
     for directory in [&list_root, &matching_directory, &sibling_directory] {
         file_system

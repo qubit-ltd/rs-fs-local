@@ -18,8 +18,7 @@ use qubit_fs_local::LocalFileSystems;
 /// The host factory returns a concrete hierarchical local filesystem.
 #[test]
 fn test_host_factory_returns_concrete_file_system() {
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem should construct");
+    let file_system = LocalFileSystems::host().expect("host filesystem should construct");
     assert_eq!(file_system.properties().info().provider_id(), "local-file");
     assert_eq!(
         file_system.properties().info().path_semantics(),
@@ -34,13 +33,9 @@ fn test_host_factory_returns_concrete_file_system() {
 /// Native failures expose the adapter's canonical provider identity.
 #[test]
 fn test_host_stat_error_uses_canonical_provider_id() {
-    let path = Path::parse(&format!(
-        "/__qubit_fs_local_missing_{}",
-        std::process::id()
-    ))
-    .expect("test path should be logical");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem should construct");
+    let path = Path::parse(&format!("/__qubit_fs_local_missing_{}", std::process::id()))
+        .expect("test path should be logical");
+    let file_system = LocalFileSystems::host().expect("host filesystem should construct");
 
     let error = file_system
         .stat(&path)
@@ -53,8 +48,7 @@ fn test_host_stat_error_uses_canonical_provider_id() {
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
 #[test]
 fn test_host_factory_advertises_atomic_rename() {
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem should construct");
+    let file_system = LocalFileSystems::host().expect("host filesystem should construct");
 
     assert_eq!(
         file_system
@@ -69,8 +63,7 @@ fn test_host_factory_advertises_atomic_rename() {
 #[test]
 fn test_rooted_with_id_preserves_explicit_identity() {
     let root = tempfile::tempdir().expect("root should exist");
-    let id = FileSystemId::new("local-test-root")
-        .expect("filesystem id should be valid");
+    let id = FileSystemId::new("local-test-root").expect("filesystem id should be valid");
     let file_system = LocalFileSystems::rooted_with_id(id.clone(), root.path())
         .expect("rooted filesystem should construct");
     assert_eq!(file_system.properties().info().id(), &id);
@@ -81,8 +74,8 @@ fn test_rooted_with_id_preserves_explicit_identity() {
 #[test]
 fn test_rooted_root_is_statable_and_exists() {
     let root = tempfile::tempdir().expect("root should exist");
-    let file_system = LocalFileSystems::rooted(root.path())
-        .expect("rooted filesystem should construct");
+    let file_system =
+        LocalFileSystems::rooted(root.path()).expect("rooted filesystem should construct");
 
     assert!(
         file_system
@@ -101,10 +94,8 @@ fn test_rooted_root_is_statable_and_exists() {
 #[test]
 fn test_local_capabilities_include_empty_directory_only_when_supported() {
     let root = tempfile::tempdir().expect("root should exist");
-    let rooted = LocalFileSystems::rooted(root.path())
-        .expect("rooted filesystem should construct");
-    let host =
-        LocalFileSystems::host().expect("host filesystem should construct");
+    let rooted = LocalFileSystems::rooted(root.path()).expect("rooted filesystem should construct");
+    let host = LocalFileSystems::host().expect("host filesystem should construct");
 
     for file_system in [&rooted, &host] {
         let capabilities = file_system.properties().capabilities();
@@ -118,8 +109,7 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
         );
         for capability in FileSystemCapability::ALL.iter().copied() {
             let expected = match capability {
-                FileSystemCapability::DurableRename
-                | FileSystemCapability::DurableFileCopy => {
+                FileSystemCapability::DurableRename | FileSystemCapability::DurableFileCopy => {
                     if cfg!(unix) {
                         FileSystemCapabilitySupport::Conditional
                     } else {
@@ -164,8 +154,7 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
 /// Verifies provider properties expose durable publication as conditional.
 #[test]
 fn test_local_provider_advertises_supported_durability() {
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem should construct");
+    let file_system = LocalFileSystems::host().expect("host filesystem should construct");
     let capabilities = file_system.properties().capabilities();
 
     let expected = if cfg!(unix) {
@@ -205,16 +194,15 @@ fn test_rooted_factory_assigns_distinct_process_local_identities() {
 #[test]
 fn test_host_temp_file_applies_parent_and_affixes() {
     let parent = tempfile::tempdir().expect("temporary parent should exist");
-    let canonical_parent = std::fs::canonicalize(parent.path())
-        .expect("temporary parent should canonicalize");
+    let canonical_parent =
+        std::fs::canonicalize(parent.path()).expect("temporary parent should canonicalize");
     let parent = Path::parse(
         canonical_parent
             .to_str()
             .expect("test temporary path should be UTF-8"),
     )
     .expect("test temporary path should be logical");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem should construct");
+    let file_system = LocalFileSystems::host().expect("host filesystem should construct");
 
     let temporary = file_system
         .create_temp_file(
