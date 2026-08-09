@@ -427,6 +427,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-budget"
+version = "0.4.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "qubit-collections"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -440,6 +447,7 @@ name = "qubit-fs"
 version = "0.2.0"
 dependencies = [
  "fluent-uri",
+ "qubit-budget",
  "qubit-io",
  "qubit-redact",
 ]
@@ -491,6 +499,7 @@ dependencies = [
  "getrandom",
  "libc",
  "log",
+ "qubit-budget",
  "rustix",
  "windows-sys",
 ]

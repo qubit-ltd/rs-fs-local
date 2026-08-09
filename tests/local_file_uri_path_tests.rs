@@ -21,19 +21,16 @@ fn test_rooted_provider_decodes_literal_percent_path_segment() {
     let root = tempfile::tempdir().expect("provider root must be created");
     std::fs::write(root.path().join("progress%100.txt"), b"payload")
         .expect("percent-path fixture must be written");
-    let id = FileSystemId::new("provider-percent-path-root")
-        .expect("test identity must be valid");
+    let id = FileSystemId::new("provider-percent-path-root").expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(id, root.path()).expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
     let resolution = registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///progress%25100.txt")
-                .expect("test URI must parse"),
+            ConnectionUri::parse("file:///progress%25100.txt").expect("test URI must parse"),
         ))
         .expect("encoded local file URI must resolve");
 
@@ -47,13 +44,11 @@ fn test_rooted_provider_decodes_literal_percent_path_segment() {
 #[test]
 fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
     let root = tempfile::tempdir().expect("provider root must be created");
-    let id = FileSystemId::new("provider-unsafe-path-root")
-        .expect("test identity must be valid");
+    let id = FileSystemId::new("provider-unsafe-path-root").expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(id, root.path()).expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
 
@@ -104,8 +99,7 @@ fn test_rooted_provider_round_trips_encoded_unix_backslash() {
 
     let resolution = registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///parent%5Cchild")
-                .expect("test URI must parse"),
+            ConnectionUri::parse("file:///parent%5Cchild").expect("test URI must parse"),
         ))
         .expect("encoded Unix backslash must resolve");
 

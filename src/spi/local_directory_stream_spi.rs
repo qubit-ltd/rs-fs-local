@@ -131,8 +131,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let Some(entry) = entry else {
                 return Ok(None);
             };
-            let entry =
-                entry.map_err(|error| entry_error(error, provider_id))?;
+            let entry = entry.map_err(|error| entry_error(error, provider_id))?;
             let logical_relative = local_path_mapper::logical(
                 native_files::LocalFileSystemScope::Rooted,
                 entry.relative_path(),
@@ -141,17 +140,10 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = output_path(
-                rooted.as_ref(),
-                &logical_relative,
-                entry.diagnostic_path(),
-            )?;
-            let mut result =
-                DirEntry::new(path, output_kind(entry.metadata().kind()));
+            let path = output_path(rooted.as_ref(), &logical_relative, entry.diagnostic_path())?;
+            let mut result = DirEntry::new(path, output_kind(entry.metadata().kind()));
             if options.include_metadata() {
-                result.metadata = Some(local_outcome_mapper::metadata(
-                    entry.metadata().clone(),
-                ));
+                result.metadata = Some(local_outcome_mapper::metadata(entry.metadata().clone()));
             }
             return Ok(Some(result));
         }
@@ -168,10 +160,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 ///
 /// A facade listing error with local provider context.
 #[inline(always)]
-fn entry_error(
-    error: native_files::LocalFileError,
-    provider_id: &str,
-) -> FsError {
+fn entry_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     error_mapper::map_without_path(
         error,
         FsOperation::List,
@@ -196,19 +185,11 @@ fn entry_error(
 ///
 /// Returns `InvalidPath` when joining or native-path conversion cannot produce
 /// a canonical logical path.
-fn output_path(
-    root: Option<&Path>,
-    relative: &Path,
-    native: &NativePath,
-) -> FsResult<Path> {
+fn output_path(root: Option<&Path>, relative: &Path, native: &NativePath) -> FsResult<Path> {
     match root {
         Some(root) if relative == &Path::root() => Ok(root.clone()),
         Some(root) if root == &Path::root() => Ok(relative.clone()),
-        Some(root) => Path::parse(&format!(
-            "{}/{}",
-            root.as_str(),
-            &relative.as_str()[1..]
-        )),
+        Some(root) => Path::parse(&format!("{}/{}", root.as_str(), &relative.as_str()[1..])),
         None => local_path_mapper::logical(
             native_files::LocalFileSystemScope::Host,
             native,
@@ -232,21 +213,13 @@ fn output_kind(kind: native_files::LocalFileKind) -> FileKind {
         native_files::LocalFileKind::File => FileKind::File,
         native_files::LocalFileKind::Directory => FileKind::Directory,
         native_files::LocalFileKind::Symlink => FileKind::Symlink,
-        native_files::LocalFileKind::Fifo => {
-            FileKind::Other("local-fifo".to_owned())
-        }
-        native_files::LocalFileKind::Socket => {
-            FileKind::Other("local-socket".to_owned())
-        }
+        native_files::LocalFileKind::Fifo => FileKind::Other("local-fifo".to_owned()),
+        native_files::LocalFileKind::Socket => FileKind::Other("local-socket".to_owned()),
         native_files::LocalFileKind::BlockDevice => {
             FileKind::Other("local-block-device".to_owned())
         }
-        native_files::LocalFileKind::CharDevice => {
-            FileKind::Other("local-char-device".to_owned())
-        }
-        native_files::LocalFileKind::Other => {
-            FileKind::Other("local".to_owned())
-        }
+        native_files::LocalFileKind::CharDevice => FileKind::Other("local-char-device".to_owned()),
+        native_files::LocalFileKind::Other => FileKind::Other("local".to_owned()),
         _ => FileKind::Other("local".to_owned()),
     }
 }

@@ -116,14 +116,9 @@ impl LocalTempResourceSpi {
     ///
     /// Returns `InvalidPath` when the logical target cannot be converted to
     /// the resource's native authority.
-    fn target(
-        &self,
-        target: &LogicalPath,
-    ) -> Result<(PathBuf, bool), SpiPersistFailure> {
+    fn target(&self, target: &LogicalPath) -> Result<(PathBuf, bool), SpiPersistFailure> {
         let rooted = match self {
-            Self::File { rooted, .. } | Self::Directory { rooted, .. } => {
-                *rooted
-            }
+            Self::File { rooted, .. } | Self::Directory { rooted, .. } => *rooted,
         };
         let target = local_path_mapper::native(
             if rooted {
@@ -161,25 +156,18 @@ impl TempResourceSpi for LocalTempResourceSpi {
     ) -> Result<PersistOutcome, SpiPersistFailure> {
         let (target, rooted) = self.target(request.target())?;
         let provider_id = match self {
-            Self::File { provider_id, .. }
-            | Self::Directory { provider_id, .. } => provider_id.to_owned(),
+            Self::File { provider_id, .. } | Self::Directory { provider_id, .. } => {
+                provider_id.to_owned()
+            }
         };
         let options = persist_options(request.options());
         let result = match self {
-            Self::File { resource: slot, .. } => persist_file(
-                slot,
-                &target,
-                request.target(),
-                options,
-                &provider_id,
-            ),
-            Self::Directory { resource: slot, .. } => persist_directory(
-                slot,
-                &target,
-                request.target(),
-                options,
-                &provider_id,
-            ),
+            Self::File { resource: slot, .. } => {
+                persist_file(slot, &target, request.target(), options, &provider_id)
+            }
+            Self::Directory { resource: slot, .. } => {
+                persist_directory(slot, &target, request.target(), options, &provider_id)
+            }
         }?;
         map_persist_outcome(result, rooted)
     }
@@ -284,9 +272,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
 ///
 /// Native persistence options with the requested replacement policy.
 #[inline(always)]
-fn persist_options(
-    options: &PersistOptions,
-) -> native_files::LocalPersistOptions {
+fn persist_options(options: &PersistOptions) -> native_files::LocalPersistOptions {
     let mut native = native_files::LocalPersistOptions::new();
     if options.overwrite() {
         native = native.with_overwrite();
@@ -334,16 +320,12 @@ fn map_persist_outcome(
             AchievedAtomicity::NonAtomic
         },
         match result.method() {
-            native_files::LocalPersistMethod::AtomicRename => {
-                PublicationMethod::AtomicRename
-            }
+            native_files::LocalPersistMethod::AtomicRename => PublicationMethod::AtomicRename,
             _ => PublicationMethod::Direct,
         },
     )
     .with_cleanup_state(match result.cleanup_state() {
-        native_files::LocalPersistCleanupState::Complete => {
-            PersistCleanupState::Complete
-        }
+        native_files::LocalPersistCleanupState::Complete => PersistCleanupState::Complete,
         native_files::LocalPersistCleanupState::ResidualSandbox => {
             PersistCleanupState::ResidualTemporaryContainer
         }
@@ -379,8 +361,7 @@ fn persist_file(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let (error, resource, _, _, _, state) =
-                error.into_parts_with_state();
+            let (error, resource, _, _, _, state) = error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
                 error_mapper::map(
@@ -425,8 +406,7 @@ fn persist_directory(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let (error, resource, _, _, _, state) =
-                error.into_parts_with_state();
+            let (error, resource, _, _, _, state) = error.into_parts_with_state();
             *slot = Some(resource);
             Err(SpiPersistFailure::new(
                 error_mapper::map(
@@ -453,16 +433,10 @@ fn persist_directory(
 /// The equivalent portable state; unknown future native states map to
 /// `Indeterminate`.
 #[inline]
-fn persist_failure_state(
-    state: native_files::LocalPersistFailureState,
-) -> PersistFailureState {
+fn persist_failure_state(state: native_files::LocalPersistFailureState) -> PersistFailureState {
     match state {
-        native_files::LocalPersistFailureState::NotPublished => {
-            PersistFailureState::NotPublished
-        }
-        native_files::LocalPersistFailureState::Indeterminate => {
-            PersistFailureState::Indeterminate
-        }
+        native_files::LocalPersistFailureState::NotPublished => PersistFailureState::NotPublished,
+        native_files::LocalPersistFailureState::Indeterminate => PersistFailureState::Indeterminate,
         _ => PersistFailureState::Indeterminate,
     }
 }
@@ -529,12 +503,7 @@ fn cleanup_error(
     message: &'static str,
     provider_id: &str,
 ) -> FsError {
-    error_mapper::map_without_path(
-        error,
-        FsOperation::CleanupTemp,
-        message,
-        provider_id,
-    )
+    error_mapper::map_without_path(error, FsOperation::CleanupTemp, message, provider_id)
 }
 
 /// Maps a native temporary-file cleanup failure.
@@ -547,10 +516,7 @@ fn cleanup_error(
 ///
 /// A facade cleanup error identifying temporary-file cleanup.
 #[inline(always)]
-fn file_cleanup_error(
-    error: native_files::LocalFileError,
-    provider_id: &str,
-) -> FsError {
+fn file_cleanup_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     cleanup_error(error, "temporary file cleanup failed", provider_id)
 }
 
@@ -564,10 +530,7 @@ fn file_cleanup_error(
 ///
 /// A facade cleanup error identifying temporary-directory cleanup.
 #[inline(always)]
-fn directory_cleanup_error(
-    error: native_files::LocalFileError,
-    provider_id: &str,
-) -> FsError {
+fn directory_cleanup_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     if error.kind() == native_files::LocalFileErrorKind::InvalidPath {
         return FsError::with_source(
             FsErrorKind::NotDirectory,
