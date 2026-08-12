@@ -48,6 +48,17 @@ impl LocalFileSystems {
         FileSystem::from_spi(LocalFileSystemSpi::new())
     }
 
+    /// Creates the host facade with provider-level native budgets.
+    pub fn host_with_options(
+        list_options: native_files::LocalListOptions,
+        copy_options: native_files::LocalCopyOptions,
+    ) -> FsResult<FileSystem> {
+        FileSystem::from_spi(LocalFileSystemSpi::new_with_options(
+            list_options,
+            copy_options,
+        ))
+    }
+
     /// Opens `root` as a descriptor-backed rooted filesystem with a
     /// process-local identity.
     ///
@@ -77,8 +88,9 @@ impl LocalFileSystems {
                 std::process::id(),
                 ROOTED_COUNTER.fetch_add(1, Ordering::Relaxed)
             );
-            FileSystemId::new(&value)
-                .expect("process id and monotonic counter form a valid filesystem id")
+            FileSystemId::new(&value).expect(
+                "process id and monotonic counter form a valid filesystem id",
+            )
         };
         Self::rooted_with_id(id, root)
     }
@@ -101,8 +113,29 @@ impl LocalFileSystems {
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id`.
     #[inline(always)]
-    pub fn rooted_with_id(id: FileSystemId, root: &Path) -> FsResult<FileSystem> {
+    pub fn rooted_with_id(
+        id: FileSystemId,
+        root: &Path,
+    ) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root)?)
+    }
+
+    /// Opens a rooted facade with provider-level native budgets.
+    pub fn rooted_with_options(
+        id: FileSystemId,
+        root: &Path,
+        list_options: native_files::LocalListOptions,
+        copy_options: native_files::LocalCopyOptions,
+    ) -> FsResult<FileSystem> {
+        FileSystem::from_spi(
+            LocalFileSystemSpi::rooted_with_provider_id_and_options(
+                id,
+                crate::constants::LOCAL_PROVIDER_ID,
+                root,
+                list_options,
+                copy_options,
+            )?,
+        )
     }
 
     /// Opens `root` with a registry-validated provider identity.
