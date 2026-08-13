@@ -242,6 +242,7 @@ fn test_rooted_writer_commit_reports_atomic_rename_publication() {
     let outcome = writer.commit().expect("writer commit must succeed");
 
     assert_eq!(PublicationMethod::AtomicRename, outcome.method());
+    assert_eq!(Some(7_u64), outcome.bytes_written());
 }
 
 /// Required host rename succeeds when the provider advertises durable rename.

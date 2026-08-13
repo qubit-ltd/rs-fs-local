@@ -179,7 +179,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         }
                     },
                 );
-                result = result.with_bytes_written(outcome.bytes_written());
+                result = result.with_bytes_written(outcome.bytes_written() as u64);
                 Ok(result)
             }
             Err(error) => {
