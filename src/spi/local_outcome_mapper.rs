@@ -38,13 +38,21 @@ pub(crate) fn metadata(value: native_files::LocalFileMetadata) -> FileMetadata {
         native_files::LocalFileKind::File => FileKind::File,
         native_files::LocalFileKind::Directory => FileKind::Directory,
         native_files::LocalFileKind::Symlink => FileKind::Symlink,
-        native_files::LocalFileKind::Fifo => FileKind::Other("local-fifo".to_owned()),
-        native_files::LocalFileKind::Socket => FileKind::Other("local-socket".to_owned()),
+        native_files::LocalFileKind::Fifo => {
+            FileKind::Other("local-fifo".to_owned())
+        }
+        native_files::LocalFileKind::Socket => {
+            FileKind::Other("local-socket".to_owned())
+        }
         native_files::LocalFileKind::BlockDevice => {
             FileKind::Other("local-block-device".to_owned())
         }
-        native_files::LocalFileKind::CharDevice => FileKind::Other("local-char-device".to_owned()),
-        native_files::LocalFileKind::Other => FileKind::Other("local".to_owned()),
+        native_files::LocalFileKind::CharDevice => {
+            FileKind::Other("local-char-device".to_owned())
+        }
+        native_files::LocalFileKind::Other => {
+            FileKind::Other("local".to_owned())
+        }
         _ => FileKind::Other("local".to_owned()),
     };
     FileMetadata::new(kind)
@@ -88,8 +96,12 @@ pub(crate) fn copy(value: native_files::LocalCopyOutcome) -> CopyOutcome {
     );
     result = result.with_durable(value.durable());
     result = result.with_metadata(match value.metadata_preservation() {
-        native_files::LocalMetadataPreservePolicy::None => MetadataPreservePolicy::None,
-        native_files::LocalMetadataPreservePolicy::Permissions => MetadataPreservePolicy::Portable,
+        native_files::LocalMetadataPreservePolicy::None => {
+            MetadataPreservePolicy::None
+        }
+        native_files::LocalMetadataPreservePolicy::Permissions => {
+            MetadataPreservePolicy::Portable
+        }
     });
     result
 }
@@ -131,14 +143,22 @@ pub(crate) fn rename(
 ///
 /// The equivalent portable copy failure state.
 #[inline]
-pub(crate) fn copy_failure_state(state: native_files::LocalCopyFailureState) -> CopyFailureState {
+pub(crate) fn copy_failure_state(
+    state: native_files::LocalCopyFailureState,
+) -> CopyFailureState {
     match state {
-        native_files::LocalCopyFailureState::Unchanged => CopyFailureState::Unchanged,
+        native_files::LocalCopyFailureState::Unchanged => {
+            CopyFailureState::Unchanged
+        }
         native_files::LocalCopyFailureState::PartiallyPublished => {
             CopyFailureState::PartiallyPublished
         }
-        native_files::LocalCopyFailureState::Published => CopyFailureState::Published,
-        native_files::LocalCopyFailureState::Indeterminate => CopyFailureState::Indeterminate,
+        native_files::LocalCopyFailureState::Published => {
+            CopyFailureState::Published
+        }
+        native_files::LocalCopyFailureState::Indeterminate => {
+            CopyFailureState::Indeterminate
+        }
     }
 }
 
@@ -156,8 +176,14 @@ pub(crate) fn rename_failure_state(
     state: native_files::LocalRenameFailureState,
 ) -> RenameFailureState {
     match state {
-        native_files::LocalRenameFailureState::Unchanged => RenameFailureState::Unchanged,
-        native_files::LocalRenameFailureState::Renamed => RenameFailureState::Renamed,
-        native_files::LocalRenameFailureState::Indeterminate => RenameFailureState::Indeterminate,
+        native_files::LocalRenameFailureState::Unchanged => {
+            RenameFailureState::Unchanged
+        }
+        native_files::LocalRenameFailureState::Renamed => {
+            RenameFailureState::Renamed
+        }
+        native_files::LocalRenameFailureState::Indeterminate => {
+            RenameFailureState::Indeterminate
+        }
     }
 }
