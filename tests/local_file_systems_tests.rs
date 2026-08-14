@@ -14,6 +14,8 @@ use qubit_fs::PathSemantics;
 use qubit_fs::SymlinkPolicy;
 use qubit_fs::TempFileOptions;
 use qubit_fs_local::LocalFileSystems;
+use qubit_local_files::LocalCopyOptions;
+use qubit_local_files::LocalListOptions;
 
 /// The host factory returns a concrete hierarchical local filesystem.
 #[test]
@@ -29,6 +31,29 @@ fn test_host_factory_returns_concrete_file_system() {
         file_system.properties().symlink_policy(),
         SymlinkPolicy::FollowWithinFileSystem
     );
+}
+
+/// Provider-level native budgets are accepted by both facade factories.
+#[test]
+fn test_factories_accept_native_options() {
+    let host = LocalFileSystems::host_with_options(
+        LocalListOptions::new(),
+        LocalCopyOptions::new(),
+    )
+    .expect("host filesystem with native options should construct");
+    assert_eq!(host.properties().info().provider_id(), "local-file");
+
+    let root = tempfile::tempdir().expect("root should exist");
+    let id = FileSystemId::new("local-options-root")
+        .expect("filesystem id should be valid");
+    let rooted = LocalFileSystems::rooted_with_options(
+        id,
+        root.path(),
+        LocalListOptions::new(),
+        LocalCopyOptions::new(),
+    )
+    .expect("rooted filesystem with native options should construct");
+    assert!(rooted.properties().info().id().as_str().contains("options"));
 }
 
 /// Native failures expose the adapter's canonical provider identity.
