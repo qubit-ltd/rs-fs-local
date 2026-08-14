@@ -549,6 +549,31 @@ fn test_rooted_operations_map_missing_entries() {
     assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
 }
 
+/// Relative logical paths are rejected before native filesystem operations.
+#[test]
+fn test_relative_paths_are_rejected_by_facade_operations() {
+    let file_system =
+        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let relative = Path::parse("relative")
+        .expect("relative logical path must be syntactically valid");
+    assert_eq!(
+        FsErrorKind::InvalidPath,
+        file_system
+            .stat(&relative)
+            .expect_err("relative stat path must be rejected")
+            .kind(),
+    );
+    let target = path("/target");
+    let copy = file_system
+        .copy(&relative, &target, CopyOptions::file())
+        .expect_err("relative copy path must be rejected");
+    assert_eq!(FsErrorKind::InvalidPath, copy.error().kind());
+    let rename = file_system
+        .rename(&relative, &target, RenameOptions::default())
+        .expect_err("relative rename path must be rejected");
+    assert_eq!(FsErrorKind::InvalidPath, rename.error().kind());
+}
+
 /// Parses one absolute logical path used by the rooted adapter.
 fn path(value: &str) -> Path {
     Path::parse(value).expect("test logical path must be valid")

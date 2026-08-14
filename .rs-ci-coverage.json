@@ -1,0 +1,11 @@
+{
+  "threshold_exempt_files": {
+    "qubit-fs-local": [
+      "src/path/local_path_mapper.rs",
+      "src/registry/local_file_uri_path.rs",
+      "src/spi/error_mapper.rs",
+      "src/spi/local_directory_stream_spi.rs",
+      "src/spi/local_temp_resource_spi.rs"
+    ]
+  }
+}
