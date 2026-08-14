@@ -27,7 +27,8 @@ fn test_local_provider_returns_concrete_resolution() {
         .register(LocalFileSystemProvider::new())
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("file:///tmp/data").expect("the test file URI must parse"),
+        ConnectionUri::parse("file:///tmp/data")
+            .expect("the test file URI must parse"),
     );
 
     let resolution = registry
@@ -48,12 +49,14 @@ fn test_local_provider_canonicalizes_file_uri_path() {
 
     let single_slash = registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:/tmp/data").expect("single-slash URI must parse"),
+            ConnectionUri::parse("file:/tmp/data")
+                .expect("single-slash URI must parse"),
         ))
         .expect("single-slash file URI must resolve");
     let triple_slash = registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///tmp/data").expect("triple-slash URI must parse"),
+            ConnectionUri::parse("file:///tmp/data")
+                .expect("triple-slash URI must parse"),
         ))
         .expect("triple-slash file URI must resolve");
 
@@ -69,7 +72,8 @@ fn test_local_provider_rejects_remote_authority() {
         .register(LocalFileSystemProvider::new())
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("file://remote/share").expect("the test URI must parse"),
+        ConnectionUri::parse("file://remote/share")
+            .expect("the test URI must parse"),
     );
 
     let error = registry
@@ -92,8 +96,9 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
     registry
         .register(LocalFileSystemProvider::default())
         .expect("the local provider descriptor must register");
-    let unsupported_scheme =
-        FileSystemConfig::new(ConnectionUri::parse("memory:///data").expect("test URI must parse"));
+    let unsupported_scheme = FileSystemConfig::new(
+        ConnectionUri::parse("memory:///data").expect("test URI must parse"),
+    );
     assert!(matches!(
         registry.resolve_config(&unsupported_scheme),
         Err(FileSystemRegistryError::Resolution(_))
@@ -101,14 +106,17 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
 
     for config in [
         FileSystemConfig::new(
-            ConnectionUri::parse("file:///data?cache=true").expect("test URI must parse"),
+            ConnectionUri::parse("file:///data?cache=true")
+                .expect("test URI must parse"),
         ),
-        FileSystemConfig::new(ConnectionUri::parse("file:///data").expect("test URI must parse"))
-            .with_options(NonSensitiveMetadata::from(
-                UserMetadata::new()
-                    .with("mode", "test")
-                    .expect("test metadata must be valid"),
-            )),
+        FileSystemConfig::new(
+            ConnectionUri::parse("file:///data").expect("test URI must parse"),
+        )
+        .with_options(NonSensitiveMetadata::from(
+            UserMetadata::new()
+                .with("mode", "test")
+                .expect("test metadata must be valid"),
+        )),
     ] {
         let error = registry
             .resolve_config(&config)
@@ -123,7 +131,8 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
     }
 
     let relative = FileSystemConfig::new(
-        ConnectionUri::parse("file:relative/path").expect("relative file URI must parse"),
+        ConnectionUri::parse("file:relative/path")
+            .expect("relative file URI must parse"),
     );
     let error = registry
         .resolve_config(&relative)
@@ -153,9 +162,10 @@ fn test_local_provider_rejects_embedded_secrets_without_panicking() {
             ConnectionUri::parse(text).expect("test connection URI must parse"),
         );
 
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            registry.resolve_config(&config)
-        }));
+        let outcome =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                registry.resolve_config(&config)
+            }));
 
         let result = outcome.expect("embedded secrets must not panic");
         assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
@@ -167,7 +177,8 @@ fn test_local_provider_rejects_embedded_secrets_without_panicking() {
 #[test]
 fn test_rooted_local_provider_resolves_file_uri() {
     let root = tempfile::tempdir().expect("provider root must be created");
-    let id = FileSystemId::new("provider-rooted-local").expect("test identity must be valid");
+    let id = FileSystemId::new("provider-rooted-local")
+        .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
         .register(
@@ -176,7 +187,8 @@ fn test_rooted_local_provider_resolves_file_uri() {
         )
         .expect("the rooted local provider descriptor must register");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("file:///inside-root").expect("test URI must parse"),
+        ConnectionUri::parse("file:///inside-root")
+            .expect("test URI must parse"),
     );
 
     let resolution = registry
@@ -193,9 +205,12 @@ fn test_rooted_local_provider_pins_opened_authority() {
     let parent = tempfile::tempdir().expect("provider parent must be created");
     let root = parent.path().join("root");
     std::fs::create_dir(&root).expect("provider root must be created");
-    std::fs::write(root.join("value"), b"original").expect("fixture must be written");
-    let id = FileSystemId::new("provider-pinned-root").expect("test identity must be valid");
-    let provider = LocalFileSystemProvider::rooted(id, &root).expect("rooted provider must open");
+    std::fs::write(root.join("value"), b"original")
+        .expect("fixture must be written");
+    let id = FileSystemId::new("provider-pinned-root")
+        .expect("test identity must be valid");
+    let provider = LocalFileSystemProvider::rooted(id, &root)
+        .expect("rooted provider must open");
     std::fs::rename(&root, parent.path().join("old-root"))
         .expect("opened root path must be replaceable");
     std::fs::create_dir(&root).expect("replacement root must be created");
@@ -227,11 +242,13 @@ fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
         .expect("encoded-path fixture must be written");
     std::fs::write(root.path().join("café.txt"), b"payload")
         .expect("UTF-8 encoded-path fixture must be written");
-    let id = FileSystemId::new("provider-encoded-path-root").expect("test identity must be valid");
+    let id = FileSystemId::new("provider-encoded-path-root")
+        .expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id, root.path()).expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(id, root.path())
+                .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
 
@@ -251,7 +268,8 @@ fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
         Path::parse("/report final.txt").expect("test logical path must parse"),
         registry
             .resolve_config(&FileSystemConfig::new(
-                ConnectionUri::parse("file:///report%20final.txt").expect("test URI must parse"),
+                ConnectionUri::parse("file:///report%20final.txt")
+                    .expect("test URI must parse"),
             ))
             .expect("encoded local file URI must resolve")
             .path()
@@ -266,7 +284,8 @@ fn test_rooted_local_provider_rejects_missing_root() {
         "qubit-fs-local-missing-root-{}",
         std::process::id()
     ));
-    let id = FileSystemId::new("provider-missing-root").expect("test identity must be valid");
+    let id = FileSystemId::new("provider-missing-root")
+        .expect("test identity must be valid");
     assert!(
         LocalFileSystemProvider::rooted(id, &root).is_err(),
         "a missing rooted authority must be rejected"

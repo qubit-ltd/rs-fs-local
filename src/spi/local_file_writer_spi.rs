@@ -51,7 +51,10 @@ impl LocalFileWriterSpi {
     ///
     /// An active facade writer session.
     #[inline(always)]
-    pub(crate) fn new(writer: native_files::LocalFileWriter, provider_id: String) -> Self {
+    pub(crate) fn new(
+        writer: native_files::LocalFileWriter,
+        provider_id: String,
+    ) -> Self {
         Self {
             writer: Some(writer),
             terminal_abort_outcome: None,
@@ -179,7 +182,8 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         }
                     },
                 );
-                result = result.with_bytes_written(outcome.bytes_written() as u64);
+                result =
+                    result.with_bytes_written(outcome.bytes_written() as u64);
                 Ok(result)
             }
             Err(error) => {
@@ -187,7 +191,8 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 self.writer = retained;
                 let state = write_failure_state(state, self.writer.is_some());
                 if self.writer.is_none() {
-                    self.terminal_abort_outcome = Some(abort_outcome_from_failure(state));
+                    self.terminal_abort_outcome =
+                        Some(abort_outcome_from_failure(state));
                 }
                 Err(SpiWriteFailure::new(
                     error_mapper::map_without_path(
@@ -238,9 +243,8 @@ impl FileWriterSpi for LocalFileWriterSpi {
 #[inline]
 fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
     match state {
-        WriteFailureState::RetryableNotPublished | WriteFailureState::NotPublished => {
-            WriteAbortOutcome::NotPublished
-        }
+        WriteFailureState::RetryableNotPublished
+        | WriteFailureState::NotPublished => WriteAbortOutcome::NotPublished,
         WriteFailureState::Published => WriteAbortOutcome::Published,
         WriteFailureState::Indeterminate => WriteAbortOutcome::Indeterminate,
     }
@@ -248,12 +252,16 @@ fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
 
 /// Converts native abort publication certainty to the portable outcome.
 #[inline]
-fn abort_outcome(state: Option<native_files::LocalWriteFailureState>) -> WriteAbortOutcome {
+fn abort_outcome(
+    state: Option<native_files::LocalWriteFailureState>,
+) -> WriteAbortOutcome {
     match state {
         None | Some(native_files::LocalWriteFailureState::NotPublished) => {
             WriteAbortOutcome::NotPublished
         }
-        Some(native_files::LocalWriteFailureState::Published) => WriteAbortOutcome::Published,
+        Some(native_files::LocalWriteFailureState::Published) => {
+            WriteAbortOutcome::Published
+        }
         Some(native_files::LocalWriteFailureState::Indeterminate) => {
             WriteAbortOutcome::Indeterminate
         }
@@ -279,9 +287,15 @@ fn write_failure_state(
         native_files::LocalWriteFailureState::NotPublished if retained => {
             WriteFailureState::RetryableNotPublished
         }
-        native_files::LocalWriteFailureState::NotPublished => WriteFailureState::NotPublished,
-        native_files::LocalWriteFailureState::Published => WriteFailureState::Published,
-        native_files::LocalWriteFailureState::Indeterminate => WriteFailureState::Indeterminate,
+        native_files::LocalWriteFailureState::NotPublished => {
+            WriteFailureState::NotPublished
+        }
+        native_files::LocalWriteFailureState::Published => {
+            WriteFailureState::Published
+        }
+        native_files::LocalWriteFailureState::Indeterminate => {
+            WriteFailureState::Indeterminate
+        }
     }
 }
 
@@ -295,7 +309,10 @@ fn write_failure_state(
 ///
 /// A facade abort error with local provider context.
 #[inline(always)]
-fn abort_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
+fn abort_error(
+    error: native_files::LocalFileError,
+    provider_id: &str,
+) -> FsError {
     error_mapper::map_without_path(
         error,
         FsOperation::AbortWriter,
