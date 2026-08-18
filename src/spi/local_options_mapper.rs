@@ -9,18 +9,16 @@
 // contract tests.
 //! Conversion of resolved core options to native local-files options.
 
-use qubit_fs::AtomicityRequirement;
-use qubit_fs::CopyConflictPolicy;
-use qubit_fs::CopyMode;
-use qubit_fs::DurabilityRequirement;
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_fs::MetadataPreservePolicy;
-use qubit_fs::ServerSidePreference;
-use qubit_fs::SymlinkPolicy;
-use qubit_fs::WriteDisposition;
-use qubit_fs::WritePrecondition;
+use qubit_fs::copy::CopyConflictPolicy;
+use qubit_fs::copy::CopyMode;
+use qubit_fs::copy::MetadataPreservePolicy;
+use qubit_fs::copy::ServerSidePreference;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::metadata::AtomicityRequirement;
+use qubit_fs::metadata::DurabilityRequirement;
+use qubit_fs::metadata::SymlinkPolicy;
 use qubit_fs::spi::ResolvedCopyOptions;
 use qubit_fs::spi::ResolvedCreateDirectoryOptions;
 use qubit_fs::spi::ResolvedDeleteOptions;
@@ -28,6 +26,8 @@ use qubit_fs::spi::ResolvedListOptions;
 use qubit_fs::spi::ResolvedReadOptions;
 use qubit_fs::spi::ResolvedRenameOptions;
 use qubit_fs::spi::ResolvedWriteOptions;
+use qubit_fs::write::WriteDisposition;
+use qubit_fs::write::WritePrecondition;
 use qubit_local_files as native_files;
 
 /// Creates native read options for resolved facade options.

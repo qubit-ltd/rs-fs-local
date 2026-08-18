@@ -12,11 +12,11 @@
 use std::path::Path as NativePath;
 use std::path::PathBuf;
 
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_fs::FsResult;
 use qubit_fs::Path;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::error::FsResult;
 use qubit_local_files as native_files;
 
 /// Converts an absolute logical path to a native path in one authority scope.
@@ -40,11 +40,17 @@ pub(crate) fn native(
     path: &Path,
 ) -> FsResult<PathBuf> {
     require_absolute(path)?;
-    native_files::LocalPaths::from_canonical_components(
-        scope,
-        path.components(),
-    )
-    .map_err(|error| map(error, path, FsOperation::ParsePath))
+    let paths = match scope {
+        native_files::LocalFileSystemScope::Host => {
+            native_files::LocalPaths::host()
+        }
+        native_files::LocalFileSystemScope::Rooted => {
+            native_files::LocalPaths::rooted()
+        }
+    };
+    paths
+        .from_canonical_components(path.components())
+        .map_err(|error| map(error, path, FsOperation::ParsePath))
 }
 
 /// Converts a native path to a logical path in one authority scope.
@@ -68,9 +74,17 @@ pub(crate) fn logical(
     path: &NativePath,
     operation: FsOperation,
 ) -> FsResult<Path> {
-    let components =
-        native_files::LocalPaths::to_canonical_components(scope, path)
-            .map_err(|error| map_native(error, operation))?;
+    let paths = match scope {
+        native_files::LocalFileSystemScope::Host => {
+            native_files::LocalPaths::host()
+        }
+        native_files::LocalFileSystemScope::Rooted => {
+            native_files::LocalPaths::rooted()
+        }
+    };
+    let components = paths
+        .to_canonical_components(path)
+        .map_err(|error| map_native(error, operation))?;
     logical_components(&components)
 }
 
