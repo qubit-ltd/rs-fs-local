@@ -12,11 +12,11 @@
 use std::path::Path as NativePath;
 use std::path::PathBuf;
 
-use qubit_fs::Path;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
+use qubit_fs::path::Path;
 use qubit_local_files as native_files;
 
 /// Converts an absolute logical path to a native path in one authority scope.

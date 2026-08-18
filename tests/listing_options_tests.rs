@@ -7,10 +7,10 @@
 // =============================================================================
 //! Public behavior coverage for retained directory-listing options.
 
-use qubit_fs::CreateDirectoryOptions;
-use qubit_fs::ListOptions;
-use qubit_fs::Path;
-use qubit_fs::WriteOptions;
+use qubit_fs::directory::CreateDirectoryOptions;
+use qubit_fs::directory::ListOptions;
+use qubit_fs::path::Path;
+use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 
 /// Prefix filtering includes the exact subtree and preserves requested

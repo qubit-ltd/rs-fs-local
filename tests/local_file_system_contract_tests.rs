@@ -9,14 +9,14 @@
 
 use std::path::PathBuf;
 
-use qubit_fs::CopyOptions;
-use qubit_fs::CreateDirectoryOptions;
 use qubit_fs::FileSystem;
-use qubit_fs::FileSystemId;
-use qubit_fs::FsErrorKind;
-use qubit_fs::ListOptions;
-use qubit_fs::Path;
-use qubit_fs::WriteOptions;
+use qubit_fs::copy::CopyOptions;
+use qubit_fs::directory::CreateDirectoryOptions;
+use qubit_fs::directory::ListOptions;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::path::Path;
+use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::host_path_to_logical;
 use qubit_fs_testkit::FileSystemFixture;
