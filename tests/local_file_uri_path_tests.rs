@@ -7,9 +7,9 @@
 // =============================================================================
 //! Regression coverage for local `file:` URI path decoding.
 
-use qubit_fs::ConnectionUri;
-use qubit_fs::FileSystemId;
-use qubit_fs::FsErrorKind;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;

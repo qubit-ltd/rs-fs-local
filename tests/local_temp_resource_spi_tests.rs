@@ -9,19 +9,19 @@
 
 use std::ffi::OsStr;
 
-use qubit_fs::CopyOptions;
-use qubit_fs::CreateDirectoryOptions;
-use qubit_fs::DeleteOptions;
-use qubit_fs::FileSystemId;
-use qubit_fs::FsErrorKind;
-use qubit_fs::Path;
-use qubit_fs::PersistCleanupState;
-use qubit_fs::PersistFailureState;
-use qubit_fs::PersistOptions;
-use qubit_fs::TempDirectoryOptions;
-use qubit_fs::TempFileOptions;
-use qubit_fs::TempResourceState;
-use qubit_fs::WriteOptions;
+use qubit_fs::copy::CopyOptions;
+use qubit_fs::directory::CreateDirectoryOptions;
+use qubit_fs::directory::DeleteOptions;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::path::Path;
+use qubit_fs::temp::PersistCleanupState;
+use qubit_fs::temp::PersistFailureState;
+use qubit_fs::temp::PersistOptions;
+use qubit_fs::temp::TempOptions as TempFileOptions;
+use qubit_fs::temp::TempOptions as TempDirectoryOptions;
+use qubit_fs::temp::TempResourceState;
+use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::host_path_to_logical;
 use qubit_local_files::install_test_fault;

@@ -6,13 +6,13 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
-use qubit_fs::FileSystemCapability;
-use qubit_fs::FileSystemCapabilitySupport;
-use qubit_fs::FileSystemId;
-use qubit_fs::Path;
-use qubit_fs::PathSemantics;
-use qubit_fs::SymlinkPolicy;
-use qubit_fs::TempFileOptions;
+use qubit_fs::metadata::FileSystemCapability;
+use qubit_fs::metadata::FileSystemCapabilitySupport;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::metadata::SymlinkPolicy;
+use qubit_fs::path::Path;
+use qubit_fs::path::PathSemantics;
+use qubit_fs::temp::TempOptions as TempFileOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_local_files::LocalCopyOptions;
 use qubit_local_files::LocalListOptions;

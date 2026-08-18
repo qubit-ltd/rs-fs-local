@@ -7,8 +7,8 @@
 // =============================================================================
 //! Decoding of raw `file:` URI paths into local canonical path text.
 
-use qubit_fs::Path;
 use qubit_fs::error::FsError;
+use qubit_fs::path::Path;
 use qubit_fs::path::Uri;
 use qubit_spi::error::ProviderFailure;
 
