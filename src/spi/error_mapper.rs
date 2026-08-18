@@ -9,13 +9,13 @@
 // contract tests.
 //! Native error translation with public request context.
 
-use qubit_fs::CopyFailureState;
-use qubit_fs::CopyStats;
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_fs::Path;
-use qubit_fs::RenameFailureState;
+use qubit_fs::copy::CopyFailureState;
+use qubit_fs::copy::CopyStats;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::path::Path;
+use qubit_fs::rename::RenameFailureState;
 use qubit_fs::spi::SpiCopyFailure;
 use qubit_fs::spi::SpiRenameFailure;
 use qubit_local_files as native_files;

@@ -12,29 +12,29 @@
 use std::path::Path as NativePath;
 use std::path::PathBuf;
 
-use qubit_fs::CopyFailureState;
-use qubit_fs::CopyStats;
-use qubit_fs::CreateDirectoryOutcome;
-use qubit_fs::DeleteOutcome;
-use qubit_fs::FileKind;
-use qubit_fs::FileMetadata;
-use qubit_fs::FileSystemCapabilities;
-use qubit_fs::FileSystemCapability;
-use qubit_fs::FileSystemId;
-use qubit_fs::FileSystemInfo;
-use qubit_fs::FileSystemLimit;
-use qubit_fs::FileSystemLimits;
-use qubit_fs::FileSystemProperties;
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_fs::FsResult;
-use qubit_fs::OpenedFileInfo;
-use qubit_fs::Path;
-use qubit_fs::PathConstraints;
-use qubit_fs::PathSemantics;
-use qubit_fs::RenameOutcome;
-use qubit_fs::SymlinkPolicy;
+use qubit_fs::copy::CopyFailureState;
+use qubit_fs::copy::CopyStats;
+use qubit_fs::directory::CreateDirectoryOutcome;
+use qubit_fs::directory::DeleteOutcome;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::error::FsResult;
+use qubit_fs::metadata::FileKind;
+use qubit_fs::metadata::FileMetadata;
+use qubit_fs::metadata::FileSystemCapabilities;
+use qubit_fs::metadata::FileSystemCapability;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::metadata::FileSystemInfo;
+use qubit_fs::metadata::FileSystemLimit;
+use qubit_fs::metadata::FileSystemLimits;
+use qubit_fs::metadata::FileSystemProperties;
+use qubit_fs::metadata::OpenedFileInfo;
+use qubit_fs::metadata::SymlinkPolicy;
+use qubit_fs::path::Path;
+use qubit_fs::path::PathConstraints;
+use qubit_fs::path::PathSemantics;
+use qubit_fs::rename::RenameOutcome;
 use qubit_fs::spi::CopyAttempt;
 use qubit_fs::spi::CopyRequest;
 use qubit_fs::spi::CreateDirectoryRequest;
@@ -51,6 +51,9 @@ use qubit_fs::spi::OpenedReader;
 use qubit_fs::spi::OpenedTempDirectory;
 use qubit_fs::spi::OpenedTempFile;
 use qubit_fs::spi::OpenedWriter;
+use qubit_fs::spi::ProviderOperation;
+use qubit_fs::spi::ProviderOperations;
+use qubit_fs::spi::ProviderProperties;
 use qubit_fs::spi::RenameRequest;
 use qubit_fs::spi::SpiCopyFailure;
 use qubit_fs::spi::SpiRenameFailure;
@@ -361,8 +364,27 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// A snapshot of host identity, capabilities, limits, and path rules.
     #[inline(always)]
-    fn properties(&self) -> FileSystemProperties {
-        self.properties.clone()
+    fn properties(&self) -> ProviderProperties {
+        ProviderProperties::new(
+            self.properties.info().clone(),
+            ProviderOperations::new()
+                .with(ProviderOperation::Stat)
+                .with(ProviderOperation::List)
+                .with(ProviderOperation::OpenReader)
+                .with(ProviderOperation::OpenWriter)
+                .with(ProviderOperation::CreateDirectory)
+                .with(ProviderOperation::DeleteFile)
+                .with(ProviderOperation::DeleteDirectory)
+                .with(ProviderOperation::TryCopy)
+                .with(ProviderOperation::Rename)
+                .with(ProviderOperation::CreateTempFile)
+                .with(ProviderOperation::CreateTempDirectory),
+            self.properties.capabilities(),
+            *self.properties.limits(),
+            self.properties.path_constraints().clone(),
+            self.properties.symlink_policy(),
+        )
+        .expect("local provider properties remain valid")
     }
 
     /// Reads metadata for a host logical path.

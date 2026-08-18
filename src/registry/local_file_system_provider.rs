@@ -9,12 +9,12 @@
 
 use std::path::Path;
 
-use qubit_fs::FileSystemId;
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
 use qubit_fs::Path as FsPath;
-use qubit_fs::Uri;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::path::Uri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemResolution;
 use qubit_fs_registry::FileSystemSpec;

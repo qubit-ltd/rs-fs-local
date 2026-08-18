@@ -11,12 +11,12 @@
 
 use std::path::Path as NativePath;
 
-use qubit_fs::DirEntry;
-use qubit_fs::FileKind;
-use qubit_fs::FsError;
-use qubit_fs::FsOperation;
-use qubit_fs::FsResult;
-use qubit_fs::Path;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsOperation;
+use qubit_fs::error::FsResult;
+use qubit_fs::metadata::DirEntry;
+use qubit_fs::metadata::FileKind;
+use qubit_fs::path::Path;
 use qubit_fs::spi::DirectoryStreamSpi;
 use qubit_fs::spi::ResolvedListOptions;
 use qubit_local_files as native_files;

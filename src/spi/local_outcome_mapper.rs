@@ -9,18 +9,18 @@
 // contract tests.
 //! Native outcome conversion helpers.
 
-use qubit_fs::AchievedAtomicity;
-use qubit_fs::CopyFailureState;
-use qubit_fs::CopyMethod;
-use qubit_fs::CopyOutcome;
-use qubit_fs::CopyStats;
-use qubit_fs::FileKind;
-use qubit_fs::FileMetadata;
-use qubit_fs::MetadataPreservePolicy;
-use qubit_fs::Path;
-use qubit_fs::PublicationMethod;
-use qubit_fs::RenameFailureState;
-use qubit_fs::RenameOutcome;
+use qubit_fs::copy::CopyFailureState;
+use qubit_fs::copy::CopyMethod;
+use qubit_fs::copy::CopyOutcome;
+use qubit_fs::copy::CopyStats;
+use qubit_fs::copy::MetadataPreservePolicy;
+use qubit_fs::metadata::AchievedAtomicity;
+use qubit_fs::metadata::FileKind;
+use qubit_fs::metadata::FileMetadata;
+use qubit_fs::metadata::PublicationMethod;
+use qubit_fs::path::Path;
+use qubit_fs::rename::RenameFailureState;
+use qubit_fs::rename::RenameOutcome;
 use qubit_local_files as native_files;
 
 /// Converts a native metadata snapshot to portable facade metadata.

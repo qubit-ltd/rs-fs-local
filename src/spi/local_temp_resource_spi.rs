@@ -12,20 +12,20 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use qubit_fs::AchievedAtomicity;
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_fs::FsResult;
 use qubit_fs::Path as LogicalPath;
-use qubit_fs::PersistCleanupState;
-use qubit_fs::PersistFailureState;
-use qubit_fs::PersistOptions;
-use qubit_fs::PersistOutcome;
-use qubit_fs::PublicationMethod;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::error::FsResult;
+use qubit_fs::metadata::AchievedAtomicity;
+use qubit_fs::metadata::PublicationMethod;
 use qubit_fs::spi::PersistRequest;
 use qubit_fs::spi::SpiPersistFailure;
 use qubit_fs::spi::TempResourceSpi;
+use qubit_fs::temp::PersistCleanupState;
+use qubit_fs::temp::PersistFailureState;
+use qubit_fs::temp::PersistOptions;
+use qubit_fs::temp::PersistOutcome;
 use qubit_local_files as native_files;
 
 use crate::path::local_path_mapper;

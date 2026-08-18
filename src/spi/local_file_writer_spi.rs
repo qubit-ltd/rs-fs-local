@@ -12,17 +12,17 @@
 use std::io::Result as IoResult;
 use std::io::Write;
 
-use qubit_fs::AchievedAtomicity;
-use qubit_fs::FsError;
-use qubit_fs::FsErrorKind;
-use qubit_fs::FsOperation;
-use qubit_fs::FsResult;
-use qubit_fs::PublicationMethod;
-use qubit_fs::WriteAbortOutcome;
-use qubit_fs::WriteFailureState;
-use qubit_fs::WriteOutcome;
+use qubit_fs::error::FsError;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::error::FsResult;
+use qubit_fs::metadata::AchievedAtomicity;
+use qubit_fs::metadata::PublicationMethod;
+use qubit_fs::metadata::WriteOutcome;
 use qubit_fs::spi::FileWriterSpi;
 use qubit_fs::spi::SpiWriteFailure;
+use qubit_fs::write::WriteAbortOutcome;
+use qubit_fs::write::WriteFailureState;
 use qubit_io::Output;
 use qubit_local_files as native_files;
 

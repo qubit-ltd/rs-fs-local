@@ -12,10 +12,10 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use qubit_fs::FileSystem;
-use qubit_fs::FileSystemId;
-use qubit_fs::FsOperation;
-use qubit_fs::FsResult;
 use qubit_fs::Path as LogicalPath;
+use qubit_fs::error::FsOperation;
+use qubit_fs::error::FsResult;
+use qubit_fs::metadata::FileSystemId;
 use qubit_local_files as native_files;
 #[cfg(feature = "registry")]
 use qubit_spi::ProviderId;
