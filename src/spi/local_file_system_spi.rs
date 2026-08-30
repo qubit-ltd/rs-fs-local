@@ -71,7 +71,7 @@ use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
 use crate::path::local_path_mapper;
 
-/// Host-wide implementation of the synchronous local filesystem SPI.
+/// Host or Rooted implementation of the synchronous local filesystem SPI.
 #[must_use]
 pub struct LocalFileSystemSpi {
     /// Configured Host or Rooted native filesystem engine.
@@ -81,10 +81,6 @@ pub struct LocalFileSystemSpi {
     properties: FileSystemProperties,
     /// Provider identity attached to every translated failure.
     provider_id: String,
-    /// Provider-level listing budget defaults.
-    list_defaults: native_files::LocalListOptions,
-    /// Provider-level copy budget defaults.
-    copy_defaults: native_files::LocalCopyOptions,
 }
 
 impl LocalFileSystemSpi {
@@ -93,8 +89,13 @@ impl LocalFileSystemSpi {
     /// # Returns
     ///
     /// A host SPI with capability support derived from the native backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider error when the Host PWD or portable properties
+    /// cannot be captured.
     #[inline(always)]
-    pub fn new() -> Self {
+    pub fn new() -> FsResult<Self> {
         Self::new_with_options(
             native_files::LocalListOptions::new(),
             native_files::LocalCopyOptions::new(),
@@ -102,24 +103,41 @@ impl LocalFileSystemSpi {
     }
 
     /// Creates the host implementation with provider-level native budgets.
+    ///
+    /// # Parameters
+    ///
+    /// - `list_defaults`: Listing defaults stored on the native instance.
+    /// - `copy_defaults`: Copy defaults stored on the native instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider error when Host construction, native-default
+    /// validation, or portable-property construction fails.
     pub fn new_with_options(
         list_defaults: native_files::LocalListOptions,
         copy_defaults: native_files::LocalCopyOptions,
-    ) -> Self {
-        let native = native_files::LocalFileSystem::host();
-        Self {
-            properties: Self::properties_snapshot(
-                FileSystemId::new("local-host")
-                    .expect("static filesystem identity is valid"),
-                LOCAL_PROVIDER_ID,
-                &native,
-            )
-            .expect("static properties are valid"),
-            provider_id: LOCAL_PROVIDER_ID.to_owned(),
-            native,
+    ) -> FsResult<Self> {
+        let mut native =
+            native_files::LocalFileSystem::host().map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::Provider,
+                    "cannot capture the host local filesystem",
+                    LOCAL_PROVIDER_ID,
+                )
+            })?;
+        Self::configure_native_defaults(
+            &mut native,
             list_defaults,
             copy_defaults,
-        }
+            LOCAL_PROVIDER_ID,
+        )?;
+        Self::from_native(
+            FileSystemId::new("local-host")
+                .expect("static filesystem identity is valid"),
+            LOCAL_PROVIDER_ID,
+            native,
+        )
     }
 
     /// Opens a Rooted filesystem with the default local provider identity.
@@ -129,13 +147,7 @@ impl LocalFileSystemSpi {
     /// Returns a provider error when the native authority or portable
     /// properties cannot be constructed.
     pub fn rooted(id: FileSystemId, root: &NativePath) -> FsResult<Self> {
-        Self::rooted_with_provider_id_and_options(
-            id,
-            LOCAL_PROVIDER_ID,
-            root,
-            native_files::LocalListOptions::new(),
-            native_files::LocalCopyOptions::new(),
-        )
+        Self::rooted_with_provider_id(id, LOCAL_PROVIDER_ID, root)
     }
 
     /// Opens a Rooted filesystem with an explicit provider identity.
@@ -149,15 +161,25 @@ impl LocalFileSystemSpi {
         provider_id: &str,
         root: &NativePath,
     ) -> FsResult<Self> {
-        Self::rooted_with_provider_id_and_options(
-            id,
-            provider_id,
-            root,
-            native_files::LocalListOptions::new(),
-            native_files::LocalCopyOptions::new(),
-        )
+        let native = Self::open_rooted(root, provider_id)?;
+        Self::from_native(id, provider_id, native)
     }
 
+    /// Opens a Rooted filesystem and stores provider-level native defaults on
+    /// its single native instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Filesystem identity exposed through the adapter.
+    /// - `provider_id`: Provider identity attached to mapped failures.
+    /// - `root`: Native directory opened as Rooted authority.
+    /// - `list_defaults`: Listing defaults stored on the native instance.
+    /// - `copy_defaults`: Copy defaults stored on the native instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider error when Rooted construction, native-default
+    /// validation, or portable-property construction fails.
     pub(crate) fn rooted_with_provider_id_and_options(
         id: FileSystemId,
         provider_id: &str,
@@ -165,22 +187,73 @@ impl LocalFileSystemSpi {
         list_defaults: native_files::LocalListOptions,
         copy_defaults: native_files::LocalCopyOptions,
     ) -> FsResult<Self> {
-        let native =
-            native_files::LocalFileSystem::rooted(root).map_err(|error| {
-                FsError::with_source(
-                    FsErrorKind::ProviderUnavailable,
-                    FsOperation::Provider,
-                    "cannot open rooted local filesystem",
+        let mut native = Self::open_rooted(root, provider_id)?;
+        Self::configure_native_defaults(
+            &mut native,
+            list_defaults,
+            copy_defaults,
+            provider_id,
+        )?;
+        Self::from_native(id, provider_id, native)
+    }
+
+    /// Maps one rooted constructor into provider context.
+    fn open_rooted(
+        root: &NativePath,
+        provider_id: &str,
+    ) -> FsResult<native_files::LocalFileSystem> {
+        native_files::LocalFileSystem::rooted(root).map_err(|error| {
+            FsError::with_source(
+                FsErrorKind::ProviderUnavailable,
+                FsOperation::Provider,
+                "cannot open rooted local filesystem",
+                error,
+            )
+            .with_provider(provider_id)
+        })
+    }
+
+    /// Stores provider-level native budgets on the native instance itself.
+    fn configure_native_defaults(
+        native: &mut native_files::LocalFileSystem,
+        list_defaults: native_files::LocalListOptions,
+        copy_defaults: native_files::LocalCopyOptions,
+        provider_id: &str,
+    ) -> FsResult<()> {
+        native
+            .set_default_list_options(list_defaults)
+            .map_err(|error| {
+                error_mapper::map_without_path(
                     error,
+                    FsOperation::Provider,
+                    "invalid native listing defaults",
+                    provider_id,
                 )
             })?;
+        native
+            .set_default_copy_options(copy_defaults)
+            .map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::Provider,
+                    "invalid native copy defaults",
+                    provider_id,
+                )
+            })?;
+        Ok(())
+    }
+
+    /// Builds the SPI around one fully configured native instance.
+    fn from_native(
+        id: FileSystemId,
+        provider_id: &str,
+        native: native_files::LocalFileSystem,
+    ) -> FsResult<Self> {
         let properties = Self::properties_snapshot(id, provider_id, &native)?;
         Ok(Self {
             native,
             properties,
             provider_id: provider_id.to_owned(),
-            list_defaults,
-            copy_defaults,
         })
     }
 
@@ -345,18 +418,6 @@ const fn native_limit(limit: native_files::SizeLimit) -> FileSystemLimit {
     }
 }
 
-impl Default for LocalFileSystemSpi {
-    /// Creates the fixed host filesystem implementation.
-    ///
-    /// # Returns
-    ///
-    /// The same host SPI produced by [`Self::new`].
-    #[inline(always)]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl FileSystemSpi for LocalFileSystemSpi {
     /// Returns the immutable host filesystem properties.
     ///
@@ -435,23 +496,21 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = local_options_mapper::list(
             request.options(),
             self.native.scope(),
-            self.list_defaults,
+            *self.native.default_list_options(),
         )?;
         let rooted = self.is_rooted();
         self.native
-            .list(&path, &options)
+            .list_with_options(&path, &options)
             .map(|value| {
                 let stream = if rooted {
                     LocalDirectoryStreamSpi::rooted(
                         value,
-                        request.path().clone(),
                         request.options(),
                         &self.provider_id,
                     )
                 } else {
                     LocalDirectoryStreamSpi::host(
                         value,
-                        request.path().clone(),
                         request.options(),
                         &self.provider_id,
                     )
@@ -481,7 +540,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::read(request.options());
         self.native
-            .open_reader(&path, &options)
+            .open_reader_with_options(&path, &options)
             .map(|value| {
                 OpenedReader::new(
                     self.info(request.path().clone()),
@@ -514,7 +573,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::write(request.options())?;
         self.native
-            .open_writer(&path, &options)
+            .open_writer_with_options(&path, &options)
             .map(|value| {
                 OpenedWriter::new(
                     self.info(request.path().clone()),
@@ -551,7 +610,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options =
             local_options_mapper::create_directory(request.options())?;
         self.native
-            .create_directory(&path, &options)
+            .create_directory_with_options(&path, &options)
             .map(|value| CreateDirectoryOutcome::new(!value.created()))
             .map_err(|error| {
                 self.map(error, FsOperation::CreateDir, request.path())
@@ -578,7 +637,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::delete(request.options());
         self.native
-            .delete_file(&path, &options)
+            .delete_file_with_options(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
             .map_err(|error| {
                 self.map(error, FsOperation::Delete, request.path())
@@ -605,7 +664,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let path = self.native_path(request.path())?;
         let options = local_options_mapper::delete(request.options());
         self.native
-            .delete_directory(&path, &options)
+            .delete_directory_with_options(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
             .map_err(|error| {
                 self.map(error, FsOperation::Delete, request.path())
@@ -634,7 +693,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = match local_options_mapper::copy(
             request.options(),
             self.native.scope(),
-            self.copy_defaults,
+            *self.native.default_copy_options(),
         ) {
             Ok(options) => options,
             Err(error) => {
@@ -653,7 +712,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .native_pair(request.source(), request.target())
             .map_err(error_mapper::copy_path_error)?;
         self.native
-            .copy(&source, &target, &options)
+            .copy_with_options(&source, &target, &options)
             .map(|value| {
                 CopyAttempt::Completed(local_outcome_mapper::copy(value))
             })
@@ -723,7 +782,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(error_mapper::rename_path_error)?;
         let options = local_options_mapper::rename(request.options());
         self.native
-            .rename(&source, &target, &options)
+            .rename_with_options(&source, &target, &options)
             .map(|value| {
                 local_outcome_mapper::rename(
                     value,
@@ -777,8 +836,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
-        let value =
-            self.native.create_temp_file(&options).map_err(|error| {
+        let value = self
+            .native
+            .create_temp_file_with_options(&options)
+            .map_err(|error| {
                 error_mapper::map_without_path(
                     error,
                     FsOperation::CreateTemp,
@@ -829,17 +890,17 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
-        let value =
-            self.native
-                .create_temp_directory(&options)
-                .map_err(|error| {
-                    error_mapper::map_without_path(
-                        error,
-                        FsOperation::CreateTemp,
-                        "native temporary directory creation failed",
-                        &self.provider_id,
-                    )
-                })?;
+        let value = self
+            .native
+            .create_temp_directory_with_options(&options)
+            .map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::CreateTemp,
+                    "native temporary directory creation failed",
+                    &self.provider_id,
+                )
+            })?;
         let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
         Ok(OpenedTempDirectory::new(
             self.info(path)

@@ -9,14 +9,13 @@
 // contract tests.
 //! Lazy directory walker adapter.
 
-use std::path::Path as NativePath;
+use std::path::PathBuf;
 
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
 use qubit_fs::metadata::DirEntry;
 use qubit_fs::metadata::FileKind;
-use qubit_fs::path::Path;
 use qubit_fs::spi::DirectoryStreamSpi;
 use qubit_fs::spi::ResolvedListOptions;
 use qubit_local_files as native_files;
@@ -33,8 +32,6 @@ pub(crate) enum LocalDirectoryStreamSpi {
     Host(
         /// Native lazy walker that owns the underlying directory traversal.
         native_files::LocalDirectoryWalker,
-        /// Logical path requested as the listing root.
-        Path,
         /// Facade filtering and metadata behavior retained for the stream.
         ListingOptions,
         /// Provider identity attached to lazy traversal failures.
@@ -44,8 +41,6 @@ pub(crate) enum LocalDirectoryStreamSpi {
     Rooted(
         /// Native lazy walker that owns the underlying directory traversal.
         native_files::LocalDirectoryWalker,
-        /// Logical path used as the root for returned entries.
-        Path,
         /// Facade filtering and metadata behavior retained for the stream.
         ListingOptions,
         /// Provider identity attached to lazy traversal failures.
@@ -60,6 +55,7 @@ impl LocalDirectoryStreamSpi {
     ///
     /// - `walker`: Native lazy directory walker.
     /// - `options`: Resolved listing behavior retained for the stream.
+    /// - `provider_id`: Provider identity attached to lazy traversal errors.
     ///
     /// # Returns
     ///
@@ -67,16 +63,10 @@ impl LocalDirectoryStreamSpi {
     #[inline]
     pub(crate) fn host(
         walker: native_files::LocalDirectoryWalker,
-        root: Path,
         options: &ResolvedListOptions,
         provider_id: &str,
     ) -> Self {
-        Self::Host(
-            walker,
-            root,
-            ListingOptions::new(options),
-            provider_id.to_owned(),
-        )
+        Self::Host(walker, ListingOptions::new(options), provider_id.to_owned())
     }
 
     /// Creates a stream that maps entries below a rooted logical path.
@@ -84,8 +74,8 @@ impl LocalDirectoryStreamSpi {
     /// # Parameters
     ///
     /// - `walker`: Native lazy directory walker.
-    /// - `root`: Logical path requested by the caller.
     /// - `options`: Resolved listing behavior retained for the stream.
+    /// - `provider_id`: Provider identity attached to lazy traversal errors.
     ///
     /// # Returns
     ///
@@ -93,13 +83,11 @@ impl LocalDirectoryStreamSpi {
     #[inline]
     pub(crate) fn rooted(
         walker: native_files::LocalDirectoryWalker,
-        root: Path,
         options: &ResolvedListOptions,
         provider_id: &str,
     ) -> Self {
         Self::Rooted(
             walker,
-            root,
             ListingOptions::new(options),
             provider_id.to_owned(),
         )
@@ -120,13 +108,19 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
     /// represented as a canonical logical path.
     fn next_entry(&mut self) -> FsResult<Option<DirEntry>> {
         loop {
-            let (entry, rooted, options, provider_id) = match self {
-                Self::Host(walker, root, options, provider_id) => {
-                    (walker.next(), Some(root.clone()), options, provider_id)
-                }
-                Self::Rooted(walker, root, options, provider_id) => {
-                    (walker.next(), Some(root.clone()), options, provider_id)
-                }
+            let (entry, scope, options, provider_id) = match self {
+                Self::Host(walker, options, provider_id) => (
+                    walker.next(),
+                    native_files::LocalFileSystemScope::Host,
+                    options,
+                    provider_id,
+                ),
+                Self::Rooted(walker, options, provider_id) => (
+                    walker.next(),
+                    native_files::LocalFileSystemScope::Rooted,
+                    options,
+                    provider_id,
+                ),
             };
             let Some(entry) = entry else {
                 return Ok(None);
@@ -135,16 +129,17 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                 entry.map_err(|error| entry_error(error, provider_id))?;
             let logical_relative = local_path_mapper::logical(
                 native_files::LocalFileSystemScope::Rooted,
-                entry.relative_path(),
+                &PathBuf::from(std::path::MAIN_SEPARATOR_STR)
+                    .join(entry.relative_path()),
                 FsOperation::List,
             )?;
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = output_path(
-                rooted.as_ref(),
-                &logical_relative,
-                entry.diagnostic_path(),
+            let path = local_path_mapper::logical(
+                scope,
+                entry.path(),
+                FsOperation::List,
             )?;
             let mut result =
                 DirEntry::new(path, output_kind(entry.metadata().kind()));
@@ -163,6 +158,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 /// # Parameters
 ///
 /// - `error`: Native directory-walk failure.
+/// - `provider_id`: Provider identity attached to the mapped failure.
 ///
 /// # Returns
 ///
@@ -178,43 +174,6 @@ fn entry_error(
         "native directory walk failed",
         provider_id,
     )
-}
-
-/// Resolves one native entry path into caller-visible logical output.
-///
-/// # Parameters
-///
-/// - `root`: Rooted request path, or `None` for host-mode conversion.
-/// - `relative`: Canonical logical path relative to the walker root.
-/// - `native`: Native absolute entry path used by host mode.
-///
-/// # Returns
-///
-/// The canonical logical path to expose for the entry.
-///
-/// # Errors
-///
-/// Returns `InvalidPath` when joining or native-path conversion cannot produce
-/// a canonical logical path.
-fn output_path(
-    root: Option<&Path>,
-    relative: &Path,
-    native: &NativePath,
-) -> FsResult<Path> {
-    match root {
-        Some(root) if relative == &Path::root() => Ok(root.clone()),
-        Some(root) if root == &Path::root() => Ok(relative.clone()),
-        Some(root) => Path::parse(&format!(
-            "{}/{}",
-            root.as_str(),
-            &relative.as_str()[1..]
-        )),
-        None => local_path_mapper::logical(
-            native_files::LocalFileSystemScope::Host,
-            native,
-            FsOperation::List,
-        ),
-    }
 }
 
 /// Converts a native file kind to its facade representation.

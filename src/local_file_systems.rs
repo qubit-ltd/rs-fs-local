@@ -45,7 +45,7 @@ impl LocalFileSystems {
     /// concrete filesystem.
     #[inline(always)]
     pub fn host() -> FsResult<FileSystem> {
-        FileSystem::from_spi(LocalFileSystemSpi::new())
+        FileSystem::from_spi(LocalFileSystemSpi::new()?)
     }
 
     /// Creates the host facade with provider-level native budgets.
@@ -56,7 +56,7 @@ impl LocalFileSystems {
         FileSystem::from_spi(LocalFileSystemSpi::new_with_options(
             list_options,
             copy_options,
-        ))
+        )?)
     }
 
     /// Opens `root` as a descriptor-backed rooted filesystem with a
