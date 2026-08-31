@@ -97,8 +97,8 @@ impl LocalFileSystemSpi {
     #[inline(always)]
     pub fn new() -> FsResult<Self> {
         Self::new_with_options(
-            native_files::LocalListOptions::new(),
-            native_files::LocalCopyOptions::new(),
+            native_files::options::LocalListOptions::new(),
+            native_files::options::LocalCopyOptions::new(),
         )
     }
 
@@ -114,8 +114,8 @@ impl LocalFileSystemSpi {
     /// Returns a provider error when Host construction, native-default
     /// validation, or portable-property construction fails.
     pub fn new_with_options(
-        list_defaults: native_files::LocalListOptions,
-        copy_defaults: native_files::LocalCopyOptions,
+        list_defaults: native_files::options::LocalListOptions,
+        copy_defaults: native_files::options::LocalCopyOptions,
     ) -> FsResult<Self> {
         let mut native =
             native_files::LocalFileSystem::host().map_err(|error| {
@@ -184,8 +184,8 @@ impl LocalFileSystemSpi {
         id: FileSystemId,
         provider_id: &str,
         root: &NativePath,
-        list_defaults: native_files::LocalListOptions,
-        copy_defaults: native_files::LocalCopyOptions,
+        list_defaults: native_files::options::LocalListOptions,
+        copy_defaults: native_files::options::LocalCopyOptions,
     ) -> FsResult<Self> {
         let mut native = Self::open_rooted(root, provider_id)?;
         Self::configure_native_defaults(
@@ -216,8 +216,8 @@ impl LocalFileSystemSpi {
     /// Stores provider-level native budgets on the native instance itself.
     fn configure_native_defaults(
         native: &mut native_files::LocalFileSystem,
-        list_defaults: native_files::LocalListOptions,
-        copy_defaults: native_files::LocalCopyOptions,
+        list_defaults: native_files::options::LocalListOptions,
+        copy_defaults: native_files::options::LocalCopyOptions,
         provider_id: &str,
     ) -> FsResult<()> {
         native
@@ -273,7 +273,7 @@ impl LocalFileSystemSpi {
         provider_id: &str,
         native: &native_files::LocalFileSystem,
     ) -> FsResult<FileSystemProperties> {
-        let native_protocols = native.protocols();
+        let native_capabilities = native.capabilities();
         let mut capabilities = FileSystemCapabilities::new()
             .with_guaranteed(FileSystemCapability::List)
             .with_guaranteed(FileSystemCapability::Read)
@@ -287,24 +287,24 @@ impl LocalFileSystemSpi {
             .with_guaranteed(FileSystemCapability::Copy)
             .with_guaranteed(FileSystemCapability::TempFile)
             .with_guaranteed(FileSystemCapability::TempDirectory);
-        if native_protocols.supports_atomic_rename() {
+        if native_capabilities.supports_atomic_rename() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::AtomicRename);
         }
-        if native_protocols.supports_atomic_replace() {
+        if native_capabilities.supports_atomic_replace() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::AtomicReplace)
                 .with_conditional(FileSystemCapability::AtomicFileCopy);
         }
-        if native_protocols.supports_atomic_temp_persist() {
+        if native_capabilities.supports_atomic_temp_persist() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::AtomicTempPersist);
         }
-        if native_protocols.supports_durable_rename() {
+        if native_capabilities.supports_durable_rename() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::DurableRename);
         }
-        if native_protocols.supports_durable_file_copy() {
+        if native_capabilities.supports_durable_file_copy() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::DurableFileCopy);
         }
@@ -315,11 +315,11 @@ impl LocalFileSystemSpi {
             native_limits(native.limits()),
             PathConstraints::absolute(),
             match native.symlink_policy() {
-                native_files::LocalSymlinkPolicy::Reject => {
+                native_files::policy::LocalSymlinkPolicy::Reject => {
                     SymlinkPolicy::Reject
                 }
-                native_files::LocalSymlinkPolicy::FollowWithinScope
-                | native_files::LocalSymlinkPolicy::FollowAcrossScope => {
+                native_files::policy::LocalSymlinkPolicy::FollowWithinScope
+                | native_files::policy::LocalSymlinkPolicy::FollowAcrossScope => {
                     SymlinkPolicy::FollowWithinFileSystem
                 }
             },
@@ -354,7 +354,7 @@ impl LocalFileSystemSpi {
     fn is_rooted(&self) -> bool {
         matches!(
             self.native.scope(),
-            native_files::LocalFileSystemScope::Rooted
+            native_files::path::LocalFileSystemScope::Rooted
         )
     }
 
@@ -397,24 +397,35 @@ impl LocalFileSystemSpi {
 /// Maps native authority path limits into portable logical path limits.
 #[inline(always)]
 fn native_limits(
-    limits: native_files::LocalFileSystemLimits,
+    limits: native_files::capability::LocalFileSystemLimits,
 ) -> FileSystemLimits {
+    if limits.length_unit()
+        != native_files::capability::LocalPathLengthUnit::Bytes
+    {
+        return FileSystemLimits::unknown();
+    }
     FileSystemLimits::unknown()
-        .with_max_path_text_bytes(native_limit(limits.max_path_bytes()))
+        .with_max_path_text_bytes(native_limit(limits.max_path_length()))
         .with_max_component_text_bytes(native_limit(
-            limits.max_file_name_bytes(),
+            limits.max_component_length(),
         ))
 }
 
 /// Preserves finite, path-dependent, and unavailable native limit semantics.
 #[inline(always)]
-const fn native_limit(limit: native_files::SizeLimit) -> FileSystemLimit {
+const fn native_limit(
+    limit: native_files::capability::SizeLimit,
+) -> FileSystemLimit {
     match limit {
-        native_files::SizeLimit::Maximum(value) => {
+        native_files::capability::SizeLimit::Maximum(value) => {
             FileSystemLimit::Maximum(value)
         }
-        native_files::SizeLimit::VariesByPath => FileSystemLimit::Unknown,
-        native_files::SizeLimit::Unknown => FileSystemLimit::Unknown,
+        native_files::capability::SizeLimit::VariesByPath => {
+            FileSystemLimit::Unknown
+        }
+        native_files::capability::SizeLimit::Unknown => {
+            FileSystemLimit::Unknown
+        }
     }
 }
 
@@ -827,7 +838,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .parent()
             .map(|path| self.native_path(path))
             .transpose()?;
-        let mut options = native_files::LocalTempFileOptions::new()
+        let mut options = native_files::options::LocalTempFileOptions::new()
             .with_prefix(request.options().prefix())
             .with_suffix(request.options().suffix());
         if let Some(parent) = parent.as_deref() {
@@ -881,9 +892,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .parent()
             .map(|path| self.native_path(path))
             .transpose()?;
-        let mut options = native_files::LocalTempDirectoryOptions::new()
-            .with_prefix(request.options().prefix())
-            .with_suffix(request.options().suffix());
+        let mut options =
+            native_files::options::LocalTempDirectoryOptions::new()
+                .with_prefix(request.options().prefix())
+                .with_suffix(request.options().suffix());
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
         }
@@ -911,5 +923,51 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 self.provider_id.clone(),
             )),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::metadata::FileSystemLimit;
+    use qubit_local_files::capability::LocalFileSystemLimits;
+    use qubit_local_files::capability::LocalPathLengthUnit;
+    use qubit_local_files::capability::SizeLimit;
+
+    use super::native_limits;
+
+    /// Verifies byte-native limits map directly into portable text budgets.
+    #[test]
+    fn test_native_limits_maps_byte_units() {
+        let limits = LocalFileSystemLimits::new(
+            SizeLimit::Maximum(4096),
+            SizeLimit::Maximum(255),
+            LocalPathLengthUnit::Bytes,
+        );
+
+        let mapped = native_limits(limits);
+
+        assert_eq!(
+            FileSystemLimit::Maximum(4096),
+            mapped.max_path_text_bytes()
+        );
+        assert_eq!(
+            FileSystemLimit::Maximum(255),
+            mapped.max_component_text_bytes()
+        );
+    }
+
+    /// Verifies UTF-16 limits are not misrepresented as portable byte budgets.
+    #[test]
+    fn test_native_limits_does_not_convert_utf16_units_to_bytes() {
+        let limits = LocalFileSystemLimits::new(
+            SizeLimit::Unknown,
+            SizeLimit::Maximum(255),
+            LocalPathLengthUnit::Utf16CodeUnits,
+        );
+
+        let mapped = native_limits(limits);
+
+        assert_eq!(FileSystemLimit::Unknown, mapped.max_path_text_bytes());
+        assert_eq!(FileSystemLimit::Unknown, mapped.max_component_text_bytes());
     }
 }

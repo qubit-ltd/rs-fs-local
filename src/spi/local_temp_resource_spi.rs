@@ -127,9 +127,9 @@ impl LocalTempResourceSpi {
         };
         let target = local_path_mapper::native(
             if rooted {
-                native_files::LocalFileSystemScope::Rooted
+                native_files::path::LocalFileSystemScope::Rooted
             } else {
-                native_files::LocalFileSystemScope::Host
+                native_files::path::LocalFileSystemScope::Host
             },
             target,
         )
@@ -286,8 +286,8 @@ impl TempResourceSpi for LocalTempResourceSpi {
 #[inline(always)]
 fn persist_options(
     options: &PersistOptions,
-) -> native_files::LocalPersistOptions {
-    let mut native = native_files::LocalPersistOptions::new();
+) -> native_files::options::LocalPersistOptions {
+    let mut native = native_files::options::LocalPersistOptions::new();
     if options.overwrite() {
         native = native.with_overwrite();
     }
@@ -313,14 +313,14 @@ fn persist_options(
 /// Returns an indeterminate persistence failure when the published native path
 /// cannot be converted back to canonical logical form.
 fn map_persist_outcome(
-    result: native_files::LocalPersistOutcome,
+    result: native_files::outcome::LocalPersistOutcome,
     rooted: bool,
 ) -> Result<PersistOutcome, SpiPersistFailure> {
     let logical = local_path_mapper::logical(
         if rooted {
-            native_files::LocalFileSystemScope::Rooted
+            native_files::path::LocalFileSystemScope::Rooted
         } else {
-            native_files::LocalFileSystemScope::Host
+            native_files::path::LocalFileSystemScope::Host
         },
         result.path(),
         FsOperation::PersistTemp,
@@ -334,17 +334,17 @@ fn map_persist_outcome(
             AchievedAtomicity::NonAtomic
         },
         match result.method() {
-            native_files::LocalPersistMethod::AtomicRename => {
+            native_files::outcome::LocalPersistMethod::AtomicRename => {
                 PublicationMethod::AtomicRename
             }
             _ => PublicationMethod::Direct,
         },
     )
     .with_cleanup_state(match result.cleanup_state() {
-        native_files::LocalPersistCleanupState::Complete => {
+        native_files::outcome::LocalPersistCleanupState::Complete => {
             PersistCleanupState::Complete
         }
-        native_files::LocalPersistCleanupState::ResidualSandbox => {
+        native_files::outcome::LocalPersistCleanupState::ResidualSandbox => {
             PersistCleanupState::ResidualTemporaryContainer
         }
         _ => PersistCleanupState::ResidualTemporaryContainer,
@@ -372,9 +372,9 @@ fn persist_file(
     slot: &mut Option<native_files::LocalTempFile>,
     target: &Path,
     logical_target: &LogicalPath,
-    options: native_files::LocalPersistOptions,
+    options: native_files::options::LocalPersistOptions,
     provider_id: &str,
-) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
+) -> Result<native_files::outcome::LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
@@ -418,9 +418,9 @@ fn persist_directory(
     slot: &mut Option<native_files::LocalTempDirectory>,
     target: &Path,
     logical_target: &LogicalPath,
-    options: native_files::LocalPersistOptions,
+    options: native_files::options::LocalPersistOptions,
     provider_id: &str,
-) -> Result<native_files::LocalPersistOutcome, SpiPersistFailure> {
+) -> Result<native_files::outcome::LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
@@ -454,13 +454,13 @@ fn persist_directory(
 /// `Indeterminate`.
 #[inline]
 fn persist_failure_state(
-    state: native_files::LocalPersistFailureState,
+    state: native_files::outcome::LocalPersistFailureState,
 ) -> PersistFailureState {
     match state {
-        native_files::LocalPersistFailureState::NotPublished => {
+        native_files::outcome::LocalPersistFailureState::NotPublished => {
             PersistFailureState::NotPublished
         }
-        native_files::LocalPersistFailureState::Indeterminate => {
+        native_files::outcome::LocalPersistFailureState::Indeterminate => {
             PersistFailureState::Indeterminate
         }
         _ => PersistFailureState::Indeterminate,
@@ -568,7 +568,7 @@ fn directory_cleanup_error(
     error: native_files::LocalFileError,
     provider_id: &str,
 ) -> FsError {
-    if error.kind() == native_files::LocalFileErrorKind::InvalidPath {
+    if error.kind() == native_files::error::LocalFileErrorKind::InvalidPath {
         return FsError::with_source(
             FsErrorKind::NotDirectory,
             FsOperation::CleanupTemp,

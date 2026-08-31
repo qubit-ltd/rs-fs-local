@@ -50,8 +50,8 @@ impl LocalFileSystems {
 
     /// Creates the host facade with provider-level native budgets.
     pub fn host_with_options(
-        list_options: native_files::LocalListOptions,
-        copy_options: native_files::LocalCopyOptions,
+        list_options: native_files::options::LocalListOptions,
+        copy_options: native_files::options::LocalCopyOptions,
     ) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::new_with_options(
             list_options,
@@ -124,8 +124,8 @@ impl LocalFileSystems {
     pub fn rooted_with_options(
         id: FileSystemId,
         root: &Path,
-        list_options: native_files::LocalListOptions,
-        copy_options: native_files::LocalCopyOptions,
+        list_options: native_files::options::LocalListOptions,
+        copy_options: native_files::options::LocalCopyOptions,
     ) -> FsResult<FileSystem> {
         FileSystem::from_spi(
             LocalFileSystemSpi::rooted_with_provider_id_and_options(
@@ -162,7 +162,7 @@ impl LocalFileSystems {
 /// non-UTF-8 Unix names, without routing through lossy display text.
 pub fn host_path_to_logical(path: &Path) -> FsResult<LogicalPath> {
     crate::path::local_path_mapper::logical(
-        native_files::LocalFileSystemScope::Host,
+        native_files::path::LocalFileSystemScope::Host,
         path,
         FsOperation::ParsePath,
     )

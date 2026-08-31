@@ -167,10 +167,10 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         AchievedAtomicity::NonAtomic
                     },
                     match outcome.publication_method() {
-                        native_files::LocalWritePublicationMethod::AtomicRename => {
+                        native_files::outcome::LocalWritePublicationMethod::AtomicRename => {
                             PublicationMethod::AtomicRename
                         }
-                        native_files::LocalWritePublicationMethod::DirectAppend => {
+                        native_files::outcome::LocalWritePublicationMethod::DirectAppend => {
                             PublicationMethod::Direct
                         }
                         _ => {
@@ -253,16 +253,17 @@ fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
 /// Converts native abort publication certainty to the portable outcome.
 #[inline]
 fn abort_outcome(
-    state: Option<native_files::LocalWriteFailureState>,
+    state: Option<native_files::outcome::LocalWriteFailureState>,
 ) -> WriteAbortOutcome {
     match state {
-        None | Some(native_files::LocalWriteFailureState::NotPublished) => {
+        None
+        | Some(native_files::outcome::LocalWriteFailureState::NotPublished) => {
             WriteAbortOutcome::NotPublished
         }
-        Some(native_files::LocalWriteFailureState::Published) => {
+        Some(native_files::outcome::LocalWriteFailureState::Published) => {
             WriteAbortOutcome::Published
         }
-        Some(native_files::LocalWriteFailureState::Indeterminate) => {
+        Some(native_files::outcome::LocalWriteFailureState::Indeterminate) => {
             WriteAbortOutcome::Indeterminate
         }
     }
@@ -280,20 +281,22 @@ fn abort_outcome(
 /// The most precise portable writer failure state supported by both values.
 #[inline]
 fn write_failure_state(
-    state: native_files::LocalWriteFailureState,
+    state: native_files::outcome::LocalWriteFailureState,
     retained: bool,
 ) -> WriteFailureState {
     match state {
-        native_files::LocalWriteFailureState::NotPublished if retained => {
+        native_files::outcome::LocalWriteFailureState::NotPublished
+            if retained =>
+        {
             WriteFailureState::RetryableNotPublished
         }
-        native_files::LocalWriteFailureState::NotPublished => {
+        native_files::outcome::LocalWriteFailureState::NotPublished => {
             WriteFailureState::NotPublished
         }
-        native_files::LocalWriteFailureState::Published => {
+        native_files::outcome::LocalWriteFailureState::Published => {
             WriteFailureState::Published
         }
-        native_files::LocalWriteFailureState::Indeterminate => {
+        native_files::outcome::LocalWriteFailureState::Indeterminate => {
             WriteFailureState::Indeterminate
         }
     }

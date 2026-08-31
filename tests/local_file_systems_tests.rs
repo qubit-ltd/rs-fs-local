@@ -14,8 +14,8 @@ use qubit_fs::path::Path;
 use qubit_fs::path::PathSemantics;
 use qubit_fs::temp::TempOptions as TempFileOptions;
 use qubit_fs_local::LocalFileSystems;
-use qubit_local_files::LocalCopyOptions;
-use qubit_local_files::LocalListOptions;
+use qubit_local_files::options::LocalCopyOptions;
+use qubit_local_files::options::LocalListOptions;
 
 /// The host factory returns a concrete hierarchical local filesystem.
 #[test]

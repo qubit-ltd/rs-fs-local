@@ -41,8 +41,10 @@ use qubit_local_files as native_files;
 ///
 /// Default native local read options.
 #[inline(always)]
-pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::LocalReadOptions {
-    native_files::LocalReadOptions::new()
+pub(crate) fn read(
+    _: &ResolvedReadOptions,
+) -> native_files::options::LocalReadOptions {
+    native_files::options::LocalReadOptions::new()
 }
 
 /// Converts resolved listing options to native walker options.
@@ -63,9 +65,9 @@ pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::LocalReadOptions {
 #[inline]
 pub(crate) fn list(
     options: &ResolvedListOptions,
-    scope: native_files::LocalFileSystemScope,
-    defaults: native_files::LocalListOptions,
-) -> Result<native_files::LocalListOptions, FsError> {
+    scope: native_files::path::LocalFileSystemScope,
+    defaults: native_files::options::LocalListOptions,
+) -> Result<native_files::options::LocalListOptions, FsError> {
     let mut native = defaults;
     if options.options().recursive() || options.options().prefix().is_some() {
         native = native.with_recursive();
@@ -97,16 +99,20 @@ pub(crate) fn list(
 /// express.
 pub(crate) fn write(
     options: &ResolvedWriteOptions,
-) -> Result<native_files::LocalWriteOptions, FsError> {
+) -> Result<native_files::options::LocalWriteOptions, FsError> {
     let options = options.options();
     let mode = match options.disposition() {
-        WriteDisposition::CreateNew => native_files::LocalWriteMode::CreateNew,
-        WriteDisposition::CreateOrReplace => {
-            native_files::LocalWriteMode::CreateOrReplace
+        WriteDisposition::CreateNew => {
+            native_files::options::LocalWriteMode::CreateNew
         }
-        WriteDisposition::Append => native_files::LocalWriteMode::Append,
+        WriteDisposition::CreateOrReplace => {
+            native_files::options::LocalWriteMode::CreateOrReplace
+        }
+        WriteDisposition::Append => {
+            native_files::options::LocalWriteMode::Append
+        }
     };
-    let mut native = native_files::LocalWriteOptions::new(mode)
+    let mut native = native_files::options::LocalWriteOptions::new(mode)
         .with_atomicity(atomicity(options.atomicity()));
     if options.create_parent() {
         native = native.with_parent();
@@ -138,11 +144,11 @@ pub(crate) fn write(
 #[inline]
 pub(crate) fn create_directory(
     options: &ResolvedCreateDirectoryOptions,
-) -> Result<native_files::LocalCreateDirectoryOptions, FsError> {
+) -> Result<native_files::options::LocalCreateDirectoryOptions, FsError> {
     if !options.options().user_metadata().is_empty() {
         return Err(unsupported(FsOperation::CreateDir));
     }
-    let mut native = native_files::LocalCreateDirectoryOptions::new();
+    let mut native = native_files::options::LocalCreateDirectoryOptions::new();
     if options.options().recursive() {
         native = native.with_recursive();
     }
@@ -164,8 +170,8 @@ pub(crate) fn create_directory(
 #[inline]
 pub(crate) fn delete(
     options: &ResolvedDeleteOptions,
-) -> native_files::LocalDeleteOptions {
-    let mut native = native_files::LocalDeleteOptions::new();
+) -> native_files::options::LocalDeleteOptions {
+    let mut native = native_files::options::LocalDeleteOptions::new();
     if options.options().recursive() {
         native = native.with_recursive();
     }
@@ -189,20 +195,20 @@ pub(crate) fn delete(
 #[inline]
 pub(crate) fn rename(
     options: &ResolvedRenameOptions,
-) -> native_files::LocalRenameOptions {
-    let mut native = native_files::LocalRenameOptions::new();
+) -> native_files::options::LocalRenameOptions {
+    let mut native = native_files::options::LocalRenameOptions::new();
     if options.options().overwrite() {
         native = native.with_overwrite();
     }
     native = native.with_durability(match options.options().durability() {
         DurabilityRequirement::Required => {
-            native_files::LocalDurabilityRequirement::Required
+            native_files::policy::LocalDurabilityRequirement::Required
         }
         DurabilityRequirement::Preferred => {
-            native_files::LocalDurabilityRequirement::Preferred
+            native_files::policy::LocalDurabilityRequirement::Preferred
         }
         DurabilityRequirement::NotRequired => {
-            native_files::LocalDurabilityRequirement::NotRequired
+            native_files::policy::LocalDurabilityRequirement::NotRequired
         }
     });
     native
@@ -225,9 +231,9 @@ pub(crate) fn rename(
 /// execution, or metadata preservation beyond portable permissions.
 pub(crate) fn copy(
     options: &ResolvedCopyOptions,
-    scope: native_files::LocalFileSystemScope,
-    defaults: native_files::LocalCopyOptions,
-) -> Result<native_files::LocalCopyOptions, FsError> {
+    scope: native_files::path::LocalFileSystemScope,
+    defaults: native_files::options::LocalCopyOptions,
+) -> Result<native_files::options::LocalCopyOptions, FsError> {
     let symlink_policy = options.symlink_policy();
     let options = options.options();
     if options.continue_on_error()
@@ -256,11 +262,11 @@ pub(crate) fn copy(
     };
     if options.conflict() == CopyConflictPolicy::Overwrite {
         native = native.with_type_conflict(
-            native_files::LocalCopyTypeConflictPolicy::Replace,
+            native_files::options::LocalCopyTypeConflictPolicy::Replace,
         );
     } else if options.conflict() == CopyConflictPolicy::Skip {
         native = native.with_type_conflict(
-            native_files::LocalCopyTypeConflictPolicy::Skip,
+            native_files::options::LocalCopyTypeConflictPolicy::Skip,
         );
     }
     if options.create_parent() {
@@ -272,17 +278,19 @@ pub(crate) fn copy(
 /// Maps an abstract operation override to the native scope-aware policy.
 fn native_symlink_policy(
     policy: SymlinkPolicy,
-    scope: native_files::LocalFileSystemScope,
+    scope: native_files::path::LocalFileSystemScope,
     operation: FsOperation,
-) -> Result<native_files::LocalSymlinkPolicy, FsError> {
+) -> Result<native_files::policy::LocalSymlinkPolicy, FsError> {
     match policy {
-        SymlinkPolicy::Reject => Ok(native_files::LocalSymlinkPolicy::Reject),
+        SymlinkPolicy::Reject => {
+            Ok(native_files::policy::LocalSymlinkPolicy::Reject)
+        }
         SymlinkPolicy::FollowWithinFileSystem => Ok(match scope {
-            native_files::LocalFileSystemScope::Host => {
-                native_files::LocalSymlinkPolicy::FollowAcrossScope
+            native_files::path::LocalFileSystemScope::Host => {
+                native_files::policy::LocalSymlinkPolicy::FollowAcrossScope
             }
-            native_files::LocalFileSystemScope::Rooted => {
-                native_files::LocalSymlinkPolicy::FollowWithinScope
+            native_files::path::LocalFileSystemScope::Rooted => {
+                native_files::policy::LocalSymlinkPolicy::FollowWithinScope
             }
         }),
         _ => Err(unsupported(operation)),
@@ -301,13 +309,17 @@ fn native_symlink_policy(
 #[inline]
 fn copy_conflict(
     value: CopyConflictPolicy,
-) -> native_files::LocalCopyConflictPolicy {
+) -> native_files::options::LocalCopyConflictPolicy {
     match value {
-        CopyConflictPolicy::Fail => native_files::LocalCopyConflictPolicy::Fail,
-        CopyConflictPolicy::Overwrite => {
-            native_files::LocalCopyConflictPolicy::Overwrite
+        CopyConflictPolicy::Fail => {
+            native_files::options::LocalCopyConflictPolicy::Fail
         }
-        CopyConflictPolicy::Skip => native_files::LocalCopyConflictPolicy::Skip,
+        CopyConflictPolicy::Overwrite => {
+            native_files::options::LocalCopyConflictPolicy::Overwrite
+        }
+        CopyConflictPolicy::Skip => {
+            native_files::options::LocalCopyConflictPolicy::Skip
+        }
     }
 }
 
@@ -328,13 +340,13 @@ fn copy_conflict(
 #[inline]
 fn metadata_preservation(
     value: MetadataPreservePolicy,
-) -> Result<native_files::LocalMetadataPreservePolicy, FsError> {
+) -> Result<native_files::options::LocalMetadataPreservePolicy, FsError> {
     match value {
         MetadataPreservePolicy::None => {
-            Ok(native_files::LocalMetadataPreservePolicy::None)
+            Ok(native_files::options::LocalMetadataPreservePolicy::None)
         }
         MetadataPreservePolicy::Portable => {
-            Ok(native_files::LocalMetadataPreservePolicy::Permissions)
+            Ok(native_files::options::LocalMetadataPreservePolicy::Permissions)
         }
         MetadataPreservePolicy::UserMetadata
         | MetadataPreservePolicy::ProviderNative
@@ -354,16 +366,16 @@ fn metadata_preservation(
 #[inline]
 const fn atomicity(
     value: AtomicityRequirement,
-) -> native_files::LocalAtomicityRequirement {
+) -> native_files::policy::LocalAtomicityRequirement {
     match value {
         AtomicityRequirement::Required => {
-            native_files::LocalAtomicityRequirement::Required
+            native_files::policy::LocalAtomicityRequirement::Required
         }
         AtomicityRequirement::Preferred => {
-            native_files::LocalAtomicityRequirement::Preferred
+            native_files::policy::LocalAtomicityRequirement::Preferred
         }
         AtomicityRequirement::NotRequired => {
-            native_files::LocalAtomicityRequirement::NotRequired
+            native_files::policy::LocalAtomicityRequirement::NotRequired
         }
     }
 }
@@ -380,16 +392,16 @@ const fn atomicity(
 #[inline]
 const fn durability(
     value: DurabilityRequirement,
-) -> native_files::LocalDurabilityRequirement {
+) -> native_files::policy::LocalDurabilityRequirement {
     match value {
         DurabilityRequirement::Required => {
-            native_files::LocalDurabilityRequirement::Required
+            native_files::policy::LocalDurabilityRequirement::Required
         }
         DurabilityRequirement::Preferred => {
-            native_files::LocalDurabilityRequirement::Preferred
+            native_files::policy::LocalDurabilityRequirement::Preferred
         }
         DurabilityRequirement::NotRequired => {
-            native_files::LocalDurabilityRequirement::NotRequired
+            native_files::policy::LocalDurabilityRequirement::NotRequired
         }
     }
 }

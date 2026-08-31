@@ -36,16 +36,16 @@ use qubit_local_files as native_files;
 /// represented by the native path layer.
 #[inline]
 pub(crate) fn native(
-    scope: native_files::LocalFileSystemScope,
+    scope: native_files::path::LocalFileSystemScope,
     path: &Path,
 ) -> FsResult<PathBuf> {
     require_absolute(path)?;
     let paths = match scope {
-        native_files::LocalFileSystemScope::Host => {
-            native_files::LocalPaths::host()
+        native_files::path::LocalFileSystemScope::Host => {
+            native_files::path::LocalPaths::host()
         }
-        native_files::LocalFileSystemScope::Rooted => {
-            native_files::LocalPaths::rooted()
+        native_files::path::LocalFileSystemScope::Rooted => {
+            native_files::path::LocalPaths::rooted()
         }
     };
     paths
@@ -70,16 +70,16 @@ pub(crate) fn native(
 /// Returns `InvalidPath` when the native path is not absolute or cannot be
 /// represented in canonical logical form.
 pub(crate) fn logical(
-    scope: native_files::LocalFileSystemScope,
+    scope: native_files::path::LocalFileSystemScope,
     path: &NativePath,
     operation: FsOperation,
 ) -> FsResult<Path> {
     let paths = match scope {
-        native_files::LocalFileSystemScope::Host => {
-            native_files::LocalPaths::host()
+        native_files::path::LocalFileSystemScope::Host => {
+            native_files::path::LocalPaths::host()
         }
-        native_files::LocalFileSystemScope::Rooted => {
-            native_files::LocalPaths::rooted()
+        native_files::path::LocalFileSystemScope::Rooted => {
+            native_files::path::LocalPaths::rooted()
         }
     };
     let components = paths
