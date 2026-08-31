@@ -174,7 +174,7 @@ Adapter 的私有 `LocalPathMapper` 不包含平台算法，而是直接委托
 ```text
 qubit_fs::Path canonical component text
   → LocalPathMapper
-  → native_files::LocalPaths / LocalPathCodec
+  → native_files::path::LocalPaths / LocalPathCodec
   → OsStr / OsString
 ```
 
@@ -192,7 +192,7 @@ Host SPI 将 absolute hierarchical `qubit_fs::Path` 逐 component 转换为 nati
 absolute path：
 
 - `LocalPathMapper` 把 scope 与 logical component iterator 交给
-  `native_files::LocalPaths::from_canonical_components`；
+  `native_files::path::LocalPaths::from_canonical_components`；
 - native 层统一处理 component codec、separator、root、drive、prefix 和 NUL；
 - Windows 第一版只接受 drive-absolute canonical form；UNC/remote authority 在没有
   独立 provider authority 映射前拒绝；
@@ -201,7 +201,7 @@ absolute path：
 ### 7.3 Rooted filesystem
 
 Rooted 模式去除逻辑 absolute root，把剩余 component 转为相对于 native root 的安全
-序列，交给 `native_files::LocalPaths::from_canonical_components`（`Rooted` scope），再调用
+序列，交给 `native_files::path::LocalPaths::from_canonical_components`（`Rooted` scope），再调用
 已通过 `native_files::LocalFileSystem::rooted` 配置的统一 native service。
 
 Adapter 只执行 provider representation 转换；symlink/reparse containment、descriptor
@@ -214,7 +214,7 @@ options，再开始 metadata probe 或其他 native I/O。第二个路径转换�
 路径不能已经触发副作用。
 
 Provider 返回的 native entry/temp path 必须在离开 adapter 前通过
-`native_files::LocalPaths::to_canonical_components`（传入对应 scope）编码回 canonical
+`native_files::path::LocalPaths::to_canonical_components`（传入对应 scope）编码回 canonical
 component text，并构造
 `qubit_fs::Path`。Native 诊断路径不能替换 provider-local identity，也不能进入
 credential-free canonical URI。
