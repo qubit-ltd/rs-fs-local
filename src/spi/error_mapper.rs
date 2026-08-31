@@ -100,7 +100,7 @@ pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
 /// cleanup diagnostics retained by the native pipeline.
 #[inline]
 pub(crate) fn copy_failure(
-    error: native_files::LocalCopyFailure,
+    error: native_files::outcome::LocalCopyFailure,
     path: &Path,
     target: &Path,
     failure_path: Option<&Path>,
@@ -136,26 +136,28 @@ pub(crate) fn copy_failure(
 #[inline]
 fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
     match error.kind() {
-        native_files::LocalFileErrorKind::InvalidPath => {
+        native_files::error::LocalFileErrorKind::InvalidPath => {
             FsErrorKind::InvalidPath
         }
-        native_files::LocalFileErrorKind::InvalidOptions => {
+        native_files::error::LocalFileErrorKind::InvalidOptions => {
             FsErrorKind::InvalidOptions
         }
-        native_files::LocalFileErrorKind::InvalidState => {
+        native_files::error::LocalFileErrorKind::InvalidState => {
             FsErrorKind::InvalidState
         }
-        native_files::LocalFileErrorKind::NotDirectory => {
+        native_files::error::LocalFileErrorKind::NotDirectory => {
             FsErrorKind::NotDirectory
         }
-        native_files::LocalFileErrorKind::IsDirectory => {
+        native_files::error::LocalFileErrorKind::IsDirectory => {
             FsErrorKind::IsDirectory
         }
-        native_files::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
-        native_files::LocalFileErrorKind::Indeterminate => {
+        native_files::error::LocalFileErrorKind::TypeConflict => {
+            FsErrorKind::Conflict
+        }
+        native_files::error::LocalFileErrorKind::Indeterminate => {
             FsErrorKind::Indeterminate
         }
-        native_files::LocalFileErrorKind::PublicationIncomplete => {
+        native_files::error::LocalFileErrorKind::PublicationIncomplete => {
             FsErrorKind::Io
         }
         _ if error.io_error().is_some() => io_kind(error.io_error_kind()),
@@ -187,50 +189,54 @@ pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
 ///
 /// The closest portable filesystem error category; unknown native categories
 /// map to `Other`.
-fn native_kind(kind: native_files::LocalFileErrorKind) -> FsErrorKind {
+fn native_kind(kind: native_files::error::LocalFileErrorKind) -> FsErrorKind {
     match kind {
-        native_files::LocalFileErrorKind::InvalidPath => {
+        native_files::error::LocalFileErrorKind::InvalidPath => {
             FsErrorKind::InvalidPath
         }
-        native_files::LocalFileErrorKind::InvalidOptions => {
+        native_files::error::LocalFileErrorKind::InvalidOptions => {
             FsErrorKind::InvalidOptions
         }
-        native_files::LocalFileErrorKind::InvalidState => {
+        native_files::error::LocalFileErrorKind::InvalidState => {
             FsErrorKind::InvalidState
         }
-        native_files::LocalFileErrorKind::NotFound => FsErrorKind::NotFound,
-        native_files::LocalFileErrorKind::AlreadyExists => {
+        native_files::error::LocalFileErrorKind::NotFound => {
+            FsErrorKind::NotFound
+        }
+        native_files::error::LocalFileErrorKind::AlreadyExists => {
             FsErrorKind::AlreadyExists
         }
-        native_files::LocalFileErrorKind::NotDirectory => {
+        native_files::error::LocalFileErrorKind::NotDirectory => {
             FsErrorKind::NotDirectory
         }
-        native_files::LocalFileErrorKind::IsDirectory => {
+        native_files::error::LocalFileErrorKind::IsDirectory => {
             FsErrorKind::IsDirectory
         }
-        native_files::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
-        native_files::LocalFileErrorKind::PermissionDenied => {
+        native_files::error::LocalFileErrorKind::TypeConflict => {
+            FsErrorKind::Conflict
+        }
+        native_files::error::LocalFileErrorKind::PermissionDenied => {
             FsErrorKind::PermissionDenied
         }
-        native_files::LocalFileErrorKind::Unsupported => {
+        native_files::error::LocalFileErrorKind::Unsupported => {
             FsErrorKind::UnsupportedOperation
         }
-        native_files::LocalFileErrorKind::RequirementNotMet => {
+        native_files::error::LocalFileErrorKind::RequirementNotMet => {
             FsErrorKind::RequirementNotMet
         }
-        native_files::LocalFileErrorKind::ResourceLimit => {
+        native_files::error::LocalFileErrorKind::ResourceLimit => {
             FsErrorKind::ResourceLimitExceeded
         }
-        native_files::LocalFileErrorKind::DataCorruption => {
+        native_files::error::LocalFileErrorKind::DataCorruption => {
             FsErrorKind::DataCorruption
         }
-        native_files::LocalFileErrorKind::PublicationIncomplete => {
+        native_files::error::LocalFileErrorKind::PublicationIncomplete => {
             FsErrorKind::Io
         }
-        native_files::LocalFileErrorKind::Indeterminate => {
+        native_files::error::LocalFileErrorKind::Indeterminate => {
             FsErrorKind::Indeterminate
         }
-        native_files::LocalFileErrorKind::Io => FsErrorKind::Io,
+        native_files::error::LocalFileErrorKind::Io => FsErrorKind::Io,
         _ => FsErrorKind::Other,
     }
 }

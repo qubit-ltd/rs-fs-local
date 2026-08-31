@@ -111,13 +111,13 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let (entry, scope, options, provider_id) = match self {
                 Self::Host(walker, options, provider_id) => (
                     walker.next(),
-                    native_files::LocalFileSystemScope::Host,
+                    native_files::path::LocalFileSystemScope::Host,
                     options,
                     provider_id,
                 ),
                 Self::Rooted(walker, options, provider_id) => (
                     walker.next(),
-                    native_files::LocalFileSystemScope::Rooted,
+                    native_files::path::LocalFileSystemScope::Rooted,
                     options,
                     provider_id,
                 ),
@@ -128,7 +128,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let entry =
                 entry.map_err(|error| entry_error(error, provider_id))?;
             let logical_relative = local_path_mapper::logical(
-                native_files::LocalFileSystemScope::Rooted,
+                native_files::path::LocalFileSystemScope::Rooted,
                 &PathBuf::from(std::path::MAIN_SEPARATOR_STR)
                     .join(entry.relative_path()),
                 FsOperation::List,
@@ -186,24 +186,24 @@ fn entry_error(
 ///
 /// The equivalent facade kind; platform-specific kinds use a `local-*`
 /// `Other` name.
-fn output_kind(kind: native_files::LocalFileKind) -> FileKind {
+fn output_kind(kind: native_files::outcome::LocalFileKind) -> FileKind {
     match kind {
-        native_files::LocalFileKind::File => FileKind::File,
-        native_files::LocalFileKind::Directory => FileKind::Directory,
-        native_files::LocalFileKind::Symlink => FileKind::Symlink,
-        native_files::LocalFileKind::Fifo => {
+        native_files::outcome::LocalFileKind::File => FileKind::File,
+        native_files::outcome::LocalFileKind::Directory => FileKind::Directory,
+        native_files::outcome::LocalFileKind::Symlink => FileKind::Symlink,
+        native_files::outcome::LocalFileKind::Fifo => {
             FileKind::Other("local-fifo".to_owned())
         }
-        native_files::LocalFileKind::Socket => {
+        native_files::outcome::LocalFileKind::Socket => {
             FileKind::Other("local-socket".to_owned())
         }
-        native_files::LocalFileKind::BlockDevice => {
+        native_files::outcome::LocalFileKind::BlockDevice => {
             FileKind::Other("local-block-device".to_owned())
         }
-        native_files::LocalFileKind::CharDevice => {
+        native_files::outcome::LocalFileKind::CharDevice => {
             FileKind::Other("local-char-device".to_owned())
         }
-        native_files::LocalFileKind::Other => {
+        native_files::outcome::LocalFileKind::Other => {
             FileKind::Other("local".to_owned())
         }
         _ => FileKind::Other("local".to_owned()),

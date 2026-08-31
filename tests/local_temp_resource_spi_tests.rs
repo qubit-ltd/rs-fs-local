@@ -24,7 +24,7 @@ use qubit_fs::temp::TempResourceState;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::host_path_to_logical;
-use qubit_local_files::install_test_fault;
+use qubit_local_files::test_support::install_test_fault;
 
 fn run_in_test_fault_process<F>(test_name: &str, fault: &str, action: F)
 where
