@@ -49,11 +49,12 @@ cargo add qubit-fs-local --features registry
 use std::path::Path;
 
 use qubit_fs::{FileSystemId, Path as LogicalPath};
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
+    LocalResourcePolicy::unbounded(),
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
@@ -61,8 +62,10 @@ let metadata = fs.stat(&report)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-只有当进程主机命名空间就是预期 authority 时才选择 `host()`。当文件系统标识需要由应用提供时
-使用 `rooted_with_id`；进程内唯一标识足够时使用 `rooted`。
+所有构造函数都需要 `LocalResourcePolicy`；只有明确接受无界递归资源使用时才用 `unbounded()`，
+否则传入完整的 bounded list/copy limits。只有当进程主机命名空间就是预期 authority 时才选择
+`host(policy)`。当文件系统标识需要由应用提供时使用 `rooted_with_id`；进程内唯一标识足够时
+使用 `rooted`。
 
 ## 进阶用法
 
@@ -70,18 +73,18 @@ let metadata = fs.stat(&report)?;
 
 ```rust
 use qubit_fs::ConnectionUri;
-use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
 let registry = FileSystemRegistry::default();
-registry.register(LocalFileSystemProvider::new())?;
+registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))?;
 let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
 let resolution = registry.resolve_config(&config)?;
 let _metadata = resolution.file_system().stat(resolution.path())?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-如改用 `LocalFileSystemProvider::rooted(id, root)` 注册 provider，它会在构造阶段打开给定的
+如改用 `LocalFileSystemProvider::rooted(id, root, policy)` 注册 provider，它会在构造阶段打开给定的
 原生 authority，并返回 `FsResult<LocalFileSystemProvider>`。后续 resolution 会复用已打开的
 authority，不会重新打开配置的根路径。
 如果同一个 registry 需要多个 rooted authority，请改用

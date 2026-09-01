@@ -20,6 +20,7 @@ use qubit_local_files as native_files;
 #[cfg(feature = "registry")]
 use qubit_spi::ProviderId;
 
+use crate::LocalResourcePolicy;
 use crate::spi::LocalFileSystemSpi;
 
 /// Monotonic process-local suffix for generated rooted filesystem identities.
@@ -44,19 +45,8 @@ impl LocalFileSystems {
     /// Returns an error if the static host SPI cannot be assembled into a
     /// concrete filesystem.
     #[inline(always)]
-    pub fn host() -> FsResult<FileSystem> {
-        FileSystem::from_spi(LocalFileSystemSpi::new()?)
-    }
-
-    /// Creates the host facade with provider-level native budgets.
-    pub fn host_with_options(
-        list_options: native_files::options::LocalListOptions,
-        copy_options: native_files::options::LocalCopyOptions,
-    ) -> FsResult<FileSystem> {
-        FileSystem::from_spi(LocalFileSystemSpi::new_with_options(
-            list_options,
-            copy_options,
-        )?)
+    pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem> {
+        FileSystem::from_spi(LocalFileSystemSpi::new(policy)?)
     }
 
     /// Opens `root` as a descriptor-backed rooted filesystem with a
@@ -81,7 +71,10 @@ impl LocalFileSystems {
     ///
     /// Panics only if the decimal process identifier and monotonic counter
     /// unexpectedly fail the static filesystem-identity syntax.
-    pub fn rooted(root: &Path) -> FsResult<FileSystem> {
+    pub fn rooted(
+        root: &Path,
+        policy: LocalResourcePolicy,
+    ) -> FsResult<FileSystem> {
         let id = {
             let value = format!(
                 "local-rooted-{}-{}",
@@ -92,7 +85,7 @@ impl LocalFileSystems {
                 "process id and monotonic counter form a valid filesystem id",
             )
         };
-        Self::rooted_with_id(id, root)
+        Self::rooted_with_id(id, root, policy)
     }
 
     /// Opens `root` with caller-specified stable identity.
@@ -116,26 +109,9 @@ impl LocalFileSystems {
     pub fn rooted_with_id(
         id: FileSystemId,
         root: &Path,
+        policy: LocalResourcePolicy,
     ) -> FsResult<FileSystem> {
-        FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root)?)
-    }
-
-    /// Opens a rooted facade with provider-level native budgets.
-    pub fn rooted_with_options(
-        id: FileSystemId,
-        root: &Path,
-        list_options: native_files::options::LocalListOptions,
-        copy_options: native_files::options::LocalCopyOptions,
-    ) -> FsResult<FileSystem> {
-        FileSystem::from_spi(
-            LocalFileSystemSpi::rooted_with_provider_id_and_options(
-                id,
-                crate::constants::LOCAL_PROVIDER_ID,
-                root,
-                list_options,
-                copy_options,
-            )?,
-        )
+        FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root, policy)?)
     }
 
     /// Opens `root` with a registry-validated provider identity.
@@ -147,11 +123,13 @@ impl LocalFileSystems {
         id: FileSystemId,
         provider_id: &ProviderId,
         root: &Path,
+        policy: LocalResourcePolicy,
     ) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::rooted_with_provider_id(
             id,
             provider_id.as_str(),
             root,
+            policy,
         )?)
     }
 }

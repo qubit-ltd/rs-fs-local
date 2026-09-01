@@ -181,51 +181,38 @@ impl TempResourceSpi for LocalTempResourceSpi {
                 &provider_id,
             ),
         }?;
-        map_persist_outcome(result, rooted)
+        map_persist_outcome(result, rooted, FsOperation::PersistTemp)
     }
-    /// Releases cleanup ownership without publishing the native resource.
+    /// Publishes the native resource to its generated sibling target.
     ///
     /// # Returns
     ///
-    /// `Ok(())` after ownership is released.
+    /// The generated logical target and confirmed publication facts.
     ///
     /// # Errors
     ///
-    /// Returns `InvalidState` when the resource has already reached a terminal
-    /// lifecycle state.
-    fn keep(&mut self) -> FsResult<()> {
-        match self {
+    /// Returns a recoverable provider failure when publication does not
+    /// complete.
+    fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
+        let (rooted, provider_id) = match self {
             Self::File {
-                resource: value, ..
-            } => {
-                let _ = value
-                    .take()
-                    .ok_or_else(|| {
-                        FsError::new(
-                            FsErrorKind::InvalidState,
-                            FsOperation::KeepTemp,
-                            "temporary resource is terminal",
-                        )
-                    })?
-                    .keep();
-                Ok(())
+                rooted,
+                provider_id,
+                ..
             }
-            Self::Directory {
-                resource: value, ..
-            } => {
-                let _ = value
-                    .take()
-                    .ok_or_else(|| {
-                        FsError::new(
-                            FsErrorKind::InvalidState,
-                            FsOperation::KeepTemp,
-                            "temporary resource is terminal",
-                        )
-                    })?
-                    .keep();
-                Ok(())
+            | Self::Directory {
+                rooted,
+                provider_id,
+                ..
+            } => (*rooted, provider_id.to_owned()),
+        };
+        let result = match self {
+            Self::File { resource, .. } => keep_file(resource, &provider_id),
+            Self::Directory { resource, .. } => {
+                keep_directory(resource, &provider_id)
             }
-        }
+        }?;
+        map_persist_outcome(result, rooted, FsOperation::KeepTemp)
     }
     /// Removes the owned native resource through its creating authority.
     ///
@@ -315,6 +302,7 @@ fn persist_options(
 fn map_persist_outcome(
     result: native_files::outcome::LocalPersistOutcome,
     rooted: bool,
+    operation: FsOperation,
 ) -> Result<PersistOutcome, SpiPersistFailure> {
     let logical = local_path_mapper::logical(
         if rooted {
@@ -323,7 +311,7 @@ fn map_persist_outcome(
             native_files::path::LocalFileSystemScope::Host
         },
         result.path(),
-        FsOperation::PersistTemp,
+        operation,
     )
     .map_err(logical_persist_error)?;
     Ok(PersistOutcome::new(
@@ -434,6 +422,58 @@ fn persist_directory(
                     FsOperation::PersistTemp,
                     logical_target,
                     None,
+                    provider_id,
+                ),
+                persist_failure_state(state),
+            ))
+        }
+    }
+}
+
+/// Keeps a retained native temporary file and restores it after a
+/// pre-publication failure.
+fn keep_file(
+    slot: &mut Option<native_files::LocalTempFile>,
+    provider_id: &str,
+) -> Result<native_files::outcome::LocalPersistOutcome, SpiPersistFailure> {
+    let resource = slot.take().ok_or_else(terminal_persist_error)?;
+    match resource.keep() {
+        Ok(result) => Ok(result),
+        Err(error) => {
+            let (error, resource, _, _, _, state) =
+                error.into_parts_with_state();
+            *slot = Some(resource);
+            Err(SpiPersistFailure::new(
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::KeepTemp,
+                    "temporary file keep failed",
+                    provider_id,
+                ),
+                persist_failure_state(state),
+            ))
+        }
+    }
+}
+
+/// Keeps a retained native temporary directory and restores it after a
+/// pre-publication failure.
+fn keep_directory(
+    slot: &mut Option<native_files::LocalTempDirectory>,
+    provider_id: &str,
+) -> Result<native_files::outcome::LocalPersistOutcome, SpiPersistFailure> {
+    let resource = slot.take().ok_or_else(terminal_persist_error)?;
+    match resource.keep() {
+        Ok(result) => Ok(result),
+        Err(error) => {
+            let (error, resource, _, _, _, state) =
+                error.into_parts_with_state();
+            *slot = Some(resource);
+            Err(SpiPersistFailure::new(
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::KeepTemp,
+                    "temporary directory keep failed",
                     provider_id,
                 ),
                 persist_failure_state(state),

@@ -67,6 +67,7 @@ use super::local_file_writer_spi::LocalFileWriterSpi;
 use super::local_options_mapper;
 use super::local_outcome_mapper;
 use super::local_temp_resource_spi::LocalTempResourceSpi;
+use crate::LocalResourcePolicy;
 use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
 use crate::path::local_path_mapper;
@@ -81,6 +82,9 @@ pub struct LocalFileSystemSpi {
     properties: FileSystemProperties,
     /// Provider identity attached to every translated failure.
     provider_id: String,
+    /// Immutable provider resource policy, separate from native mutable
+    /// defaults.
+    resource_policy: LocalResourcePolicy,
 }
 
 impl LocalFileSystemSpi {
@@ -95,29 +99,8 @@ impl LocalFileSystemSpi {
     /// Returns a provider error when the Host PWD or portable properties
     /// cannot be captured.
     #[inline(always)]
-    pub fn new() -> FsResult<Self> {
-        Self::new_with_options(
-            native_files::options::LocalListOptions::new(),
-            native_files::options::LocalCopyOptions::new(),
-        )
-    }
-
-    /// Creates the host implementation with provider-level native budgets.
-    ///
-    /// # Parameters
-    ///
-    /// - `list_defaults`: Listing defaults stored on the native instance.
-    /// - `copy_defaults`: Copy defaults stored on the native instance.
-    ///
-    /// # Errors
-    ///
-    /// Returns a provider error when Host construction, native-default
-    /// validation, or portable-property construction fails.
-    pub fn new_with_options(
-        list_defaults: native_files::options::LocalListOptions,
-        copy_defaults: native_files::options::LocalCopyOptions,
-    ) -> FsResult<Self> {
-        let mut native =
+    pub fn new(resource_policy: LocalResourcePolicy) -> FsResult<Self> {
+        let native =
             native_files::LocalFileSystem::host().map_err(|error| {
                 error_mapper::map_without_path(
                     error,
@@ -126,17 +109,12 @@ impl LocalFileSystemSpi {
                     LOCAL_PROVIDER_ID,
                 )
             })?;
-        Self::configure_native_defaults(
-            &mut native,
-            list_defaults,
-            copy_defaults,
-            LOCAL_PROVIDER_ID,
-        )?;
         Self::from_native(
             FileSystemId::new("local-host")
                 .expect("static filesystem identity is valid"),
             LOCAL_PROVIDER_ID,
             native,
+            resource_policy,
         )
     }
 
@@ -146,8 +124,17 @@ impl LocalFileSystemSpi {
     ///
     /// Returns a provider error when the native authority or portable
     /// properties cannot be constructed.
-    pub fn rooted(id: FileSystemId, root: &NativePath) -> FsResult<Self> {
-        Self::rooted_with_provider_id(id, LOCAL_PROVIDER_ID, root)
+    pub fn rooted(
+        id: FileSystemId,
+        root: &NativePath,
+        resource_policy: LocalResourcePolicy,
+    ) -> FsResult<Self> {
+        Self::rooted_with_provider_id(
+            id,
+            LOCAL_PROVIDER_ID,
+            root,
+            resource_policy,
+        )
     }
 
     /// Opens a Rooted filesystem with an explicit provider identity.
@@ -160,41 +147,10 @@ impl LocalFileSystemSpi {
         id: FileSystemId,
         provider_id: &str,
         root: &NativePath,
+        resource_policy: LocalResourcePolicy,
     ) -> FsResult<Self> {
         let native = Self::open_rooted(root, provider_id)?;
-        Self::from_native(id, provider_id, native)
-    }
-
-    /// Opens a Rooted filesystem and stores provider-level native defaults on
-    /// its single native instance.
-    ///
-    /// # Parameters
-    ///
-    /// - `id`: Filesystem identity exposed through the adapter.
-    /// - `provider_id`: Provider identity attached to mapped failures.
-    /// - `root`: Native directory opened as Rooted authority.
-    /// - `list_defaults`: Listing defaults stored on the native instance.
-    /// - `copy_defaults`: Copy defaults stored on the native instance.
-    ///
-    /// # Errors
-    ///
-    /// Returns a provider error when Rooted construction, native-default
-    /// validation, or portable-property construction fails.
-    pub(crate) fn rooted_with_provider_id_and_options(
-        id: FileSystemId,
-        provider_id: &str,
-        root: &NativePath,
-        list_defaults: native_files::options::LocalListOptions,
-        copy_defaults: native_files::options::LocalCopyOptions,
-    ) -> FsResult<Self> {
-        let mut native = Self::open_rooted(root, provider_id)?;
-        Self::configure_native_defaults(
-            &mut native,
-            list_defaults,
-            copy_defaults,
-            provider_id,
-        )?;
-        Self::from_native(id, provider_id, native)
+        Self::from_native(id, provider_id, native, resource_policy)
     }
 
     /// Maps one rooted constructor into provider context.
@@ -213,47 +169,19 @@ impl LocalFileSystemSpi {
         })
     }
 
-    /// Stores provider-level native budgets on the native instance itself.
-    fn configure_native_defaults(
-        native: &mut native_files::LocalFileSystem,
-        list_defaults: native_files::options::LocalListOptions,
-        copy_defaults: native_files::options::LocalCopyOptions,
-        provider_id: &str,
-    ) -> FsResult<()> {
-        native
-            .set_default_list_options(list_defaults)
-            .map_err(|error| {
-                error_mapper::map_without_path(
-                    error,
-                    FsOperation::Provider,
-                    "invalid native listing defaults",
-                    provider_id,
-                )
-            })?;
-        native
-            .set_default_copy_options(copy_defaults)
-            .map_err(|error| {
-                error_mapper::map_without_path(
-                    error,
-                    FsOperation::Provider,
-                    "invalid native copy defaults",
-                    provider_id,
-                )
-            })?;
-        Ok(())
-    }
-
     /// Builds the SPI around one fully configured native instance.
     fn from_native(
         id: FileSystemId,
         provider_id: &str,
         native: native_files::LocalFileSystem,
+        resource_policy: LocalResourcePolicy,
     ) -> FsResult<Self> {
         let properties = Self::properties_snapshot(id, provider_id, &native)?;
         Ok(Self {
             native,
             properties,
             provider_id: provider_id.to_owned(),
+            resource_policy,
         })
     }
 
@@ -507,7 +435,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = local_options_mapper::list(
             request.options(),
             self.native.scope(),
-            *self.native.default_list_options(),
+            self.resource_policy.list_options(),
         )?;
         let rooted = self.is_rooted();
         self.native
@@ -704,7 +632,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = match local_options_mapper::copy(
             request.options(),
             self.native.scope(),
-            *self.native.default_copy_options(),
+            self.resource_policy.copy_options(),
         ) {
             Ok(options) => options,
             Err(error) => {

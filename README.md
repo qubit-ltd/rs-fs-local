@@ -36,18 +36,21 @@ absolute logical paths inside that authority:
 use std::path::Path;
 
 use qubit_fs::{FileSystemId, Path as LogicalPath};
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
+    LocalResourcePolicy::unbounded(),
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`LocalFileSystems::host()` opens the process host namespace. `rooted(root)`
+Every constructor requires an explicit `LocalResourcePolicy`: use `unbounded()`
+only when the application deliberately accepts unbounded recursive work, or
+pass `bounded(...)` with all listing and copy budgets. `LocalFileSystems::host(policy)` opens the process host namespace. `rooted(root, policy)`
 generates a process-local identity, while `rooted_with_id(id, root)` preserves
 the caller-provided identity. The latter is the appropriate choice when that
 identity must be stable outside the process.
