@@ -36,14 +36,16 @@ use qubit_fs::write::WriteOptions;
 use qubit_fs::write::WritePrecondition;
 use qubit_fs::write::WriterState;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
 fn rooted_file_system() -> (tempfile::TempDir, FileSystem) {
     let root = tempfile::tempdir().expect("test root must be created");
-    let file_system = LocalFileSystems::rooted(root.path())
-        .expect("rooted local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted local filesystem must be opened");
     (root, file_system)
 }
 
@@ -78,8 +80,8 @@ fn test_host_commit_conflict_preserves_not_published_state() {
     let target = root.path().join("target");
     let logical = host_path_to_logical(&target)
         .expect("host target path must be logical");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must open");
     let mut writer = file_system
         .open_writer(
             &logical,
@@ -112,8 +114,8 @@ fn test_host_abort_failure_retains_writer_for_retry() {
     let target = root.path().join("target");
     let logical = host_path_to_logical(&target)
         .expect("host target path must be logical");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must open");
     let mut writer = file_system
         .open_writer(
             &logical,
@@ -150,8 +152,8 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
         .expect("listing child must be written");
     symlink(outside.path(), root.path().join("link"))
         .expect("listing symlink must be created");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must open");
     let logical_root = host_path_to_logical(root.path())
         .expect("listing root must be logical");
 
@@ -212,8 +214,8 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
     std::fs::create_dir(&source).expect("copy source must be created");
     symlink(outside.path(), source.join("link"))
         .expect("copy symlink must be created");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must open");
     let source =
         host_path_to_logical(&source).expect("copy source must be logical");
 
@@ -274,8 +276,8 @@ fn test_host_rename_supports_durable_operation() {
     let source = root.path().join("source");
     let target = root.path().join("target");
     std::fs::write(&source, b"payload").expect("rename source must be written");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must open");
 
     let outcome = file_system
         .rename(
@@ -297,8 +299,8 @@ fn test_host_rename_supports_durable_operation() {
 #[cfg(unix)]
 #[test]
 fn test_host_stat_preserves_character_device_kind() {
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must open");
     let path = host_path_to_logical(std::path::Path::new("/dev/null"))
         .expect("null-device path must be logical");
 
@@ -317,8 +319,8 @@ fn test_host_stat_preserves_character_device_kind() {
 #[test]
 fn test_stat_maps_not_a_directory_io_kind() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
-    let file_system =
-        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host local filesystem must be opened");
     let component = root.path().join("component");
     std::fs::write(&component, b"payload")
         .expect("file fixture must be written");
@@ -552,8 +554,8 @@ fn test_rooted_operations_map_missing_entries() {
 /// Relative logical paths are rejected before native filesystem operations.
 #[test]
 fn test_relative_paths_are_rejected_by_facade_operations() {
-    let file_system =
-        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host local filesystem must be opened");
     let relative = Path::parse("relative")
         .expect("relative logical path must be syntactically valid");
     assert_eq!(
@@ -591,8 +593,8 @@ fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
 #[test]
 fn test_host_operations_map_missing_native_entries() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
-    let file_system =
-        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host local filesystem must be opened");
     let missing = host_path(&root, "missing");
 
     let stat = file_system
@@ -666,8 +668,8 @@ fn test_host_metadata_maps_symbolic_link_kind() {
     use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().expect("host fixture root must exist");
-    let file_system =
-        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host local filesystem must be opened");
     let referent = root.path().join("referent");
     let link = root.path().join("link");
     std::fs::write(&referent, b"payload").expect("referent should be written");
@@ -686,8 +688,8 @@ fn test_host_metadata_maps_unix_socket_kind() {
     use std::os::unix::net::UnixListener;
 
     let root = tempfile::tempdir().expect("host fixture root must exist");
-    let file_system =
-        LocalFileSystems::host().expect("host local filesystem must be opened");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host local filesystem must be opened");
     let socket = root.path().join("socket");
     let _listener = UnixListener::bind(&socket)
         .expect("Unix-domain socket should be created");

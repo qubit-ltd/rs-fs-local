@@ -18,6 +18,7 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_fs_testkit::FileSystemFixture;
 use qubit_fs_testkit::FixtureError;
@@ -39,8 +40,12 @@ impl RootedFixture {
             .expect("fixture directory must be created");
         let id = FileSystemId::new("local-contract-root")
             .expect("fixture filesystem identity must be valid");
-        let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-            .expect("rooted fixture filesystem must open");
+        let file_system = LocalFileSystems::rooted_with_id(
+            id,
+            root.path(),
+            LocalResourcePolicy::unbounded(),
+        )
+        .expect("rooted fixture filesystem must open");
         Self { root, file_system }
     }
 
@@ -127,7 +132,8 @@ impl HostFixture {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("fixture root must be created");
         let file_system =
-            LocalFileSystems::host().expect("host filesystem must open");
+            LocalFileSystems::host(LocalResourcePolicy::unbounded())
+                .expect("host filesystem must open");
         Self { root, file_system }
     }
 

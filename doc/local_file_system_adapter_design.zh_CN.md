@@ -90,16 +90,19 @@ impl LocalFileSystems {
 
 ```rust
 use qubit_fs::Path as LogicalPath;
+use qubit_fs_local::LocalResourcePolicy;
 use std::path::Path as NativePath;
 
 let file_system = LocalFileSystems::rooted(
     NativePath::new("/data"),
+    LocalResourcePolicy::unbounded(),
 )?;
 let path = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = file_system.stat(&path)?;
 ```
 
-`LocalFileSystems` 只组织 factory，不包含文件算法。
+`LocalFileSystems` 只组织 factory，不包含文件算法。每个 factory 都要求显式 `LocalResourcePolicy`；
+只有调用方明确选择时才允许无界递归资源使用。
 
 ## 5. SPI 实现
 

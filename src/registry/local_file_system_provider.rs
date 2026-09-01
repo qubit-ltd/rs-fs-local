@@ -27,6 +27,7 @@ use qubit_spi::error::ProviderFailure;
 use super::internal::LocalProviderMode;
 use super::local_file_uri_path;
 use crate::LocalFileSystems;
+use crate::LocalResourcePolicy;
 use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
 
@@ -38,6 +39,8 @@ pub struct LocalFileSystemProvider {
     mode: LocalProviderMode,
     /// Descriptor used to register and validate this provider instance.
     descriptor: Option<ProviderDescriptor>,
+    /// Immutable resource policy selected by the embedding application.
+    policy: LocalResourcePolicy,
 }
 
 impl LocalFileSystemProvider {
@@ -48,10 +51,11 @@ impl LocalFileSystemProvider {
     /// A provider that resolves absolute `file:` paths against the process
     /// host filesystem.
     #[inline(always)]
-    pub const fn new() -> Self {
+    pub const fn host(policy: LocalResourcePolicy) -> Self {
         Self {
             mode: LocalProviderMode::Host,
             descriptor: None,
+            policy,
         }
     }
 
@@ -67,8 +71,12 @@ impl LocalFileSystemProvider {
     ///
     /// A provider that resolves accepted paths below the opened `root`.
     #[inline]
-    pub fn rooted(id: FileSystemId, root: &Path) -> Result<Self, FsError> {
-        Self::rooted_with_descriptor(default_descriptor(), id, root)
+    pub fn rooted(
+        id: FileSystemId,
+        root: &Path,
+        policy: LocalResourcePolicy,
+    ) -> Result<Self, FsError> {
+        Self::rooted_with_descriptor(default_descriptor(), id, root, policy)
     }
 
     /// Creates a rooted provider with caller-specified registration metadata.
@@ -80,12 +88,19 @@ impl LocalFileSystemProvider {
         descriptor: ProviderDescriptor,
         id: FileSystemId,
         root: &Path,
+        policy: LocalResourcePolicy,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root)
-            .map(|file_system| Self {
-                mode: LocalProviderMode::Rooted { file_system },
-                descriptor: Some(descriptor),
-            })
+        LocalFileSystems::rooted_with_provider_id(
+            id,
+            descriptor.id(),
+            root,
+            policy,
+        )
+        .map(|file_system| Self {
+            mode: LocalProviderMode::Rooted { file_system },
+            descriptor: Some(descriptor),
+            policy,
+        })
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -146,18 +161,6 @@ impl LocalFileSystemProvider {
     }
 }
 
-impl Default for LocalFileSystemProvider {
-    /// Creates the default host-wide provider.
-    ///
-    /// # Returns
-    ///
-    /// The same host-wide provider produced by [`Self::new`].
-    #[inline(always)]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ProviderMetadata for LocalFileSystemProvider {
     /// Returns the stable local-provider descriptor and the `file` alias.
     ///
@@ -204,7 +207,7 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
-            LocalProviderMode::Host => LocalFileSystems::host(),
+            LocalProviderMode::Host => LocalFileSystems::host(self.policy),
             LocalProviderMode::Rooted { file_system } => {
                 Ok(file_system.clone())
             }

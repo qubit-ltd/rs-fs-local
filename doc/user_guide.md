@@ -54,11 +54,12 @@ cargo add qubit-fs-local --features registry
 use std::path::Path;
 
 use qubit_fs::{FileSystemId, Path as LogicalPath};
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
+    LocalResourcePolicy::unbounded(),
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
@@ -66,7 +67,9 @@ let metadata = fs.stat(&report)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Choose `host()` only when the intended authority is the process host
+Every constructor requires `LocalResourcePolicy`; use `unbounded()` only after
+explicitly accepting unbounded recursive resource use, or pass complete bounded
+list and copy limits. Choose `host(policy)` only when the intended authority is the process host
 namespace. Use `rooted_with_id` when the filesystem identity must be supplied
 by the application; use `rooted` when a distinct process-local identity is
 sufficient.
@@ -78,18 +81,18 @@ assembly time:
 
 ```rust
 use qubit_fs::ConnectionUri;
-use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
 let registry = FileSystemRegistry::default();
-registry.register(LocalFileSystemProvider::new())?;
+registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))?;
 let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
 let resolution = registry.resolve_config(&config)?;
 let _metadata = resolution.file_system().stat(resolution.path())?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`LocalFileSystemProvider::rooted(id, root)` opens the supplied native authority
+`LocalFileSystemProvider::rooted(id, root, policy)` opens the supplied native authority
 during provider construction and returns `FsResult<LocalFileSystemProvider>`.
 Every later resolution reuses that opened authority instead of reopening the
 configured root path.

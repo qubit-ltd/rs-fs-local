@@ -17,6 +17,7 @@ use criterion::criterion_main;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use tempfile::tempdir;
 
@@ -27,8 +28,8 @@ fn bench_local_facade_read_prefix(c: &mut Criterion) {
         .expect("benchmark payload should be written");
     let logical_path =
         host_path_to_logical(&native_path).expect("logical path should map");
-    let filesystem =
-        LocalFileSystems::host().expect("local facade should construct");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("local facade should construct");
     let mut group = c.benchmark_group("local_facade_read_prefix");
     for max_bytes in [4 * 1024, 64 * 1024, 1 << 20] {
         group.throughput(Throughput::Bytes(max_bytes as u64));
@@ -58,8 +59,8 @@ fn bench_local_facade_copy(c: &mut Criterion) {
         host_path_to_logical(&native_source).expect("source should map");
     let target =
         host_path_to_logical(&native_target).expect("target should map");
-    let filesystem =
-        LocalFileSystems::host().expect("local facade should construct");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("local facade should construct");
     c.bench_function("local_facade_copy", |bench| {
         bench.iter_batched(
             || {

@@ -12,6 +12,7 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_spi::ProviderDescriptor;
@@ -24,7 +25,9 @@ use qubit_spi::ProviderSelection;
 fn test_local_provider_modes_select_expected_authority() {
     let host_registry = FileSystemRegistry::default();
     host_registry
-        .register(LocalFileSystemProvider::new())
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
         .expect("host provider must register");
     let host_resolution = host_registry
         .resolve_config(&FileSystemConfig::new(
@@ -48,8 +51,12 @@ fn test_local_provider_modes_select_expected_authority() {
     let rooted_registry = FileSystemRegistry::default();
     rooted_registry
         .register(
-            LocalFileSystemProvider::rooted(rooted_id.clone(), root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(
+                rooted_id.clone(),
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted provider must open"),
         )
         .expect("rooted provider must register");
     let rooted_resolution = rooted_registry
@@ -87,6 +94,7 @@ fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
                 FileSystemId::new("first-root")
                     .expect("filesystem ID must be valid"),
                 first_root.path(),
+                LocalResourcePolicy::unbounded(),
             )
             .expect("first rooted provider must open"),
         )
@@ -98,6 +106,7 @@ fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
                 FileSystemId::new("second-root")
                     .expect("filesystem ID must be valid"),
                 second_root.path(),
+                LocalResourcePolicy::unbounded(),
             )
             .expect("second rooted provider must open"),
         )
@@ -156,6 +165,7 @@ fn test_rooted_provider_errors_retain_descriptor_identity() {
                 FileSystemId::new("errors-root")
                     .expect("filesystem ID must be valid"),
                 root.path(),
+                LocalResourcePolicy::unbounded(),
             )
             .expect("rooted provider must open"),
         )

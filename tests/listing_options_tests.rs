@@ -12,14 +12,16 @@ use qubit_fs::directory::ListOptions;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalResourcePolicy;
 
 /// Prefix filtering includes the exact subtree and preserves requested
 /// metadata without exposing sibling entries.
 #[test]
 fn test_listing_options_filter_prefix_and_include_metadata() {
     let root = tempfile::tempdir().expect("listing root must be created");
-    let file_system = LocalFileSystems::rooted(root.path())
-        .expect("rooted filesystem must open");
+    let file_system =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem must open");
     let list_root =
         Path::parse("/reports").expect("listing path must be valid");
     let matching_directory =
