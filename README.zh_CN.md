@@ -33,19 +33,22 @@ cargo add qubit-fs-local --features registry
 use std::path::Path;
 
 use qubit_fs::{FileSystemId, Path as LogicalPath};
-use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
+    LocalResourcePolicy::unbounded(),
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`LocalFileSystems::host()` 打开进程主机命名空间。`rooted(root)` 生成进程本地标识；
-`rooted_with_id(id, root)` 保留调用方提供的标识。若该标识必须在进程之外保持稳定，应使用后者。
+所有构造函数都要求显式传入 `LocalResourcePolicy`：只有应用明确接受无界递归工作时才使用
+`unbounded()`，否则使用带完整 list/copy 预算的 `bounded(...)`。`LocalFileSystems::host(policy)`
+打开进程主机命名空间；`rooted(root, policy)` 生成进程本地标识；`rooted_with_id(id, root, policy)`
+保留调用方提供的标识。若该标识必须在进程之外保持稳定，应使用后者。
 
 ## 提供的能力
 

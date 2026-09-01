@@ -11,6 +11,7 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
@@ -26,8 +27,12 @@ fn test_rooted_provider_decodes_literal_percent_path_segment() {
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(
+                id,
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
     let resolution = registry
@@ -52,8 +57,12 @@ fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(
+                id,
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
 
@@ -97,6 +106,7 @@ fn test_rooted_provider_round_trips_encoded_unix_backslash() {
                 FileSystemId::new("provider-backslash-path-root")
                     .expect("test identity must be valid"),
                 root.path(),
+                LocalResourcePolicy::unbounded(),
             )
             .expect("rooted provider must open"),
         )
