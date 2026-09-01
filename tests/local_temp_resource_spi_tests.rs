@@ -23,6 +23,7 @@ use qubit_fs::temp::TempOptions as TempDirectoryOptions;
 use qubit_fs::temp::TempResourceState;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_local_files::test_support::install_test_fault;
 
@@ -83,7 +84,7 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
             host_path_to_logical(&target.join("second"))
                 .expect("failed target path must convert to logical path");
 
-        let failure = LocalFileSystems::host()
+        let failure = LocalFileSystems::host(LocalResourcePolicy::unbounded())
             .expect("host filesystem must be created")
             .copy(&source_logical, &target_logical, CopyOptions::tree())
             .expect_err("second child fault must fail the copy");
@@ -108,8 +109,12 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("persist-recovery-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let target =
         Path::parse("/published.txt").expect("target path must be valid");
 
@@ -144,8 +149,12 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("persist-directory-recovery-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let target =
         Path::parse("/published-directory").expect("target path must be valid");
 
@@ -180,8 +189,12 @@ fn test_temp_directory_persist_overwrites_empty_destination() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("persist-directory-overwrite-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let target =
         Path::parse("/published-directory").expect("target path must be valid");
 
@@ -206,8 +219,12 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("persist-file-overwrite-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let target =
         Path::parse("/published.txt").expect("target path must be valid");
 
@@ -234,6 +251,7 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
         temporary
             .keep()
             .expect_err("published temporary file must reject keep")
+            .error()
             .kind(),
         FsErrorKind::InvalidState
     );
@@ -256,8 +274,12 @@ fn test_temp_file_persist_reports_residual_cleanup_state() {
             let root = tempfile::tempdir().expect("test root must be created");
             let id = FileSystemId::new("persist-cleanup-state-root")
                 .expect("test identity must be valid");
-            let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-                .expect("rooted filesystem must be created");
+            let file_system = LocalFileSystems::rooted_with_id(
+                id,
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted filesystem must be created");
             let target = Path::parse("/published.txt")
                 .expect("target path must be valid");
             let mut temporary = file_system
@@ -284,8 +306,12 @@ fn test_temp_file_persist_install_failure_is_indeterminate() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("persist-file-indeterminate-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let target =
         Path::parse("/directory-target").expect("target path must be valid");
 
@@ -312,20 +338,26 @@ fn test_temp_directory_keep_preserves_directory() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-directory-keep-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let mut temporary = file_system
         .create_temp_directory(TempDirectoryOptions::default())
         .expect("temporary directory must be created");
     let path = temporary.path().clone();
 
-    temporary
+    let outcome = temporary
         .keep()
         .expect("temporary directory must be keepable");
 
     assert_eq!(temporary.state(), TempResourceState::Kept);
+    assert_eq!(outcome.target(), temporary.path());
+    assert_ne!(&path, temporary.path());
     file_system
-        .stat(&path)
+        .stat(temporary.path())
         .expect("kept temporary directory must remain accessible");
 }
 
@@ -335,8 +367,12 @@ fn test_temp_directory_cleanup_removes_directory() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-directory-cleanup-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let mut temporary = file_system
         .create_temp_directory(TempDirectoryOptions::default())
         .expect("temporary directory must be created");
@@ -360,8 +396,12 @@ fn test_temp_directory_cleanup_failure_rejects_replacement_path() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-directory-cleanup-retry-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let mut temporary = file_system
         .create_temp_directory(TempDirectoryOptions::default())
         .expect("temporary directory must be created");
@@ -398,17 +438,23 @@ fn test_temp_file_keep_releases_cleanup_ownership() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-file-keep-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let mut temporary = file_system
         .create_temp_file(TempFileOptions::default())
         .expect("temporary file must be created");
     let path = temporary.path().clone();
 
-    temporary.keep().expect("temporary file must be keepable");
+    let outcome = temporary.keep().expect("temporary file must be keepable");
     assert_eq!(temporary.state(), TempResourceState::Kept);
+    assert_eq!(outcome.target(), temporary.path());
+    assert_ne!(&path, temporary.path());
     file_system
-        .stat(&path)
+        .stat(temporary.path())
         .expect("kept temporary file must remain accessible");
     let error = temporary
         .cleanup()
@@ -423,8 +469,12 @@ fn test_temp_file_cleanup_makes_persist_terminal() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-file-cleanup-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let mut temporary = file_system
         .create_temp_file(TempFileOptions::default())
         .expect("temporary file must be created");
@@ -448,8 +498,12 @@ fn test_temp_directory_keep_makes_lifecycle_terminal() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-directory-terminal-root")
         .expect("test identity must be valid");
-    let file_system = LocalFileSystems::rooted_with_id(id, root.path())
-        .expect("rooted filesystem must be created");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
     let mut temporary = file_system
         .create_temp_directory(TempDirectoryOptions::default())
         .expect("temporary directory must be created");
@@ -460,7 +514,7 @@ fn test_temp_directory_keep_makes_lifecycle_terminal() {
     let error = temporary
         .keep()
         .expect_err("kept temporary directory must reject another keep");
-    assert_eq!(error.kind(), FsErrorKind::InvalidState);
+    assert_eq!(error.error().kind(), FsErrorKind::InvalidState);
 }
 
 /// Host temporary resources translate persisted and cleaned paths back into
@@ -475,8 +529,8 @@ fn test_host_temp_resources_persist_and_cleanup() {
             .expect("test root path must be valid UTF-8"),
     )
     .expect("host parent path must be valid");
-    let file_system =
-        LocalFileSystems::host().expect("host filesystem must be created");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem must be created");
     let target = Path::parse(
         root.path()
             .join("published.txt")

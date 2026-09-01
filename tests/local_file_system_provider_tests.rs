@@ -15,6 +15,7 @@ use qubit_fs::metadata::UserMetadata;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
@@ -24,7 +25,9 @@ use qubit_fs_registry::FileSystemRegistryError;
 fn test_local_provider_returns_concrete_resolution() {
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::new())
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
         ConnectionUri::parse("file:///tmp/data")
@@ -44,7 +47,9 @@ fn test_local_provider_returns_concrete_resolution() {
 fn test_local_provider_canonicalizes_file_uri_path() {
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::new())
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
         .expect("the local provider descriptor must register");
 
     let single_slash = registry
@@ -69,7 +74,9 @@ fn test_local_provider_canonicalizes_file_uri_path() {
 fn test_local_provider_rejects_remote_authority() {
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::new())
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
         ConnectionUri::parse("file://remote/share")
@@ -94,7 +101,9 @@ fn test_local_provider_rejects_remote_authority() {
 fn test_local_provider_rejects_unsupported_configuration_shapes() {
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::default())
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
         .expect("the local provider descriptor must register");
     let unsupported_scheme = FileSystemConfig::new(
         ConnectionUri::parse("memory:///data").expect("test URI must parse"),
@@ -156,7 +165,9 @@ fn test_local_provider_rejects_embedded_secrets_without_panicking() {
     ] {
         let registry = FileSystemRegistry::default();
         registry
-            .register(LocalFileSystemProvider::new())
+            .register(LocalFileSystemProvider::host(
+                LocalResourcePolicy::unbounded(),
+            ))
             .expect("the local provider descriptor must register");
         let config = FileSystemConfig::new(
             ConnectionUri::parse(text).expect("test connection URI must parse"),
@@ -182,8 +193,12 @@ fn test_rooted_local_provider_resolves_file_uri() {
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id.clone(), root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(
+                id.clone(),
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
     let config = FileSystemConfig::new(
@@ -209,8 +224,12 @@ fn test_rooted_local_provider_pins_opened_authority() {
         .expect("fixture must be written");
     let id = FileSystemId::new("provider-pinned-root")
         .expect("test identity must be valid");
-    let provider = LocalFileSystemProvider::rooted(id, &root)
-        .expect("rooted provider must open");
+    let provider = LocalFileSystemProvider::rooted(
+        id,
+        &root,
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted provider must open");
     std::fs::rename(&root, parent.path().join("old-root"))
         .expect("opened root path must be replaceable");
     std::fs::create_dir(&root).expect("replacement root must be created");
@@ -247,8 +266,12 @@ fn test_rooted_local_provider_decodes_percent_encoded_path_segments() {
     let registry = FileSystemRegistry::default();
     registry
         .register(
-            LocalFileSystemProvider::rooted(id, root.path())
-                .expect("rooted provider must open"),
+            LocalFileSystemProvider::rooted(
+                id,
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted provider must open"),
         )
         .expect("the rooted local provider descriptor must register");
 
@@ -287,7 +310,12 @@ fn test_rooted_local_provider_rejects_missing_root() {
     let id = FileSystemId::new("provider-missing-root")
         .expect("test identity must be valid");
     assert!(
-        LocalFileSystemProvider::rooted(id, &root).is_err(),
+        LocalFileSystemProvider::rooted(
+            id,
+            &root,
+            LocalResourcePolicy::unbounded()
+        )
+        .is_err(),
         "a missing rooted authority must be rejected"
     );
 }

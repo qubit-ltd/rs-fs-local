@@ -11,6 +11,7 @@
 
 mod constants;
 mod local_file_systems;
+mod local_resource_policy;
 mod path;
 #[cfg(feature = "registry")]
 mod registry;
@@ -18,5 +19,8 @@ pub mod spi;
 
 pub use local_file_systems::LocalFileSystems;
 pub use local_file_systems::host_path_to_logical;
+pub use local_resource_policy::LocalCopyResourceLimits;
+pub use local_resource_policy::LocalListResourceLimits;
+pub use local_resource_policy::LocalResourcePolicy;
 #[cfg(feature = "registry")]
 pub use registry::LocalFileSystemProvider;
