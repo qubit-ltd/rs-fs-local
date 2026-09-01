@@ -4,6 +4,7 @@
 //    SPDX-License-Identifier: Apache-2.0
 // =============================================================================
 //! Explicit recursive resource policy for local filesystem providers.
+// qubit-style: allow multiple-public-types
 
 use std::time::Duration;
 

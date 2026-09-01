@@ -1,0 +1,2 @@
+# Reviewed style exceptions for qubit-fs-local.
+multiple-public-types | src/local_resource_policy.rs | List and copy limits are the inseparable public components of one provider policy.
