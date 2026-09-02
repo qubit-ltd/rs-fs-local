@@ -79,6 +79,18 @@ pub(crate) fn list(
             FsOperation::List,
         )?);
     }
+    if let Some(maximum) = options.options().max_depth() {
+        native =
+            native.with_max_depth(minimum_usize(native.max_depth(), maximum));
+    }
+    if let Some(maximum) = options.options().max_entries() {
+        native = native
+            .with_max_entries(minimum_usize(native.max_entries(), maximum));
+    }
+    if let Some(deadline) = options.options().deadline() {
+        native =
+            native.with_deadline(minimum_duration(native.deadline(), deadline));
+    }
     Ok(native)
 }
 
@@ -113,7 +125,8 @@ pub(crate) fn write(
         }
     };
     let mut native = native_files::options::LocalWriteOptions::new(mode)
-        .with_atomicity(atomicity(options.atomicity()));
+        .with_atomicity(atomicity(options.atomicity()))
+        .with_durability(durability(options.durability()));
     if options.create_parent() {
         native = native.with_parent();
     }
@@ -272,7 +285,41 @@ pub(crate) fn copy(
     if options.create_parent() {
         native = native.with_parent();
     }
+    if let Some(maximum) = options.max_depth() {
+        native =
+            native.with_max_depth(minimum_usize(native.max_depth(), maximum));
+    }
+    if let Some(maximum) = options.max_entries() {
+        native = native
+            .with_max_entries(minimum_usize(native.max_entries(), maximum));
+    }
+    if let Some(maximum) = options.max_bytes() {
+        native =
+            native.with_max_bytes(minimum_u64(native.max_bytes(), maximum));
+    }
+    if let Some(deadline) = options.deadline() {
+        native =
+            native.with_deadline(minimum_duration(native.deadline(), deadline));
+    }
     Ok(native)
+}
+
+#[inline(always)]
+fn minimum_usize(current: Option<usize>, requested: usize) -> usize {
+    current.map_or(requested, |value| value.min(requested))
+}
+
+#[inline(always)]
+fn minimum_u64(current: Option<u64>, requested: u64) -> u64 {
+    current.map_or(requested, |value| value.min(requested))
+}
+
+#[inline(always)]
+fn minimum_duration(
+    current: Option<std::time::Duration>,
+    requested: std::time::Duration,
+) -> std::time::Duration {
+    current.map_or(requested, |value| value.min(requested))
 }
 
 /// Maps an abstract operation override to the native scope-aware policy.
