@@ -543,12 +543,15 @@ fn test_rooted_operations_map_missing_entries() {
         )
         .expect_err("temporary file with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
+    assert_eq!(Some(&regular_file), temporary_file.path());
     let temporary_directory = file_system
         .create_temp_directory(
-            TempDirectoryOptions::default().with_parent(Some(regular_file)),
+            TempDirectoryOptions::default()
+                .with_parent(Some(regular_file.clone())),
         )
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
+    assert_eq!(Some(&regular_file), temporary_directory.path());
 }
 
 /// Relative logical paths are rejected before native filesystem operations.
@@ -653,12 +656,15 @@ fn test_host_operations_map_missing_native_entries() {
         )
         .expect_err("temporary file with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
+    assert_eq!(Some(&file_parent), temporary_file.path());
     let temporary_directory = file_system
         .create_temp_directory(
-            TempDirectoryOptions::default().with_parent(Some(file_parent)),
+            TempDirectoryOptions::default()
+                .with_parent(Some(file_parent.clone())),
         )
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
+    assert_eq!(Some(&file_parent), temporary_directory.path());
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.

@@ -96,8 +96,7 @@ impl LocalFileSystemSpi {
     ///
     /// # Errors
     ///
-    /// Returns a provider error when the Host PWD or portable properties
-    /// cannot be captured.
+    /// Returns a provider error when portable properties cannot be assembled.
     #[inline(always)]
     pub fn new(resource_policy: LocalResourcePolicy) -> FsResult<Self> {
         let native =
@@ -235,6 +234,10 @@ impl LocalFileSystemSpi {
         if native_capabilities.supports_durable_file_copy() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::DurableFileCopy);
+        }
+        if native_capabilities.supports_durable_write() {
+            capabilities = capabilities
+                .with_conditional(FileSystemCapability::DurableWrite);
         }
         FileSystemProperties::new(
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
@@ -477,7 +480,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         request: OpenReaderRequest<'_>,
     ) -> FsResult<OpenedReader> {
         let path = self.native_path(request.path())?;
-        let options = local_options_mapper::read(request.options());
+        let mut options = local_options_mapper::read(request.options());
+        if let Some(timeout) = self.resource_policy.open_retry_timeout() {
+            options = options.with_open_retry_timeout(timeout);
+        }
         self.native
             .open_reader_with_options(&path, &options)
             .map(|value| {
@@ -510,7 +516,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         request: OpenWriterRequest<'_>,
     ) -> FsResult<OpenedWriter> {
         let path = self.native_path(request.path())?;
-        let options = local_options_mapper::write(request.options())?;
+        let mut options = local_options_mapper::write(request.options())?;
+        if let Some(timeout) = self.resource_policy.open_retry_timeout() {
+            options = options.with_open_retry_timeout(timeout);
+        }
         self.native
             .open_writer_with_options(&path, &options)
             .map(|value| {
@@ -656,26 +665,51 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 CopyAttempt::Completed(local_outcome_mapper::copy(value))
             })
             .map_err(|error| {
-                let state = error.state();
+                let state = local_outcome_mapper::copy_failure_state(error.state());
                 let stats = *error.partial_stats();
-                let failure_path =
-                    error.failed_source_path().and_then(|path| {
+                let partial_stats = CopyStats {
+                    files: stats.files(),
+                    directories: stats.directories(),
+                    bytes: stats.bytes(),
+                    skipped: stats.skipped(),
+                    overwritten: stats.overwritten(),
+                    ..Default::default()
+                };
+                let failure_path = error
+                    .failed_source_path()
+                    .map(|path| {
                         local_path_mapper::logical(
                             self.native.scope(),
                             path,
                             FsOperation::Copy,
                         )
-                        .ok()
-                    });
-                let failure_target =
-                    error.failed_target_path().and_then(|path| {
+                    })
+                    .transpose();
+                let failure_target = error
+                    .failed_target_path()
+                    .map(|path| {
                         local_path_mapper::logical(
                             self.native.scope(),
                             path,
                             FsOperation::Copy,
                         )
-                        .ok()
-                    });
+                    })
+                    .transpose();
+                if failure_path.is_err() || failure_target.is_err() {
+                    let mapped = FsError::with_source(
+                        FsErrorKind::ProviderContractViolation,
+                        FsOperation::Copy,
+                        "local copy failure contained an unrepresentable native failure path",
+                        error,
+                    )
+                    .with_path(request.source().clone())
+                    .with_target(request.target().clone())
+                    .with_provider(&self.provider_id)
+                    .with_effect_state(error_mapper::copy_effect_state(state));
+                    return SpiCopyFailure::new(mapped, state, partial_stats);
+                }
+                let failure_path = failure_path.expect("checked successful failure-path conversion");
+                let failure_target = failure_target.expect("checked successful failure-target conversion");
                 SpiCopyFailure::new(
                     error_mapper::copy_failure(
                         error,
@@ -684,16 +718,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         failure_path.as_ref(),
                         failure_target.as_ref(),
                         &self.provider_id,
-                    ),
-                    local_outcome_mapper::copy_failure_state(state),
-                    CopyStats {
-                        files: stats.files(),
-                        directories: stats.directories(),
-                        bytes: stats.bytes(),
-                        skipped: stats.skipped(),
-                        overwritten: stats.overwritten(),
-                        ..Default::default()
-                    },
+                    )
+                    .with_effect_state(error_mapper::copy_effect_state(state)),
+                    state,
+                    partial_stats,
                 )
             })
     }
@@ -731,6 +759,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             })
             .map_err(|error| {
                 let (error, state) = error.into_parts();
+                let state = local_outcome_mapper::rename_failure_state(state);
                 SpiRenameFailure::new(
                     error_mapper::map(
                         error,
@@ -738,8 +767,11 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         request.source(),
                         Some(request.target()),
                         &self.provider_id,
+                    )
+                    .with_effect_state(
+                        error_mapper::rename_effect_state(state),
                     ),
-                    local_outcome_mapper::rename_failure_state(state),
+                    state,
                 )
             })
     }
@@ -775,16 +807,26 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
+        if let Some(max_attempts) = self.resource_policy.temp_max_attempts() {
+            options = options.with_max_attempts(max_attempts.get());
+        }
         let value = self
             .native
             .create_temp_file_with_options(&options)
-            .map_err(|error| {
-                error_mapper::map_without_path(
+            .map_err(|error| match request.options().parent() {
+                Some(parent) => error_mapper::map(
+                    error,
+                    FsOperation::CreateTemp,
+                    parent,
+                    None,
+                    &self.provider_id,
+                ),
+                None => error_mapper::map_without_path(
                     error,
                     FsOperation::CreateTemp,
                     "native temporary file creation failed",
                     &self.provider_id,
-                )
+                ),
             })?;
         let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
         Ok(OpenedTempFile::new(
@@ -830,16 +872,26 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
+        if let Some(max_attempts) = self.resource_policy.temp_max_attempts() {
+            options = options.with_max_attempts(max_attempts.get());
+        }
         let value = self
             .native
             .create_temp_directory_with_options(&options)
-            .map_err(|error| {
-                error_mapper::map_without_path(
+            .map_err(|error| match request.options().parent() {
+                Some(parent) => error_mapper::map(
+                    error,
+                    FsOperation::CreateTemp,
+                    parent,
+                    None,
+                    &self.provider_id,
+                ),
+                None => error_mapper::map_without_path(
                     error,
                     FsOperation::CreateTemp,
                     "native temporary directory creation failed",
                     &self.provider_id,
-                )
+                ),
             })?;
         let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
         Ok(OpenedTempDirectory::new(
