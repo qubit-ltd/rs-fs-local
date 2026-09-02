@@ -6,6 +6,7 @@
 //! Explicit recursive resource policy for local filesystem providers.
 // qubit-style: allow multiple-public-types
 
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use qubit_fs::error::FsError;
@@ -13,6 +14,17 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
 use qubit_local_files as native_files;
+
+/// Behavior used when a recursive walker must close and later revisit a
+/// directory after reaching its open-handle budget.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum LocalDirectoryReopenPolicy {
+    /// Fail instead of reopening directories.
+    Fail,
+    /// Reopen directories and verify that traversal state remains valid.
+    #[default]
+    Reopen,
+}
 
 /// Resource limits applied to recursive local listings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,6 +88,7 @@ impl LocalListResourceLimits {
     }
 
     /// Converts these resource-only limits to neutral native list options.
+    #[cfg_attr(debug_assertions, inline(never))]
     pub(crate) const fn native_options(
         self,
     ) -> native_files::options::LocalListOptions {
@@ -150,6 +163,7 @@ impl LocalCopyResourceLimits {
     }
 
     /// Converts these resource-only limits to neutral native copy options.
+    #[cfg_attr(debug_assertions, inline(never))]
     pub(crate) const fn native_options(
         self,
     ) -> native_files::options::LocalCopyOptions {
@@ -167,6 +181,9 @@ impl LocalCopyResourceLimits {
 pub struct LocalResourcePolicy {
     list: Option<LocalListResourceLimits>,
     copy: Option<LocalCopyResourceLimits>,
+    open_retry_timeout: Option<Duration>,
+    temp_max_attempts: Option<NonZeroUsize>,
+    directory_reopen_policy: LocalDirectoryReopenPolicy,
 }
 
 impl LocalResourcePolicy {
@@ -179,6 +196,9 @@ impl LocalResourcePolicy {
         Self {
             list: Some(list),
             copy: Some(copy),
+            open_retry_timeout: None,
+            temp_max_attempts: None,
+            directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
         }
     }
 
@@ -188,6 +208,9 @@ impl LocalResourcePolicy {
         Self {
             list: None,
             copy: None,
+            open_retry_timeout: None,
+            temp_max_attempts: None,
+            directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
         }
     }
 
@@ -203,13 +226,69 @@ impl LocalResourcePolicy {
         self.copy
     }
 
+    /// Returns the local open retry timeout used for readers and writers.
+    #[must_use]
+    pub const fn open_retry_timeout(self) -> Option<Duration> {
+        self.open_retry_timeout
+    }
+
+    /// Returns the maximum number of temporary-name attempts.
+    #[must_use]
+    pub const fn temp_max_attempts(self) -> Option<NonZeroUsize> {
+        self.temp_max_attempts
+    }
+
+    /// Returns the directory reopen behavior used by recursive walkers.
+    #[must_use]
+    pub const fn directory_reopen_policy(self) -> LocalDirectoryReopenPolicy {
+        self.directory_reopen_policy
+    }
+
+    /// Sets the local open retry timeout used for readers and writers.
+    #[must_use]
+    pub const fn with_open_retry_timeout(
+        mut self,
+        timeout: Option<Duration>,
+    ) -> Self {
+        self.open_retry_timeout = timeout;
+        self
+    }
+
+    /// Sets the maximum number of temporary-name attempts.
+    #[must_use]
+    pub const fn with_temp_max_attempts(
+        mut self,
+        max_attempts: Option<NonZeroUsize>,
+    ) -> Self {
+        self.temp_max_attempts = max_attempts;
+        self
+    }
+
+    /// Sets the directory reopen behavior used by recursive walkers.
+    #[must_use]
+    pub const fn with_directory_reopen_policy(
+        mut self,
+        policy: LocalDirectoryReopenPolicy,
+    ) -> Self {
+        self.directory_reopen_policy = policy;
+        self
+    }
+
     pub(crate) const fn list_options(
         self,
     ) -> native_files::options::LocalListOptions {
-        match self.list {
+        let options = match self.list {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalListOptions::new(),
-        }
+        };
+        options.with_reopen_policy(match self.directory_reopen_policy {
+            LocalDirectoryReopenPolicy::Fail => {
+                native_files::options::LocalDirectoryReopenPolicy::Fail
+            }
+            LocalDirectoryReopenPolicy::Reopen => {
+                native_files::options::LocalDirectoryReopenPolicy::Reopen
+            }
+        })
     }
 
     pub(crate) const fn copy_options(

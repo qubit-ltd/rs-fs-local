@@ -4,9 +4,12 @@
 //    SPDX-License-Identifier: Apache-2.0
 // =============================================================================
 
+use std::hint::black_box;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDirectoryReopenPolicy;
 use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 
@@ -39,4 +42,44 @@ fn unbounded_policy_is_an_explicit_empty_budget_selection() {
     let policy = LocalResourcePolicy::unbounded();
     assert_eq!(policy.list_limits(), None);
     assert_eq!(policy.copy_limits(), None);
+}
+
+#[test]
+fn local_execution_controls_are_explicit_and_independent_of_recursion_budgets()
+{
+    let timeout = Duration::from_millis(250);
+    let attempts = NonZeroUsize::new(32).expect("positive attempt count");
+    let policy = black_box(
+        LocalResourcePolicy::with_open_retry_timeout
+            as fn(LocalResourcePolicy, Option<Duration>) -> LocalResourcePolicy,
+    )(LocalResourcePolicy::unbounded(), Some(timeout));
+    let policy = black_box(
+        LocalResourcePolicy::with_temp_max_attempts
+            as fn(
+                LocalResourcePolicy,
+                Option<NonZeroUsize>,
+            ) -> LocalResourcePolicy,
+    )(policy, Some(attempts));
+    let policy = black_box(
+        LocalResourcePolicy::with_directory_reopen_policy
+            as fn(
+                LocalResourcePolicy,
+                LocalDirectoryReopenPolicy,
+            ) -> LocalResourcePolicy,
+    )(policy, LocalDirectoryReopenPolicy::Fail);
+
+    assert_eq!(
+        Some(timeout),
+        black_box(LocalResourcePolicy::open_retry_timeout)(policy)
+    );
+    assert_eq!(
+        Some(attempts),
+        black_box(LocalResourcePolicy::temp_max_attempts)(policy)
+    );
+    assert_eq!(
+        LocalDirectoryReopenPolicy::Fail,
+        policy.directory_reopen_policy()
+    );
+    assert_eq!(None, policy.list_limits());
+    assert_eq!(None, policy.copy_limits());
 }
