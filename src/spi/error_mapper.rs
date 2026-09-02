@@ -11,6 +11,7 @@
 
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyStats;
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -41,11 +42,15 @@ pub(crate) fn map(
     provider_id: &str,
 ) -> FsError {
     let kind = error_kind(&error);
-    let error = FsError::with_source(
-        kind,
-        operation,
-        "local filesystem operation failed",
-        error,
+    let effect_state = native_effect_state(&error);
+    let error = attach_native_effect(
+        FsError::with_source(
+            kind,
+            operation,
+            "local filesystem operation failed",
+            error,
+        ),
+        effect_state,
     )
     .with_path(path.clone())
     .with_provider(provider_id);
@@ -74,8 +79,12 @@ pub(crate) fn map_without_path(
     provider_id: &str,
 ) -> FsError {
     let kind = error_kind(&error);
-    FsError::with_source(kind, operation, message, error)
-        .with_provider(provider_id)
+    let effect_state = native_effect_state(&error);
+    attach_native_effect(
+        FsError::with_source(kind, operation, message, error),
+        effect_state,
+    )
+    .with_provider(provider_id)
 }
 
 /// Wraps a path-conversion error before native copy starts.
@@ -126,6 +135,59 @@ pub(crate) fn copy_failure(
             error.with_failure_target(failure_target.clone())
         }
         None => error,
+    }
+}
+
+/// Attaches an explicit effect state for native error categories that prove
+/// publication progress independently of a typed operation failure.
+#[inline]
+fn attach_native_effect(
+    error: FsError,
+    effect_state: Option<FsEffectState>,
+) -> FsError {
+    match effect_state {
+        Some(effect_state) => error.with_effect_state(effect_state),
+        None => error,
+    }
+}
+
+#[inline]
+fn native_effect_state(
+    error: &native_files::LocalFileError,
+) -> Option<FsEffectState> {
+    match error.kind() {
+        native_files::error::LocalFileErrorKind::PublicationIncomplete => {
+            Some(FsEffectState::PartiallyApplied)
+        }
+        native_files::error::LocalFileErrorKind::Indeterminate => {
+            Some(FsEffectState::Indeterminate)
+        }
+        _ => None,
+    }
+}
+
+/// Converts portable copy failure state into provider-neutral effect state.
+#[inline]
+pub(crate) const fn copy_effect_state(
+    state: CopyFailureState,
+) -> FsEffectState {
+    match state {
+        CopyFailureState::Unchanged => FsEffectState::Unchanged,
+        CopyFailureState::PartiallyPublished => FsEffectState::PartiallyApplied,
+        CopyFailureState::Published => FsEffectState::Applied,
+        CopyFailureState::Indeterminate => FsEffectState::Indeterminate,
+    }
+}
+
+/// Converts portable rename failure state into provider-neutral effect state.
+#[inline]
+pub(crate) const fn rename_effect_state(
+    state: RenameFailureState,
+) -> FsEffectState {
+    match state {
+        RenameFailureState::Unchanged => FsEffectState::Unchanged,
+        RenameFailureState::Renamed => FsEffectState::Applied,
+        RenameFailureState::Indeterminate => FsEffectState::Indeterminate,
     }
 }
 
@@ -266,5 +328,117 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
             FsErrorKind::QuotaExceeded
         }
         _ => FsErrorKind::Io,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use qubit_fs::error::FsEffectState;
+    use qubit_local_files::error::LocalFileError;
+    use qubit_local_files::error::LocalFileErrorKind;
+    use qubit_local_files::error::LocalFileOperation;
+
+    use super::*;
+
+    #[test]
+    fn maps_every_native_error_category_without_losing_its_source() {
+        let path = Path::parse("/source").expect("valid test path");
+        let target = Path::parse("/target").expect("valid test target");
+        for (native, expected, effect) in [
+            (
+                LocalFileErrorKind::InvalidPath,
+                FsErrorKind::InvalidPath,
+                None,
+            ),
+            (
+                LocalFileErrorKind::InvalidOptions,
+                FsErrorKind::InvalidOptions,
+                None,
+            ),
+            (
+                LocalFileErrorKind::InvalidState,
+                FsErrorKind::InvalidState,
+                None,
+            ),
+            (LocalFileErrorKind::NotFound, FsErrorKind::NotFound, None),
+            (
+                LocalFileErrorKind::AlreadyExists,
+                FsErrorKind::AlreadyExists,
+                None,
+            ),
+            (
+                LocalFileErrorKind::NotDirectory,
+                FsErrorKind::NotDirectory,
+                None,
+            ),
+            (
+                LocalFileErrorKind::IsDirectory,
+                FsErrorKind::IsDirectory,
+                None,
+            ),
+            (
+                LocalFileErrorKind::TypeConflict,
+                FsErrorKind::Conflict,
+                None,
+            ),
+            (
+                LocalFileErrorKind::PermissionDenied,
+                FsErrorKind::PermissionDenied,
+                None,
+            ),
+            (
+                LocalFileErrorKind::Unsupported,
+                FsErrorKind::UnsupportedOperation,
+                None,
+            ),
+            (
+                LocalFileErrorKind::RequirementNotMet,
+                FsErrorKind::RequirementNotMet,
+                None,
+            ),
+            (
+                LocalFileErrorKind::ResourceLimit,
+                FsErrorKind::ResourceLimitExceeded,
+                None,
+            ),
+            (
+                LocalFileErrorKind::DataCorruption,
+                FsErrorKind::DataCorruption,
+                None,
+            ),
+            (
+                LocalFileErrorKind::PublicationIncomplete,
+                FsErrorKind::Io,
+                Some(FsEffectState::PartiallyApplied),
+            ),
+            (
+                LocalFileErrorKind::Indeterminate,
+                FsErrorKind::Indeterminate,
+                Some(FsEffectState::Indeterminate),
+            ),
+            (LocalFileErrorKind::Io, FsErrorKind::Io, None),
+        ] {
+            let error = map(
+                LocalFileError::new(native, LocalFileOperation::Metadata),
+                FsOperation::Copy,
+                &path,
+                Some(&target),
+                "local-file",
+            );
+            assert_eq!(expected, error.kind());
+            assert_eq!(effect, error.effect_state());
+            assert_eq!(FsOperation::Copy, error.operation());
+            assert_eq!(Some(&path), error.path());
+            assert_eq!(Some(&target), error.target());
+            assert_eq!(Some("local-file"), error.provider());
+            assert!(
+                error
+                    .source()
+                    .and_then(|source| source.downcast_ref::<LocalFileError>())
+                    .is_some()
+            );
+        }
     }
 }
