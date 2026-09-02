@@ -13,6 +13,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use qubit_fs::Path as LogicalPath;
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -370,6 +371,7 @@ fn persist_file(
             let (error, resource, _, _, _, state) =
                 error.into_parts_with_state();
             *slot = Some(resource);
+            let state = persist_failure_state(state);
             Err(SpiPersistFailure::new(
                 error_mapper::map(
                     error,
@@ -377,8 +379,9 @@ fn persist_file(
                     logical_target,
                     None,
                     provider_id,
-                ),
-                persist_failure_state(state),
+                )
+                .with_effect_state(persist_effect_state(state)),
+                state,
             ))
         }
     }
@@ -416,6 +419,7 @@ fn persist_directory(
             let (error, resource, _, _, _, state) =
                 error.into_parts_with_state();
             *slot = Some(resource);
+            let state = persist_failure_state(state);
             Err(SpiPersistFailure::new(
                 error_mapper::map(
                     error,
@@ -423,8 +427,9 @@ fn persist_directory(
                     logical_target,
                     None,
                     provider_id,
-                ),
-                persist_failure_state(state),
+                )
+                .with_effect_state(persist_effect_state(state)),
+                state,
             ))
         }
     }
@@ -443,14 +448,16 @@ fn keep_file(
             let (error, resource, _, _, _, state) =
                 error.into_parts_with_state();
             *slot = Some(resource);
+            let state = persist_failure_state(state);
             Err(SpiPersistFailure::new(
                 error_mapper::map_without_path(
                     error,
                     FsOperation::KeepTemp,
                     "temporary file keep failed",
                     provider_id,
-                ),
-                persist_failure_state(state),
+                )
+                .with_effect_state(persist_effect_state(state)),
+                state,
             ))
         }
     }
@@ -469,14 +476,16 @@ fn keep_directory(
             let (error, resource, _, _, _, state) =
                 error.into_parts_with_state();
             *slot = Some(resource);
+            let state = persist_failure_state(state);
             Err(SpiPersistFailure::new(
                 error_mapper::map_without_path(
                     error,
                     FsOperation::KeepTemp,
                     "temporary directory keep failed",
                     provider_id,
-                ),
-                persist_failure_state(state),
+                )
+                .with_effect_state(persist_effect_state(state)),
+                state,
             ))
         }
     }
@@ -504,6 +513,15 @@ fn persist_failure_state(
             PersistFailureState::Indeterminate
         }
         _ => PersistFailureState::Indeterminate,
+    }
+}
+
+#[inline]
+const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
+    match state {
+        PersistFailureState::NotPublished => FsEffectState::Unchanged,
+        PersistFailureState::PublishedSourceRetained => FsEffectState::Applied,
+        PersistFailureState::Indeterminate => FsEffectState::Indeterminate,
     }
 }
 

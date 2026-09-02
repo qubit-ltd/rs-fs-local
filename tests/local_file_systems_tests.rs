@@ -85,6 +85,22 @@ fn test_host_factory_advertises_atomic_rename() {
     );
 }
 
+/// Unix local writers advertise their independent durable-write protocol.
+#[cfg(unix)]
+#[test]
+fn test_host_factory_advertises_durable_write() {
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem should construct");
+
+    assert_eq!(
+        FileSystemCapabilitySupport::Conditional,
+        file_system
+            .properties()
+            .capabilities()
+            .support(FileSystemCapability::DurableWrite),
+    );
+}
+
 /// An explicitly supplied rooted filesystem identity remains unchanged.
 #[test]
 fn test_rooted_with_id_preserves_explicit_identity() {
@@ -145,7 +161,8 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
         for capability in FileSystemCapability::ALL.iter().copied() {
             let expected = match capability {
                 FileSystemCapability::DurableRename
-                | FileSystemCapability::DurableFileCopy => {
+                | FileSystemCapability::DurableFileCopy
+                | FileSystemCapability::DurableWrite => {
                     if cfg!(unix) {
                         FileSystemCapabilitySupport::Conditional
                     } else {

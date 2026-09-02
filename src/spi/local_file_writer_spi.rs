@@ -12,6 +12,7 @@
 use std::io::Result as IoResult;
 use std::io::Write;
 
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -184,6 +185,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 );
                 result =
                     result.with_bytes_written(outcome.bytes_written() as u64);
+                result = result.with_durable(outcome.durable());
                 Ok(result)
             }
             Err(error) => {
@@ -200,7 +202,8 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         FsOperation::CommitWriter,
                         "native writer commit failed",
                         &self.provider_id,
-                    ),
+                    )
+                    .with_effect_state(write_effect_state(state)),
                     state,
                 ))
             }
@@ -236,6 +239,16 @@ impl FileWriterSpi for LocalFileWriterSpi {
             }
             Err(error) => Err(abort_error(error, &self.provider_id)),
         }
+    }
+}
+
+#[inline]
+const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
+    match state {
+        WriteFailureState::RetryableNotPublished
+        | WriteFailureState::NotPublished => FsEffectState::Unchanged,
+        WriteFailureState::Published => FsEffectState::Applied,
+        WriteFailureState::Indeterminate => FsEffectState::Indeterminate,
     }
 }
 
