@@ -25,7 +25,7 @@
 factory。成功的 registry resolution 会给出已配置的文件系统、provider 解码的逻辑路径和
 canonical URI。
 
-## 贯穿场景
+## 实战场景
 
 某应用将生成的报表放在 `/srv/app-data` 下，且不应在每次操作时将该原生根目录当作应用
 路径处理。成功标准是经由一个 rooted 门面以逻辑路径 `/reports/summary.csv` 访问文件。
