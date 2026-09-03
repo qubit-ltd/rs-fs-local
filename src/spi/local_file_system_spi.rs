@@ -223,7 +223,7 @@ impl LocalFileSystemSpi {
                 .with_conditional(FileSystemCapability::AtomicReplace)
                 .with_conditional(FileSystemCapability::AtomicFileCopy);
         }
-        if native_capabilities.supports_atomic_temp_persist() {
+        if native_capabilities.can_attempt_atomic_temp_persist() {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::AtomicTempPersist);
         }
