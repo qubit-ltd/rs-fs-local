@@ -702,7 +702,9 @@ fn test_host_metadata_maps_unix_socket_kind() {
         // Sandboxed Unix environments may deny AF_UNIX creation even though
         // they report a Unix target. The adapter contract cannot be exercised
         // without a socket fixture in that environment.
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            return;
+        }
         Err(error) => panic!("Unix-domain socket should be created: {error}"),
     };
 
