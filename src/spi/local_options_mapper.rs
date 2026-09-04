@@ -128,7 +128,7 @@ pub(crate) fn write(
         .with_atomicity(atomicity(options.atomicity()))
         .with_durability(durability(options.durability()));
     if options.create_parent() {
-        native = native.with_parent();
+        native = native.with_create_parent();
     }
     if *options.precondition() != WritePrecondition::None
         || options.content_type().is_some()
@@ -283,7 +283,7 @@ pub(crate) fn copy(
         );
     }
     if options.create_parent() {
-        native = native.with_parent();
+        native = native.with_create_parent();
     }
     if let Some(maximum) = options.max_depth() {
         native =

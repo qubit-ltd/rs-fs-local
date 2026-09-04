@@ -9,8 +9,10 @@
 // contract tests.
 //! Host namespace synchronous SPI delegated to `qubit-local-files`.
 
+use std::num::NonZeroUsize;
 use std::path::Path as NativePath;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyStats;
@@ -82,9 +84,10 @@ pub struct LocalFileSystemSpi {
     properties: FileSystemProperties,
     /// Provider identity attached to every translated failure.
     provider_id: String,
-    /// Immutable provider resource policy, separate from native mutable
-    /// defaults.
-    resource_policy: LocalResourcePolicy,
+    /// Retry timeout not represented by resolved portable read requests.
+    open_retry_timeout: Option<Duration>,
+    /// Temporary-name attempt limit not represented by native defaults.
+    temp_max_attempts: Option<NonZeroUsize>,
 }
 
 impl LocalFileSystemSpi {
@@ -172,15 +175,36 @@ impl LocalFileSystemSpi {
     fn from_native(
         id: FileSystemId,
         provider_id: &str,
-        native: native_files::LocalFileSystem,
+        mut native: native_files::LocalFileSystem,
         resource_policy: LocalResourcePolicy,
     ) -> FsResult<Self> {
+        native
+            .set_default_list_options(resource_policy.list_options())
+            .map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::Provider,
+                    "invalid native listing resource policy",
+                    provider_id,
+                )
+            })?;
+        native
+            .set_default_copy_options(resource_policy.copy_options())
+            .map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::Provider,
+                    "invalid native copy resource policy",
+                    provider_id,
+                )
+            })?;
         let properties = Self::properties_snapshot(id, provider_id, &native)?;
         Ok(Self {
             native,
             properties,
             provider_id: provider_id.to_owned(),
-            resource_policy,
+            open_retry_timeout: resource_policy.open_retry_timeout(),
+            temp_max_attempts: resource_policy.temp_max_attempts(),
         })
     }
 
@@ -438,7 +462,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = local_options_mapper::list(
             request.options(),
             self.native.scope(),
-            self.resource_policy.list_options(),
+            *self.native.default_list_options(),
         )?;
         let rooted = self.is_rooted();
         self.native
@@ -481,7 +505,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ) -> FsResult<OpenedReader> {
         let path = self.native_path(request.path())?;
         let mut options = local_options_mapper::read(request.options());
-        if let Some(timeout) = self.resource_policy.open_retry_timeout() {
+        if let Some(timeout) = self.open_retry_timeout {
             options = options.with_open_retry_timeout(timeout);
         }
         self.native
@@ -517,7 +541,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ) -> FsResult<OpenedWriter> {
         let path = self.native_path(request.path())?;
         let mut options = local_options_mapper::write(request.options())?;
-        if let Some(timeout) = self.resource_policy.open_retry_timeout() {
+        if let Some(timeout) = self.open_retry_timeout {
             options = options.with_open_retry_timeout(timeout);
         }
         self.native
@@ -641,7 +665,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = match local_options_mapper::copy(
             request.options(),
             self.native.scope(),
-            self.resource_policy.copy_options(),
+            *self.native.default_copy_options(),
         ) {
             Ok(options) => options,
             Err(error) => {
@@ -807,7 +831,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
-        if let Some(max_attempts) = self.resource_policy.temp_max_attempts() {
+        if let Some(max_attempts) = self.temp_max_attempts {
             options = options.with_max_attempts(max_attempts.get());
         }
         let value = self
@@ -872,7 +896,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if request.options().creates_parent() {
             options = options.with_create_parent();
         }
-        if let Some(max_attempts) = self.resource_policy.temp_max_attempts() {
+        if let Some(max_attempts) = self.temp_max_attempts {
             options = options.with_max_attempts(max_attempts.get());
         }
         let value = self
