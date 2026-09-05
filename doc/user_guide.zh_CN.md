@@ -7,6 +7,19 @@
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
 `qubit-fs-local` 0.1 版本：直接创建 host/rooted 门面，以及可选的 registry provider。
 
+## Provider 资源上限
+
+原生 `LocalFileSystem` 默认 Options 是可被替换的便利配置；本适配层将
+`LocalResourcePolicy` 作为每次请求的强制上限。list/copy 请求预算与 provider 预算
+取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
+
+`LocalResourcePolicy::bounded(list, copy)` 限制这两类操作，递归删除需要独立配置：
+通过 `with_delete_limits(Some(LocalDeleteResourceLimits::new(depth, entries,
+pending_path_bytes, deadline)))` 设置删除上限。删除请求选择递归或忽略缺失时仍保留这些
+上限。请求目录自身计为一个条目、深度为零；待处理路径按原生编码长度计费，不包括分配器
+开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
+删除上限；不会从 list/copy 预算推导隐藏的删除限制。
+
 ## 概念模型
 
 `LocalFileSystems` 是创建具体 `FileSystem` 门面的工厂。
