@@ -183,8 +183,9 @@ pub(crate) fn create_directory(
 #[inline]
 pub(crate) fn delete(
     options: &ResolvedDeleteOptions,
+    defaults: native_files::options::LocalDeleteOptions,
 ) -> native_files::options::LocalDeleteOptions {
-    let mut native = native_files::options::LocalDeleteOptions::new();
+    let mut native = defaults;
     if options.options().recursive() {
         native = native.with_recursive();
     }

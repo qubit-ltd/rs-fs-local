@@ -83,3 +83,22 @@ fn local_execution_controls_are_explicit_and_independent_of_recursion_budgets()
     assert_eq!(None, policy.list_limits());
     assert_eq!(None, policy.copy_limits());
 }
+
+/// Deletion ceilings are explicit and independent of listing/copy defaults.
+#[test]
+fn test_delete_resource_limits_are_explicit() {
+    use qubit_fs_local::LocalDeleteResourceLimits;
+    let limits =
+        LocalDeleteResourceLimits::new(1, 2, 3, Duration::from_secs(4));
+    assert_eq!(1, limits.max_depth());
+    assert_eq!(2, limits.max_entries());
+    assert_eq!(3, limits.max_pending_path_bytes());
+    assert_eq!(Duration::from_secs(4), limits.deadline());
+    let policy = LocalResourcePolicy::unbounded();
+    assert_eq!(None, policy.delete_limits());
+    let policy = policy.with_delete_limits(Some(limits));
+    assert_eq!(Some(limits), policy.delete_limits());
+    assert_eq!(None, policy.list_limits());
+    assert_eq!(None, policy.copy_limits());
+    assert_eq!(None, policy.with_delete_limits(None).delete_limits());
+}
