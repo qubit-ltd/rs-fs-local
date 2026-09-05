@@ -220,7 +220,13 @@ fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
             FsErrorKind::Indeterminate
         }
         native_files::error::LocalFileErrorKind::PublicationIncomplete => {
-            FsErrorKind::Io
+            if error.resource_limit_error().is_some() {
+                FsErrorKind::ResourceLimitExceeded
+            } else if error.io_error_kind() == std::io::ErrorKind::TimedOut {
+                FsErrorKind::Timeout
+            } else {
+                FsErrorKind::Io
+            }
         }
         _ if error.io_error().is_some() => io_kind(error.io_error_kind()),
         _ => native_kind(error.kind()),

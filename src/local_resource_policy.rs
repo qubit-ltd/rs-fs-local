@@ -15,6 +15,8 @@ use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
 use qubit_local_files as native_files;
 
+use crate::LocalDeleteResourceLimits;
+
 /// Behavior used when a recursive walker must close and later revisit a
 /// directory after reaching its open-handle budget.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -176,18 +178,25 @@ impl LocalCopyResourceLimits {
     }
 }
 
-/// Explicit local-provider policy for recursive list and copy resources.
+/// Per-request provider ceilings for recursive local operations.
+///
+/// Request list/copy limits can only tighten these ceilings. Deletion limits
+/// are selected independently with [`Self::with_delete_limits`]. These are
+/// not aggregate quotas across concurrent requests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalResourcePolicy {
     list: Option<LocalListResourceLimits>,
     copy: Option<LocalCopyResourceLimits>,
+    /// Independently selected ceilings for recursive deletion requests.
+    delete: Option<LocalDeleteResourceLimits>,
     open_retry_timeout: Option<Duration>,
     temp_max_attempts: Option<NonZeroUsize>,
     directory_reopen_policy: LocalDirectoryReopenPolicy,
 }
 
 impl LocalResourcePolicy {
-    /// Creates a bounded resource policy.
+    /// Creates listing and copy ceilings; deletion remains unbounded until
+    /// explicitly configured with [`Self::with_delete_limits`].
     #[must_use]
     pub const fn bounded(
         list: LocalListResourceLimits,
@@ -196,6 +205,7 @@ impl LocalResourcePolicy {
         Self {
             list: Some(list),
             copy: Some(copy),
+            delete: None,
             open_retry_timeout: None,
             temp_max_attempts: None,
             directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
@@ -208,6 +218,7 @@ impl LocalResourcePolicy {
         Self {
             list: None,
             copy: None,
+            delete: None,
             open_retry_timeout: None,
             temp_max_attempts: None,
             directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
@@ -224,6 +235,33 @@ impl LocalResourcePolicy {
     #[must_use]
     pub const fn copy_limits(self) -> Option<LocalCopyResourceLimits> {
         self.copy
+    }
+
+    /// Returns the optional per-request recursive deletion ceilings.
+    #[must_use]
+    pub const fn delete_limits(self) -> Option<LocalDeleteResourceLimits> {
+        self.delete
+    }
+
+    /// Selects recursive deletion ceilings; `None` explicitly leaves them
+    /// unbounded.
+    #[must_use]
+    pub const fn with_delete_limits(
+        mut self,
+        limits: Option<LocalDeleteResourceLimits>,
+    ) -> Self {
+        self.delete = limits;
+        self
+    }
+
+    /// Converts deletion ceilings without enabling recursive deletion itself.
+    pub(crate) const fn delete_options(
+        self,
+    ) -> native_files::options::LocalDeleteOptions {
+        match self.delete {
+            Some(limits) => limits.native_options(),
+            None => native_files::options::LocalDeleteOptions::new(),
+        }
     }
 
     /// Returns the local open retry timeout used for readers and writers.

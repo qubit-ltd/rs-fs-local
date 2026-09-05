@@ -10,6 +10,7 @@
 #![deny(missing_docs)]
 
 mod constants;
+mod local_delete_resource_limits;
 mod local_file_systems;
 mod local_resource_policy;
 mod path;
@@ -17,6 +18,7 @@ mod path;
 mod registry;
 pub mod spi;
 
+pub use local_delete_resource_limits::LocalDeleteResourceLimits;
 pub use local_file_systems::LocalFileSystems;
 pub use local_file_systems::host_path_to_logical;
 pub use local_resource_policy::LocalCopyResourceLimits;

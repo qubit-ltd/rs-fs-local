@@ -179,6 +179,16 @@ impl LocalFileSystemSpi {
         resource_policy: LocalResourcePolicy,
     ) -> FsResult<Self> {
         native
+            .set_default_delete_options(resource_policy.delete_options())
+            .map_err(|error| {
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::Provider,
+                    "invalid native deletion resource policy",
+                    provider_id,
+                )
+            })?;
+        native
             .set_default_list_options(resource_policy.list_options())
             .map_err(|error| {
                 error_mapper::map_without_path(
@@ -607,7 +617,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         request: DeleteFileRequest<'_>,
     ) -> FsResult<DeleteOutcome> {
         let path = self.native_path(request.path())?;
-        let options = local_options_mapper::delete(request.options());
+        let options = local_options_mapper::delete(
+            request.options(),
+            *self.native.default_delete_options(),
+        );
         self.native
             .delete_file_with_options(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
@@ -634,7 +647,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
         request: DeleteDirectoryRequest<'_>,
     ) -> FsResult<DeleteOutcome> {
         let path = self.native_path(request.path())?;
-        let options = local_options_mapper::delete(request.options());
+        let options = local_options_mapper::delete(
+            request.options(),
+            *self.native.default_delete_options(),
+        );
         self.native
             .delete_directory_with_options(&path, &options)
             .map(|value| DeleteOutcome::new(!value.deleted()))
