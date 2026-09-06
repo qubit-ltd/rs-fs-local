@@ -117,6 +117,54 @@ Use `rooted_with_descriptor` when registering multiple rooted authorities in one
 registry; each descriptor ID must be distinct and becomes the filesystem
 provider identity.
 
+For example, two rooted providers can resolve the same logical path while
+retaining separate native authorities and identities:
+
+```rust
+use std::path::Path as NativePath;
+
+use qubit_fs::{ConnectionUri, FileSystemId};
+use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
+use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
+
+let registry = FileSystemRegistry::default();
+registry.register(LocalFileSystemProvider::rooted_with_descriptor(
+    ProviderDescriptor::new(ProviderId::new("tenant-a")?),
+    FileSystemId::new("tenant-a-files")?,
+    NativePath::new("/srv/tenant-a"),
+    LocalResourcePolicy::unbounded(),
+)?)?;
+registry.register(LocalFileSystemProvider::rooted_with_descriptor(
+    ProviderDescriptor::new(ProviderId::new("tenant-b")?),
+    FileSystemId::new("tenant-b-files")?,
+    NativePath::new("/srv/tenant-b"),
+    LocalResourcePolicy::unbounded(),
+)?)?;
+
+let uri = ConnectionUri::parse("file:///reports/summary.csv")?;
+let first = registry.resolve_config(&FileSystemConfig::new(uri.clone()).with_selection(
+    ProviderSelection::named("tenant-a")?,
+))?;
+let second = registry.resolve_config(&FileSystemConfig::new(uri).with_selection(
+    ProviderSelection::named("tenant-b")?,
+))?;
+assert_eq!(first.canonical_uri(), second.canonical_uri());
+assert_ne!(
+    first.file_system().properties().info().id(),
+    second.file_system().properties().info().id(),
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+The canonical URI for both resolutions is `file:///reports/summary.csv`: it
+contains the provider-decoded logical path and carries no rooted native
+authority. A canonical URI therefore cannot recover a rooted provider or a
+filesystem identity by itself. Persist a provider selection/descriptor and
+filesystem identity with the URI. Replaying only the canonical URI through a
+host provider produces the same URI and logical path, but resolves to the
+`local-host` filesystem rather than either rooted filesystem.
+
 ## Errors and Diagnostics
 
 Native operation failures are reported through the `qubit-fs` error model; the
@@ -128,6 +176,13 @@ The provider rejects configurations outside its local-file contract: a remote
 authority, query, relative path, non-`file` scheme, options, and credentials.
 It decodes percent-encoded path bytes per URI component; encoded separators
 and NUL bytes are rejected so they cannot alter the logical hierarchy.
+
+For a non-`file` scheme, the provider returns `Unsupported` with an
+`UnsupportedOperation` error. A registry using `FallbackPolicy::OnAbsence` may
+continue to another provider. Once the scheme is `file`, configuration errors
+such as a remote authority, query, options, credentials, or an invalid path
+remain terminal; `OnAbsence` does not skip them. Failure to open a rooted
+authority is also terminal initialization failure.
 
 ## Troubleshooting
 
@@ -147,6 +202,9 @@ and NUL bytes are rejected so they cannot alter the logical hierarchy.
   application.
 - Treat a `file:` URI as local-only input. Remote authorities and URI options
   are intentionally not configuration channels for this provider.
+- Keep the provider selection and filesystem identity alongside a canonical URI
+  when a rooted resolution must be replayed; the URI alone does not identify
+  its retained native authority.
 
 ## Further Reading
 

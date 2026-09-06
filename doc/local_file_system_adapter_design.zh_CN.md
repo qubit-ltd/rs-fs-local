@@ -407,6 +407,9 @@ target context；host 与 rooted SPI 共享这组映射函数。
 
 - 声明 canonical `local-file` provider identity，并注册 `file` scheme alias；
 - 从受控 `ConnectionUri` 配置边界读取原始输入；
+- 对非 `file` scheme 直接返回 `ProviderFailureKind::Unsupported`，其错误 kind 为
+  `FsErrorKind::UnsupportedOperation`；在 `FallbackPolicy::OnAbsence` 下，registry
+  可以继续尝试后续 provider；
 - 接受无 authority 或空 authority 的 `file:` URI；
 - 拒绝 remote authority、未支持 query 和 secret；
 - provider-specific 解码 URI path；
@@ -419,6 +422,23 @@ target context；host 与 rooted SPI 共享这组映射函数。
 - 返回具体 `FileSystemResolution`。
 
 Provider 返回的是 `FileSystem` 门面，不是 `Arc<dyn FileSystem>` 或 operation SPI。
+
+非 `file` 请求属于 provider 不适用的情况，返回 `Unsupported`，因此可以在
+`OnAbsence` fallback chain 中交给其他 provider。已经识别为 `file` 的请求如果包含
+remote authority、query、options、credentials 或非法路径，则返回
+`InvalidConfiguration`（或对应的 `InitializationFailed`），不能借助 `OnAbsence`
+跳过；rooted authority 无法打开也会终止解析。
+
+Rooted provider 的 native authority 不写入 canonical URI。比如两个 provider 分别保留
+`/srv/tenant-a` 和 `/srv/tenant-b`，都将 URI `file:///reports/summary.csv` 解码为逻辑
+路径 `/reports/summary.csv`，并返回相同的 canonical URI；它们的 provider descriptor 和
+`FileSystemId` 仍然不同。canonical URI 只表示 provider 解码后的路径，不能单独恢复
+rooted authority 或 filesystem identity。
+
+因此，持久化或 replay rooted resolution 时必须同时保存 provider selection/descriptor
+和 filesystem identity；只 replay canonical URI 会按当时选择的 provider 重新解析。若
+使用默认 host provider replay，它会得到相同 URI 和逻辑路径，但得到的是 `local-host`
+identity，不能回到原来的 rooted filesystem。
 
 Registry feature 只增加配置/解析适配，不把 registry 依赖带入默认 native 使用路径。
 
