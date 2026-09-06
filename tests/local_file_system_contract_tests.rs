@@ -22,7 +22,6 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
-use qubit_local_files::path::LocalPaths;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
@@ -34,6 +33,7 @@ use qubit_fs_testkit::FixtureError;
 use qubit_fs_testkit::FixtureResult;
 use qubit_fs_testkit::FixtureSupport;
 use qubit_fs_testkit::register_file_system_contract_tests;
+use qubit_local_files::path::LocalPaths;
 
 /// Removes one native entry without following symbolic links.
 fn remove_entry(path: &NativePath) -> FixtureResult<()> {
@@ -49,31 +49,48 @@ fn remove_entry(path: &NativePath) -> FixtureResult<()> {
     };
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         fs::remove_file(path).map_err(|error| {
-            FixtureError::with_source("fixture teardown entry removal failed", error)
+            FixtureError::with_source(
+                "fixture teardown entry removal failed",
+                error,
+            )
         })?;
         return Ok(());
     }
     for entry in fs::read_dir(path).map_err(|error| {
-        FixtureError::with_source("fixture teardown directory read failed", error)
+        FixtureError::with_source(
+            "fixture teardown directory read failed",
+            error,
+        )
     })? {
         let entry = entry.map_err(|error| {
-            FixtureError::with_source("fixture teardown entry read failed", error)
+            FixtureError::with_source(
+                "fixture teardown entry read failed",
+                error,
+            )
         })?;
         remove_entry(&entry.path())?;
     }
     fs::remove_dir(path).map_err(|error| {
-        FixtureError::with_source("fixture teardown directory removal failed", error)
+        FixtureError::with_source(
+            "fixture teardown directory removal failed",
+            error,
+        )
     })
 }
 
 /// Verifies that a teardown base is an actual directory rather than a link.
-fn ensure_real_directory(path: &NativePath, description: &str) -> FixtureResult<()> {
+fn ensure_real_directory(
+    path: &NativePath,
+    description: &str,
+) -> FixtureResult<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            Err(FixtureError::new(format!("{description} is a symbolic link")))
-        }
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(
+            FixtureError::new(format!("{description} is a symbolic link")),
+        ),
         Ok(metadata) if metadata.is_dir() => Ok(()),
-        Ok(_) => Err(FixtureError::new(format!("{description} is not a directory"))),
+        Ok(_) => Err(FixtureError::new(format!(
+            "{description} is not a directory"
+        ))),
         Err(error) => Err(FixtureError::with_source(
             format!("{description} metadata failed"),
             error,
@@ -85,10 +102,16 @@ fn ensure_real_directory(path: &NativePath, description: &str) -> FixtureResult<
 fn clear_children(path: &NativePath) -> FixtureResult<()> {
     ensure_real_directory(path, "fixture teardown base")?;
     for entry in fs::read_dir(path).map_err(|error| {
-        FixtureError::with_source("fixture teardown directory read failed", error)
+        FixtureError::with_source(
+            "fixture teardown directory read failed",
+            error,
+        )
     })? {
         let entry = entry.map_err(|error| {
-            FixtureError::with_source("fixture teardown entry read failed", error)
+            FixtureError::with_source(
+                "fixture teardown entry read failed",
+                error,
+            )
         })?;
         remove_entry(&entry.path())?;
     }
@@ -97,7 +120,11 @@ fn clear_children(path: &NativePath) -> FixtureResult<()> {
 
 /// Ensures a converted path remains in the fixture root and has no symlinked
 /// parent that could redirect an out-of-band operation.
-fn ensure_owned_path(root: &NativePath, path: &NativePath) -> FixtureResult<()> {
+fn ensure_owned_path(
+    root: &NativePath,
+    path: &NativePath,
+) -> FixtureResult<()> {
+    ensure_real_directory(root, "fixture root")?;
     if !path.starts_with(root) {
         return Err(FixtureError::new(
             "fixture path conversion escaped the temporary root",
@@ -129,11 +156,14 @@ fn ensure_owned_path(root: &NativePath, path: &NativePath) -> FixtureResult<()> 
 }
 
 /// Rejects a final symbolic link before an out-of-band file operation.
-fn reject_symlink_target(path: &NativePath, description: &str) -> FixtureResult<()> {
+fn reject_symlink_target(
+    path: &NativePath,
+    description: &str,
+) -> FixtureResult<()> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            Err(FixtureError::new(format!("{description} is a symbolic link")))
-        }
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(
+            FixtureError::new(format!("{description} is a symbolic link")),
+        ),
         Ok(_) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(FixtureError::with_source(
@@ -201,7 +231,10 @@ impl RootedFixture {
             FixtureError::with_source("rooted fixture root read failed", error)
         })? {
             let entry = entry.map_err(|error| {
-                FixtureError::with_source("rooted fixture entry read failed", error)
+                FixtureError::with_source(
+                    "rooted fixture entry read failed",
+                    error,
+                )
             })?;
             if entry.file_name() != "fixture" {
                 remove_entry(&entry.path())?;
@@ -270,12 +303,17 @@ impl FileSystemFixture for RootedFixture {
             })
     }
 
-    fn case_support(&self, case: FixtureCase) -> FixtureResult<FixtureSupport<()>> {
+    fn case_support(
+        &self,
+        case: FixtureCase,
+    ) -> FixtureResult<FixtureSupport<()>> {
         let supported = match case {
             FixtureCase::CopyOverwrite | FixtureCase::CopyTree => true,
-            FixtureCase::Capability(capability) => {
-                self.file_system.properties().capabilities().supports(capability)
-            }
+            FixtureCase::Capability(capability) => self
+                .file_system
+                .properties()
+                .capabilities()
+                .supports(capability),
             FixtureCase::ReadIfMatch
             | FixtureCase::ReadIfNoneMatch
             | FixtureCase::WriteIfAbsent
@@ -451,12 +489,17 @@ impl FileSystemFixture for HostFixture {
             })
     }
 
-    fn case_support(&self, case: FixtureCase) -> FixtureResult<FixtureSupport<()>> {
+    fn case_support(
+        &self,
+        case: FixtureCase,
+    ) -> FixtureResult<FixtureSupport<()>> {
         let supported = match case {
             FixtureCase::CopyOverwrite | FixtureCase::CopyTree => true,
-            FixtureCase::Capability(capability) => {
-                self.file_system.properties().capabilities().supports(capability)
-            }
+            FixtureCase::Capability(capability) => self
+                .file_system
+                .properties()
+                .capabilities()
+                .supports(capability),
             FixtureCase::ReadIfMatch
             | FixtureCase::ReadIfNoneMatch
             | FixtureCase::WriteIfAbsent
@@ -702,6 +745,15 @@ fn test_rooted_list_contract_teardown_preserves_fixture_root() {
         0,
         "list phase left generated descendants behind",
     );
+    assert_eq!(
+        fs::read_dir(fixture.root.path())
+            .expect("rooted fixture root must remain readable")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name())
+            .collect::<Vec<_>>(),
+        vec![std::ffi::OsString::from("fixture")],
+        "rooted list phase left root descendants behind",
+    );
 }
 
 /// Host-phase teardown removes generated descendants from its isolated root.
@@ -731,7 +783,8 @@ fn test_host_fixture_rejects_paths_outside_temporary_root() {
     assert!(fixture.logical_path("/tmp/outside").is_err());
     assert!(fixture.logical_path("../outside").is_err());
 
-    let outside = Path::parse("/tmp/outside").expect("outside path must be valid");
+    let outside =
+        Path::parse("/tmp/outside").expect("outside path must be valid");
     assert!(fixture.native_path(&outside).is_err());
 }
 
@@ -742,13 +795,15 @@ fn test_rooted_teardown_rejects_symlinked_namespace() {
     use std::os::unix::fs::symlink;
 
     let fixture = RootedFixture::new();
-    let outside = tempfile::tempdir().expect("outside directory must be created");
+    let outside =
+        tempfile::tempdir().expect("outside directory must be created");
     let marker = outside.path().join("must-remain");
     fs::write(&marker, b"marker").expect("outside marker must be created");
 
     let namespace = fixture.root.path().join("fixture");
     fs::remove_dir(&namespace).expect("fixture namespace must be removable");
-    symlink(outside.path(), &namespace).expect("namespace symlink must be created");
+    symlink(outside.path(), &namespace)
+        .expect("namespace symlink must be created");
 
     assert!(fixture.teardown().is_err());
     assert!(marker.exists(), "teardown followed the namespace symlink");
@@ -763,16 +818,20 @@ fn test_host_teardown_rejects_symlinked_root() {
     let fixture = HostFixture::new();
     let original_root = fixture.root.path().to_path_buf();
     let moved_root = original_root.with_extension("moved");
-    let outside = tempfile::tempdir().expect("outside directory must be created");
+    let outside =
+        tempfile::tempdir().expect("outside directory must be created");
     let marker = outside.path().join("must-remain");
     fs::write(&marker, b"marker").expect("outside marker must be created");
 
-    fs::rename(&original_root, &moved_root).expect("fixture root must be moved");
-    symlink(outside.path(), &original_root).expect("root symlink must be created");
+    fs::rename(&original_root, &moved_root)
+        .expect("fixture root must be moved");
+    symlink(outside.path(), &original_root)
+        .expect("root symlink must be created");
 
     assert!(fixture.teardown().is_err());
     assert!(marker.exists(), "teardown followed the root symlink");
 
     fs::remove_file(&original_root).expect("root symlink must be removed");
-    fs::rename(&moved_root, &original_root).expect("fixture root must be restored");
+    fs::rename(&moved_root, &original_root)
+        .expect("fixture root must be restored");
 }
