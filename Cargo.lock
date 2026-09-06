@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "qubit-fs",
@@ -464,7 +464,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-registry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "qubit-fs",
  "qubit-redact 0.6.0",
@@ -473,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-testkit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "qubit-fs",
  "qubit-io",
