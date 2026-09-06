@@ -25,6 +25,53 @@ native lengths, excluding allocator overhead. Deadlines are cooperative.
 `with_delete_limits(None)` explicitly removes deletion ceilings at provider
 construction time. No deletion limit is inferred from a listing or copy limit.
 
+The three limit families count different work:
+
+| Limit | Counted work | Applied by |
+| --- | --- | --- |
+| Provider list `max_entries` | Entries yielded before adapter prefix filtering | Native walker |
+| Request list `max_entries` | Entries returned after prefix filtering | Facade |
+| Copy/delete limits | Native traversal and payload work for that operation | Native operation |
+
+Consequently, a prefix with no matches can still exhaust the provider walker
+ceiling. A cooperative deadline is checked around native calls and cannot
+interrupt an I/O call already in progress.
+
+The following values are application scenario examples, not library defaults:
+
+```rust
+use std::time::Duration;
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
+
+let policy = LocalResourcePolicy::bounded_operations(
+    LocalListResourceLimits::new(
+        32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30),
+    )?,
+    LocalCopyResourceLimits::new(
+        32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30),
+    )?,
+    LocalDeleteResourceLimits::new(
+        32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30),
+    ),
+);
+let file_system = LocalFileSystems::host(policy)?;
+# let _ = file_system;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Logical path text limits are reported as `Unknown` because native component
+limits do not account for percent expansion or non-UTF-8 names. Convert an
+absolute native host path with `host_path_to_logical`; parse a path that is
+already rooted logical text with `qubit_fs::Path::parse`. Temporary-resource
+cleanup, Drop, and native publication cleanup have an independent lifecycle
+scope and do not inherit ordinary deletion ceilings. Explicit cleanup reports
+its own error; Drop is best effort. The local provider takes over every copy it
+can express and does not decline into a facade fallback. Copy failures after
+native work starts retain their state and partial statistics.
+
 ## Conceptual Model
 
 `LocalFileSystems` is a factory for a concrete `FileSystem` facade.
@@ -70,7 +117,8 @@ cargo add qubit-fs-local --features registry
 ```rust
 use std::path::Path;
 
-use qubit_fs::{FileSystemId, Path as LogicalPath};
+use qubit_fs::Path as LogicalPath;
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let fs = LocalFileSystems::rooted_with_id(
@@ -97,7 +145,7 @@ Register a local provider to resolve a validated `file:` URI at application
 assembly time:
 
 ```rust
-use qubit_fs::ConnectionUri;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 

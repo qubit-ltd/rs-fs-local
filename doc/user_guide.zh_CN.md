@@ -20,6 +20,48 @@ pending_path_bytes, deadline)))` 设置删除上限。删除请求选择递归�
 开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
 删除上限；不会从 list/copy 预算推导隐藏的删除限制。
 
+三类上限的计量对象不同：
+
+| 上限 | 计量的工作 | 执行位置 |
+| --- | --- | --- |
+| provider list `max_entries` | adapter prefix 过滤前由 walker 产出的条目 | 原生 walker |
+| request list `max_entries` | prefix 过滤后返回的条目 | 门面 |
+| copy/delete 上限 | 对应操作的原生遍历和 payload 工作 | 原生操作 |
+
+因此，即使 prefix 没有匹配项，也可能耗尽 provider walker 上限。协作式 deadline
+会在原生调用前后检查，不能中断已经开始的 I/O 调用。
+
+下面的数值是应用场景示例，不是库默认值：
+
+```rust
+use std::time::Duration;
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
+
+let policy = LocalResourcePolicy::bounded_operations(
+    LocalListResourceLimits::new(
+        32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30),
+    )?,
+    LocalCopyResourceLimits::new(
+        32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30),
+    )?,
+    LocalDeleteResourceLimits::new(
+        32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30),
+    ),
+);
+let file_system = LocalFileSystems::host(policy)?;
+# let _ = file_system;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+逻辑路径文本上限报告为 `Unknown`，因为原生 component 上限无法涵盖百分号展开和非 UTF-8
+文件名。绝对原生主机路径应使用 `host_path_to_logical` 转换；已经是 rooted 逻辑文本时使用
+`qubit_fs::Path::parse`。临时资源 cleanup、Drop 和原生发布清理属于独立生命周期范围，不继承
+普通删除上限。显式 cleanup 会报告自身错误；Drop 是 best effort。local provider 会接管所有
+它能够表达的 copy，不会 Declined 到门面 fallback；原生工作开始后的失败保留状态和部分统计。
+
 ## 概念模型
 
 `LocalFileSystems` 是创建具体 `FileSystem` 门面的工厂。
@@ -61,7 +103,8 @@ cargo add qubit-fs-local --features registry
 ```rust
 use std::path::Path;
 
-use qubit_fs::{FileSystemId, Path as LogicalPath};
+use qubit_fs::Path as LogicalPath;
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let fs = LocalFileSystems::rooted_with_id(
@@ -85,7 +128,7 @@ let metadata = fs.stat(&report)?;
 在应用组装阶段注册本地 provider，以解析经过校验的 `file:` URI：
 
 ```rust
-use qubit_fs::ConnectionUri;
+use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
