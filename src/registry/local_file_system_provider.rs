@@ -116,27 +116,27 @@ impl LocalFileSystemProvider {
     ///
     /// # Errors
     ///
-    /// Returns an invalid-configuration failure when the configuration
-    /// contains options, metadata, credentials, a non-`file` scheme, a remote
-    /// authority, a query, malformed URI text, or a non-absolute path.
+    /// Returns an unsupported failure for non-`file` schemes before checking
+    /// provider-specific configuration, or an invalid-configuration failure
+    /// for malformed `file:` configurations.
     fn decode_config(
         config: &FileSystemConfig,
     ) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
+        let uri = config
+            .uri()
+            .try_to_uri()
+            .map_err(ProviderFailure::invalid_configuration)?;
+        if uri.scheme() != FILE_SCHEME {
+            return Err(unsupported_scheme(
+                "local filesystem provider requires the file URI scheme",
+            ));
+        }
         if !config.options().is_empty()
             || !config.metadata().is_empty()
             || config.credential().is_some()
         {
             return Err(invalid_options(
                 "local filesystem provider does not support provider options, metadata, or credentials",
-            ));
-        }
-        let uri = config
-            .uri()
-            .try_to_uri()
-            .map_err(ProviderFailure::invalid_configuration)?;
-        if uri.scheme() != FILE_SCHEME {
-            return Err(invalid_options(
-                "local filesystem provider requires the file URI scheme",
             ));
         }
         if uri
@@ -232,6 +232,25 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
 fn invalid_options(message: &'static str) -> ProviderFailure<FsError> {
     ProviderFailure::invalid_configuration(FsError::new(
         FsErrorKind::InvalidOptions,
+        FsOperation::Provider,
+        message,
+    ))
+}
+
+/// Builds an unsupported-scheme provider failure.
+///
+/// # Parameters
+///
+/// - `message`: Static detail explaining why the URI scheme is unsupported.
+///
+/// # Returns
+///
+/// An unsupported failure carrying an `UnsupportedOperation` filesystem
+/// error, allowing an `OnAbsence` provider chain to continue.
+#[inline(always)]
+fn unsupported_scheme(message: &'static str) -> ProviderFailure<FsError> {
+    ProviderFailure::unsupported(FsError::new(
+        FsErrorKind::UnsupportedOperation,
         FsOperation::Provider,
         message,
     ))
