@@ -90,13 +90,17 @@ impl LocalFileSystemProvider {
         root: &Path,
         policy: LocalResourcePolicy,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root, policy).map(
-            |file_system| Self {
-                mode: LocalProviderMode::Rooted { file_system },
-                descriptor: Some(descriptor),
-                policy,
-            },
+        LocalFileSystems::rooted_with_provider_id(
+            id,
+            descriptor.id(),
+            root,
+            policy,
         )
+        .map(|file_system| Self {
+            mode: LocalProviderMode::Rooted { file_system },
+            descriptor: Some(descriptor),
+            policy,
+        })
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -115,7 +119,9 @@ impl LocalFileSystemProvider {
     /// Returns an invalid-configuration failure when the configuration
     /// contains options, metadata, credentials, a non-`file` scheme, a remote
     /// authority, a query, malformed URI text, or a non-absolute path.
-    fn decode_config(config: &FileSystemConfig) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
+    fn decode_config(
+        config: &FileSystemConfig,
+    ) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
         if !config.options().is_empty()
             || !config.metadata().is_empty()
             || config.credential().is_some()
@@ -172,7 +178,8 @@ impl ProviderMetadata for LocalFileSystemProvider {
 #[inline]
 fn default_descriptor() -> ProviderDescriptor {
     ProviderDescriptor::new(
-        ProviderId::new(LOCAL_PROVIDER_ID).expect("static provider identity is valid"),
+        ProviderId::new(LOCAL_PROVIDER_ID)
+            .expect("static provider identity is valid"),
     )
     .with_aliases([FILE_SCHEME])
     .expect("static provider alias is valid")
@@ -201,7 +208,9 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(self.policy),
-            LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
+            LocalProviderMode::Rooted { file_system } => {
+                Ok(file_system.clone())
+            }
         }
         .map_err(ProviderFailure::initialization_failed)?;
         FileSystemResolution::try_new(file_system, path, uri)

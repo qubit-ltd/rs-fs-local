@@ -86,7 +86,11 @@ impl LocalDirectoryStreamSpi {
         options: &ResolvedListOptions,
         provider_id: &str,
     ) -> Self {
-        Self::Rooted(walker, ListingOptions::new(options), provider_id.to_owned())
+        Self::Rooted(
+            walker,
+            ListingOptions::new(options),
+            provider_id.to_owned(),
+        )
     }
 }
 
@@ -121,19 +125,28 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let Some(entry) = entry else {
                 return Ok(None);
             };
-            let entry = entry.map_err(|error| entry_error(error, provider_id))?;
+            let entry =
+                entry.map_err(|error| entry_error(error, provider_id))?;
             let logical_relative = local_path_mapper::logical(
                 native_files::path::LocalFileSystemScope::Rooted,
-                &PathBuf::from(std::path::MAIN_SEPARATOR_STR).join(entry.relative_path()),
+                &PathBuf::from(std::path::MAIN_SEPARATOR_STR)
+                    .join(entry.relative_path()),
                 FsOperation::List,
             )?;
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = local_path_mapper::logical(scope, entry.path(), FsOperation::List)?;
-            let mut result = DirEntry::new(path, output_kind(entry.metadata().kind()));
+            let path = local_path_mapper::logical(
+                scope,
+                entry.path(),
+                FsOperation::List,
+            )?;
+            let mut result =
+                DirEntry::new(path, output_kind(entry.metadata().kind()));
             if options.include_metadata() {
-                result.metadata = Some(local_outcome_mapper::metadata(entry.metadata().clone()));
+                result.metadata = Some(local_outcome_mapper::metadata(
+                    entry.metadata().clone(),
+                ));
             }
             return Ok(Some(result));
         }
@@ -151,7 +164,10 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 ///
 /// A facade listing error with local provider context.
 #[inline(always)]
-fn entry_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
+fn entry_error(
+    error: native_files::LocalFileError,
+    provider_id: &str,
+) -> FsError {
     error_mapper::map_without_path(
         error,
         FsOperation::List,
@@ -175,15 +191,21 @@ fn output_kind(kind: native_files::outcome::LocalFileKind) -> FileKind {
         native_files::outcome::LocalFileKind::File => FileKind::File,
         native_files::outcome::LocalFileKind::Directory => FileKind::Directory,
         native_files::outcome::LocalFileKind::Symlink => FileKind::Symlink,
-        native_files::outcome::LocalFileKind::Fifo => FileKind::Other("local-fifo".to_owned()),
-        native_files::outcome::LocalFileKind::Socket => FileKind::Other("local-socket".to_owned()),
+        native_files::outcome::LocalFileKind::Fifo => {
+            FileKind::Other("local-fifo".to_owned())
+        }
+        native_files::outcome::LocalFileKind::Socket => {
+            FileKind::Other("local-socket".to_owned())
+        }
         native_files::outcome::LocalFileKind::BlockDevice => {
             FileKind::Other("local-block-device".to_owned())
         }
         native_files::outcome::LocalFileKind::CharDevice => {
             FileKind::Other("local-char-device".to_owned())
         }
-        native_files::outcome::LocalFileKind::Other => FileKind::Other("local".to_owned()),
+        native_files::outcome::LocalFileKind::Other => {
+            FileKind::Other("local".to_owned())
+        }
         _ => FileKind::Other("local".to_owned()),
     }
 }

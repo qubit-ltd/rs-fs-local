@@ -91,7 +91,9 @@ impl LocalListResourceLimits {
 
     /// Converts these resource-only limits to neutral native list options.
     #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(self) -> native_files::options::LocalListOptions {
+    pub(crate) const fn native_options(
+        self,
+    ) -> native_files::options::LocalListOptions {
         native_files::options::LocalListOptions::new()
             .with_max_depth(self.max_depth)
             .with_max_entries(self.max_entries)
@@ -164,7 +166,9 @@ impl LocalCopyResourceLimits {
 
     /// Converts these resource-only limits to neutral native copy options.
     #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(self) -> native_files::options::LocalCopyOptions {
+    pub(crate) const fn native_options(
+        self,
+    ) -> native_files::options::LocalCopyOptions {
         native_files::options::LocalCopyOptions::new()
             .with_max_depth(self.max_depth)
             .with_max_entries(self.max_entries)
@@ -194,7 +198,10 @@ impl LocalResourcePolicy {
     /// Creates listing and copy ceilings; deletion remains unbounded until
     /// explicitly configured with [`Self::with_delete_limits`].
     #[must_use]
-    pub const fn bounded(list: LocalListResourceLimits, copy: LocalCopyResourceLimits) -> Self {
+    pub const fn bounded(
+        list: LocalListResourceLimits,
+        copy: LocalCopyResourceLimits,
+    ) -> Self {
         Self {
             list: Some(list),
             copy: Some(copy),
@@ -239,13 +246,18 @@ impl LocalResourcePolicy {
     /// Selects recursive deletion ceilings; `None` explicitly leaves them
     /// unbounded.
     #[must_use]
-    pub const fn with_delete_limits(mut self, limits: Option<LocalDeleteResourceLimits>) -> Self {
+    pub const fn with_delete_limits(
+        mut self,
+        limits: Option<LocalDeleteResourceLimits>,
+    ) -> Self {
         self.delete = limits;
         self
     }
 
     /// Converts deletion ceilings without enabling recursive deletion itself.
-    pub(crate) const fn delete_options(self) -> native_files::options::LocalDeleteOptions {
+    pub(crate) const fn delete_options(
+        self,
+    ) -> native_files::options::LocalDeleteOptions {
         match self.delete {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalDeleteOptions::new(),
@@ -272,14 +284,20 @@ impl LocalResourcePolicy {
 
     /// Sets the local open retry timeout used for readers and writers.
     #[must_use]
-    pub const fn with_open_retry_timeout(mut self, timeout: Option<Duration>) -> Self {
+    pub const fn with_open_retry_timeout(
+        mut self,
+        timeout: Option<Duration>,
+    ) -> Self {
         self.open_retry_timeout = timeout;
         self
     }
 
     /// Sets the maximum number of temporary-name attempts.
     #[must_use]
-    pub const fn with_temp_max_attempts(mut self, max_attempts: Option<NonZeroUsize>) -> Self {
+    pub const fn with_temp_max_attempts(
+        mut self,
+        max_attempts: Option<NonZeroUsize>,
+    ) -> Self {
         self.temp_max_attempts = max_attempts;
         self
     }
@@ -294,7 +312,9 @@ impl LocalResourcePolicy {
         self
     }
 
-    pub(crate) const fn list_options(self) -> native_files::options::LocalListOptions {
+    pub(crate) const fn list_options(
+        self,
+    ) -> native_files::options::LocalListOptions {
         let options = match self.list {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalListOptions::new(),
@@ -309,7 +329,9 @@ impl LocalResourcePolicy {
         })
     }
 
-    pub(crate) const fn copy_options(self) -> native_files::options::LocalCopyOptions {
+    pub(crate) const fn copy_options(
+        self,
+    ) -> native_files::options::LocalCopyOptions {
         match self.copy {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalCopyOptions::new(),
