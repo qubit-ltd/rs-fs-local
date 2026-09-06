@@ -1,6 +1,6 @@
 [package]
 name = "qubit-fs-local"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -49,10 +49,10 @@ name = "local_filesystem_facade"
 harness = false
 
 [dependencies]
-qubit-fs = { path = "../rs-fs", version = "0.2", default-features = false }
+qubit-fs = { path = "../rs-fs", version = "0.3", default-features = false }
 qubit-local-files = { path = "../rs-local-files", version = "0.3" }
 qubit-io = "0.16"
-qubit-fs-registry = { path = "../rs-fs-registry", version = "0.1", optional = true }
+qubit-fs-registry = { path = "../rs-fs-registry", version = "0.2", optional = true }
 qubit-spi = { path = "../rs-spi", version = "0.11", optional = true }
 
 [features]
@@ -63,7 +63,7 @@ registry = ["dep:qubit-fs-registry", "dep:qubit-spi"]
 criterion = "0.5"
 tempfile = "3.27"
 qubit-io = "0.16"
-qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.1" }
+qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.2" }
 qubit-local-files = { path = "../rs-local-files", version = "0.3", features = ["test-support"] }
 
 [lints.rust]
