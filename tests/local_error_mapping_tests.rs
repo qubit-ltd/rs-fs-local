@@ -9,6 +9,7 @@ use std::error::Error;
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::CreateDirectoryOptions;
+use qubit_fs::directory::DeleteOptions;
 use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -21,6 +22,7 @@ use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
 use qubit_local_files::LocalFileError;
+use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::test_support::install_test_fault;
 
 #[test]
@@ -110,6 +112,43 @@ fn writer_conflict_retains_unchanged_effect_and_native_source() {
             .and_then(|source| source.downcast_ref::<LocalFileError>())
             .is_some()
     );
+}
+
+#[test]
+fn partial_delete_mapping_retains_native_failure_path_and_effect() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    let native_target = root.path().join("tree");
+    std::fs::create_dir(&native_target).expect("tree should exist");
+    std::fs::write(native_target.join("first"), b"first")
+        .expect("first entry should exist");
+    std::fs::write(native_target.join("second"), b"second")
+        .expect("second entry should exist");
+    let target = host_path_to_logical(&native_target)
+        .expect("target should be representable");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem should construct");
+    let _fault = install_test_fault("host-delete-directory-entry-second")
+        .expect("fault controller should install");
+
+    let error = filesystem
+        .delete_directory(
+            &target,
+            DeleteOptions::default().with_recursive(true),
+        )
+        .expect_err("second entry fault should interrupt deletion");
+
+    assert_eq!(FsErrorKind::Io, error.kind());
+    assert_eq!(Some(FsEffectState::PartiallyApplied), error.effect_state());
+    assert_eq!(Some(&target), error.path());
+    let native = error
+        .source()
+        .and_then(|source| source.downcast_ref::<LocalFileError>())
+        .expect("mapped error should retain the native source");
+    assert_eq!(LocalFileErrorKind::PublicationIncomplete, native.kind());
+    let native_path = native
+        .path()
+        .expect("native failure path should be retained");
+    assert_eq!(Some(native_target.as_path()), native_path.parent());
 }
 
 fn path(value: &str) -> Path {

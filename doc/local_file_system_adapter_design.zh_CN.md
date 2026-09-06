@@ -247,6 +247,13 @@ credential-free canonical URI。
 | `CreateTempFileRequest` | `LocalTempFile` |
 | `CreateTempDirectoryRequest` | `LocalTempDirectory` |
 
+删除映射遵循 native 的类型契约：`delete_file` 遇到目录返回 `IsDirectory`，
+`delete_directory` 遇到普通文件或最终符号链接返回 `NotDirectory`，且不删除该 entry。
+递归删除已经移除条目后失败时，native `PublicationIncomplete` 通过
+`LocalFileError::effect_state()` 映射为 `FsEffectState::PartiallyApplied`；底层原因仍由
+`cause_kind()` 和 source 保留。普通错误没有足够副作用证据时 effect 为 `None`，adapter
+不得把它推断成 `Unchanged`。
+
 Adapter 不调用公开 options 的 `validate_against`，因为 SPI request 已代表完成的通用
 preflight。Native 层仍可拒绝平台运行时条件。
 
@@ -410,6 +417,8 @@ target context；host 与 rooted SPI 共享这组映射函数。
   `LocalCopyFailure`，因此 staging path 与 cleanup error 可通过 typed source 诊断；
 - native requirement failure 映射为 `RequirementNotMet`；
 - native indeterminate 映射为 `Indeterminate`；
+- native `cause_kind()` 优先决定基础 `FsErrorKind`，`effect_state()` 仅补充已知的
+  `FsEffectState`，两者不能互相覆盖；
 - adapter 自身产生不可能状态时使用 `ProviderContractViolation`，不伪装成 I/O。
 
 门面会补齐并规范化通用上下文，adapter 不伪造其他 provider identity。

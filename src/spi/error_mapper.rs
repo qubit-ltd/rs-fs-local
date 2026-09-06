@@ -155,13 +155,20 @@ fn attach_native_effect(
 fn native_effect_state(
     error: &native_files::LocalFileError,
 ) -> Option<FsEffectState> {
-    match error.kind() {
-        native_files::error::LocalFileErrorKind::PublicationIncomplete => {
+    match error.effect_state() {
+        Some(native_files::error::LocalFileEffectState::Unchanged) => {
+            Some(FsEffectState::Unchanged)
+        }
+        Some(native_files::error::LocalFileEffectState::PartiallyApplied) => {
             Some(FsEffectState::PartiallyApplied)
         }
-        native_files::error::LocalFileErrorKind::Indeterminate => {
+        Some(native_files::error::LocalFileEffectState::Applied) => {
+            Some(FsEffectState::Applied)
+        }
+        Some(native_files::error::LocalFileEffectState::Indeterminate) => {
             Some(FsEffectState::Indeterminate)
         }
+        None => None,
         _ => None,
     }
 }
@@ -197,7 +204,18 @@ pub(crate) const fn rename_effect_state(
 /// intentionally coarser than `std::io::ErrorKind`.
 #[inline]
 fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
-    match error.kind() {
+    let Some(cause) = error.cause_kind() else {
+        return match error.kind() {
+            native_files::error::LocalFileErrorKind::PublicationIncomplete => {
+                FsErrorKind::Io
+            }
+            native_files::error::LocalFileErrorKind::Indeterminate => {
+                FsErrorKind::Indeterminate
+            }
+            kind => native_kind(kind),
+        };
+    };
+    match cause {
         native_files::error::LocalFileErrorKind::InvalidPath => {
             FsErrorKind::InvalidPath
         }
@@ -216,20 +234,8 @@ fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
         native_files::error::LocalFileErrorKind::TypeConflict => {
             FsErrorKind::Conflict
         }
-        native_files::error::LocalFileErrorKind::Indeterminate => {
-            FsErrorKind::Indeterminate
-        }
-        native_files::error::LocalFileErrorKind::PublicationIncomplete => {
-            if error.resource_limit_error().is_some() {
-                FsErrorKind::ResourceLimitExceeded
-            } else if error.io_error_kind() == std::io::ErrorKind::TimedOut {
-                FsErrorKind::Timeout
-            } else {
-                FsErrorKind::Io
-            }
-        }
         _ if error.io_error().is_some() => io_kind(error.io_error_kind()),
-        _ => native_kind(error.kind()),
+        _ => native_kind(cause),
     }
 }
 
@@ -446,5 +452,33 @@ mod tests {
                     .is_some()
             );
         }
+    }
+
+    #[test]
+    fn maps_publication_cause_separately_from_effect() {
+        let path = Path::parse("/source").expect("valid test path");
+        let native = LocalFileError::new(
+            LocalFileErrorKind::PublicationIncomplete,
+            LocalFileOperation::DeleteDirectory,
+        );
+
+        let error = map(native, FsOperation::Delete, &path, None, "local-file");
+
+        assert_eq!(FsErrorKind::Io, error.kind());
+        assert_eq!(Some(FsEffectState::PartiallyApplied), error.effect_state());
+    }
+
+    #[test]
+    fn explicit_native_cause_precedes_a_coarser_io_source() {
+        let path = Path::parse("/source").expect("valid test path");
+        let native = LocalFileError::new(
+            LocalFileErrorKind::TypeConflict,
+            LocalFileOperation::DeleteDirectory,
+        );
+
+        let error = map(native, FsOperation::Delete, &path, None, "local-file");
+
+        assert_eq!(FsErrorKind::Conflict, error.kind());
+        assert_eq!(None, error.effect_state());
     }
 }
