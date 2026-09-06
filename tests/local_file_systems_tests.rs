@@ -15,6 +15,7 @@ use qubit_fs::path::PathSemantics;
 use qubit_fs::temp::TempOptions as TempFileOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_local::host_path_to_logical;
 
 /// The host factory returns a concrete hierarchical local filesystem.
 #[test]
@@ -256,12 +257,8 @@ fn test_host_temp_file_applies_parent_and_affixes() {
     let parent = tempfile::tempdir().expect("temporary parent should exist");
     let canonical_parent = std::fs::canonicalize(parent.path())
         .expect("temporary parent should canonicalize");
-    let parent = Path::parse(
-        canonical_parent
-            .to_str()
-            .expect("test temporary path should be UTF-8"),
-    )
-    .expect("test temporary path should be logical");
+    let parent = host_path_to_logical(&canonical_parent)
+        .expect("test temporary path should convert to a logical path");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
         .expect("host filesystem should construct");
 
