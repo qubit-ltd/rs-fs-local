@@ -7,6 +7,7 @@
 // =============================================================================
 //! Resolved listing behavior retained by a directory stream.
 
+use qubit_fs::directory::ListFilter;
 use qubit_fs::path::Path;
 use qubit_fs::spi::ResolvedListOptions;
 
@@ -15,8 +16,8 @@ use qubit_fs::spi::ResolvedListOptions;
 pub(in crate::spi) struct ListingOptions {
     /// Whether each already-observed entry metadata snapshot is exposed.
     include_metadata: bool,
-    /// Optional slash-separated prefix relative to the requested list root.
-    prefix: Option<String>,
+    /// Explicit facade filter retained for post-walk matching.
+    filter: Option<ListFilter>,
 }
 
 impl ListingOptions {
@@ -33,7 +34,7 @@ impl ListingOptions {
     pub(in crate::spi) fn new(options: &ResolvedListOptions) -> Self {
         Self {
             include_metadata: options.options().include_metadata(),
-            prefix: options.options().prefix().map(str::to_owned),
+            filter: options.options().filter().cloned(),
         }
     }
 
@@ -56,18 +57,25 @@ impl ListingOptions {
     ///
     /// # Returns
     ///
-    /// `true` when no prefix is configured or the path is the prefix itself
-    /// or one of its descendants.
+    /// `true` when the path satisfies the configured filter.
     #[inline]
     #[must_use]
     pub(in crate::spi) fn matches(&self, relative: &Path) -> bool {
-        self.prefix.as_ref().is_none_or(|prefix| {
-            let relative =
-                relative.as_str().strip_prefix('/').unwrap_or_default();
-            relative == *prefix
-                || relative
-                    .strip_prefix(prefix)
-                    .is_some_and(|remaining| remaining.starts_with('/'))
-        })
+        match self.filter.as_ref() {
+            None => true,
+            Some(ListFilter::Subtree(prefix)) => {
+                let relative =
+                    relative.as_str().strip_prefix('/').unwrap_or_default();
+                relative == prefix
+                    || relative
+                        .strip_prefix(prefix)
+                        .is_some_and(|remaining| remaining.starts_with('/'))
+            }
+            Some(ListFilter::LiteralPrefix(prefix)) => relative
+                .as_str()
+                .strip_prefix('/')
+                .unwrap_or_default()
+                .starts_with(prefix),
+        }
     }
 }

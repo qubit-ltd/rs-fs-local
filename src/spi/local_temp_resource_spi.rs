@@ -522,8 +522,14 @@ fn persist_failure_state(
 #[inline]
 const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
     match state {
-        PersistFailureState::NotPublished => FsEffectState::Unchanged,
-        PersistFailureState::PublishedSourceRetained => FsEffectState::Applied,
+        PersistFailureState::NotPublished
+        | PersistFailureState::NotPublishedSourceReleased => {
+            FsEffectState::Unchanged
+        }
+        PersistFailureState::PublishedSourceRetained
+        | PersistFailureState::PublishedSourceReleased => {
+            FsEffectState::Applied
+        }
         PersistFailureState::Indeterminate => FsEffectState::Indeterminate,
     }
 }

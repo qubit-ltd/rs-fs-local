@@ -245,7 +245,7 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
             .persist(&target, PersistOptions::default())
             .expect_err("published temporary file must reject persistence")
             .state(),
-        PersistFailureState::NotPublished
+        PersistFailureState::PublishedSourceReleased
     );
     assert_eq!(
         temporary
@@ -488,7 +488,10 @@ fn test_temp_file_cleanup_makes_persist_terminal() {
             PersistOptions::default(),
         )
         .expect_err("cleaned temporary file must reject persistence");
-    assert_eq!(failure.state(), PersistFailureState::NotPublished);
+    assert_eq!(
+        failure.state(),
+        PersistFailureState::NotPublishedSourceReleased
+    );
     assert_eq!(temporary.state(), TempResourceState::Cleaned);
 }
 
