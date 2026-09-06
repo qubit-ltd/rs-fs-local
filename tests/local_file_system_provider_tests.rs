@@ -172,7 +172,7 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
 #[test]
 fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
     let local = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
-    let config = FileSystemConfig::new(
+    let direct_config = FileSystemConfig::new(
         ConnectionUri::parse("memory:///data").expect("test URI must parse"),
     )
     .with_options(NonSensitiveMetadata::from(
@@ -181,7 +181,7 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
             .expect("test metadata must be valid"),
     ));
     let direct_failure = local
-        .create_configured(&config)
+        .create_configured(&direct_config)
         .expect_err("local provider must reject unsupported schemes");
     assert_eq!(direct_failure.kind(), ProviderFailureKind::Unsupported);
     assert_eq!(direct_failure.error().kind(), FsErrorKind::UnsupportedOperation);
@@ -207,24 +207,34 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
             received_schemes: Arc::clone(&received_schemes),
         })
         .expect("the chain fallback provider must register");
-    let config = config.with_selection(
-        ProviderSelection::chain(["local-file", "chain-fallback"])
-            .expect("provider chain must parse")
-            .with_fallback_policy(FallbackPolicy::OnAbsence),
-    );
+    let selection = ProviderSelection::chain(["local-file", "chain-fallback"])
+        .expect("provider chain must parse")
+        .with_fallback_policy(FallbackPolicy::OnAbsence);
 
-    let resolution = registry
-        .resolve_config(&config)
-        .expect("unsupported local scheme must fall back to the next provider");
+    for uri in [
+        "memory:///data",
+        "memory://user:password@localhost/data",
+        "memory:///data?token=secret",
+    ] {
+        let config = FileSystemConfig::new(
+            ConnectionUri::parse(uri).expect("test URI must parse"),
+        )
+        .with_selection(selection.clone());
 
-    assert_eq!(resolution.path(), &Path::parse("/fallback").expect("path must parse"));
-    assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
+        let resolution = registry
+            .resolve_config(&config)
+            .expect("unsupported local scheme must fall back to the next provider");
+
+        assert_eq!(resolution.path(), &Path::parse("/fallback").expect("path must parse"));
+        assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
+    }
+
     assert_eq!(
         received_schemes
             .lock()
             .expect("the fixture scheme log must not be poisoned")
             .as_slice(),
-        ["memory"],
+        ["memory", "memory", "memory"],
     );
 }
 
