@@ -669,9 +669,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(error_mapper::copy_path_error)?;
         self.native
             .copy_with_options(&source, &target, &options)
-            .map(|value| {
-                CopyAttempt::Completed(local_outcome_mapper::copy(value))
-            })
+            .map(|value| CopyAttempt::Completed(local_outcome_mapper::copy(value)))
             .map_err(|error| {
                 let state = local_outcome_mapper::copy_failure_state(error.state());
                 let stats = *error.partial_stats();
@@ -686,21 +684,13 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 let failure_path = error
                     .failed_source_path()
                     .map(|path| {
-                        local_path_mapper::logical(
-                            self.native.scope(),
-                            path,
-                            FsOperation::Copy,
-                        )
+                        local_path_mapper::logical(self.native.scope(), path, FsOperation::Copy)
                     })
                     .transpose();
                 let failure_target = error
                     .failed_target_path()
                     .map(|path| {
-                        local_path_mapper::logical(
-                            self.native.scope(),
-                            path,
-                            FsOperation::Copy,
-                        )
+                        local_path_mapper::logical(self.native.scope(), path, FsOperation::Copy)
                     })
                     .transpose();
                 if failure_path.is_err() || failure_target.is_err() {
@@ -716,8 +706,10 @@ impl FileSystemSpi for LocalFileSystemSpi {
                     .with_effect_state(error_mapper::copy_effect_state(state));
                     return SpiCopyFailure::new(mapped, state, partial_stats);
                 }
-                let failure_path = failure_path.expect("checked successful failure-path conversion");
-                let failure_target = failure_target.expect("checked successful failure-target conversion");
+                let failure_path =
+                    failure_path.expect("checked successful failure-path conversion");
+                let failure_target =
+                    failure_target.expect("checked successful failure-target conversion");
                 SpiCopyFailure::new(
                     error_mapper::copy_failure(
                         error,
