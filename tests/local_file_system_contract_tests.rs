@@ -9,6 +9,8 @@
 
 use std::fs;
 use std::io::ErrorKind;
+#[cfg(unix)]
+use std::path::Component;
 use std::path::Path as NativePath;
 use std::path::PathBuf;
 
@@ -64,8 +66,24 @@ fn remove_entry(path: &NativePath) -> FixtureResult<()> {
     })
 }
 
+/// Verifies that a teardown base is an actual directory rather than a link.
+fn ensure_real_directory(path: &NativePath, description: &str) -> FixtureResult<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(FixtureError::new(format!("{description} is a symbolic link")))
+        }
+        Ok(metadata) if metadata.is_dir() => Ok(()),
+        Ok(_) => Err(FixtureError::new(format!("{description} is not a directory"))),
+        Err(error) => Err(FixtureError::with_source(
+            format!("{description} metadata failed"),
+            error,
+        )),
+    }
+}
+
 /// Removes all children of one native directory while preserving the directory.
 fn clear_children(path: &NativePath) -> FixtureResult<()> {
+    ensure_real_directory(path, "fixture teardown base")?;
     for entry in fs::read_dir(path).map_err(|error| {
         FixtureError::with_source("fixture teardown directory read failed", error)
     })? {
@@ -175,7 +193,9 @@ impl RootedFixture {
     /// Removes fixture-created descendants while retaining the rooted facade
     /// authority and its fixed `/fixture` namespace directory.
     fn teardown_entries(&self) -> FixtureResult<()> {
+        ensure_real_directory(self.root.path(), "rooted fixture root")?;
         let fixture = self.root.path().join("fixture");
+        ensure_real_directory(&fixture, "rooted fixture namespace")?;
         clear_children(&fixture)?;
         for entry in fs::read_dir(self.root.path()).map_err(|error| {
             FixtureError::with_source("rooted fixture root read failed", error)
@@ -333,7 +353,19 @@ impl HostFixture {
 
     /// Converts a fixture-relative path into the host facade's logical path.
     fn logical_path(&self, relative: &str) -> FixtureResult<Path> {
+        let relative_path = NativePath::new(relative);
+        if relative_path.is_absolute()
+            || relative_path
+                .components()
+                .any(|component| matches!(component, Component::ParentDir))
+        {
+            return Err(FixtureError::new(
+                "host fixture path must stay relative to its temporary root",
+            ));
+        }
+        ensure_real_directory(self.root.path(), "host fixture root")?;
         let native = self.root.path().join(relative);
+        ensure_owned_path(self.root.path(), &native)?;
         host_path_to_logical(&native).map_err(|error| {
             FixtureError::with_source("fixture path is invalid", error)
         })
@@ -688,4 +720,59 @@ fn test_host_list_contract_teardown_clears_fixture_root() {
         0,
         "list phase left generated descendants behind",
     );
+}
+
+/// Host fixture paths reject native absolute and parent traversal inputs.
+#[cfg(unix)]
+#[test]
+fn test_host_fixture_rejects_paths_outside_temporary_root() {
+    let fixture = HostFixture::new();
+
+    assert!(fixture.logical_path("/tmp/outside").is_err());
+    assert!(fixture.logical_path("../outside").is_err());
+
+    let outside = Path::parse("/tmp/outside").expect("outside path must be valid");
+    assert!(fixture.native_path(&outside).is_err());
+}
+
+/// Teardown refuses to follow a rooted namespace symlink.
+#[cfg(unix)]
+#[test]
+fn test_rooted_teardown_rejects_symlinked_namespace() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = RootedFixture::new();
+    let outside = tempfile::tempdir().expect("outside directory must be created");
+    let marker = outside.path().join("must-remain");
+    fs::write(&marker, b"marker").expect("outside marker must be created");
+
+    let namespace = fixture.root.path().join("fixture");
+    fs::remove_dir(&namespace).expect("fixture namespace must be removable");
+    symlink(outside.path(), &namespace).expect("namespace symlink must be created");
+
+    assert!(fixture.teardown().is_err());
+    assert!(marker.exists(), "teardown followed the namespace symlink");
+}
+
+/// Teardown refuses to follow a host root symlink.
+#[cfg(unix)]
+#[test]
+fn test_host_teardown_rejects_symlinked_root() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = HostFixture::new();
+    let original_root = fixture.root.path().to_path_buf();
+    let moved_root = original_root.with_extension("moved");
+    let outside = tempfile::tempdir().expect("outside directory must be created");
+    let marker = outside.path().join("must-remain");
+    fs::write(&marker, b"marker").expect("outside marker must be created");
+
+    fs::rename(&original_root, &moved_root).expect("fixture root must be moved");
+    symlink(outside.path(), &original_root).expect("root symlink must be created");
+
+    assert!(fixture.teardown().is_err());
+    assert!(marker.exists(), "teardown followed the root symlink");
+
+    fs::remove_file(&original_root).expect("root symlink must be removed");
+    fs::rename(&moved_root, &original_root).expect("fixture root must be restored");
 }
