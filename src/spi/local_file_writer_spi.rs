@@ -52,10 +52,7 @@ impl LocalFileWriterSpi {
     ///
     /// An active facade writer session.
     #[inline(always)]
-    pub(crate) fn new(
-        writer: native_files::LocalFileWriter,
-        provider_id: String,
-    ) -> Self {
+    pub(crate) fn new(writer: native_files::LocalFileWriter, provider_id: String) -> Self {
         Self {
             writer: Some(writer),
             terminal_abort_outcome: None,
@@ -183,8 +180,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         }
                     },
                 );
-                result =
-                    result.with_bytes_written(outcome.bytes_written() as u64);
+                result = result.with_bytes_written(outcome.bytes_written() as u64);
                 result = result.with_durable(outcome.durable());
                 Ok(result)
             }
@@ -193,8 +189,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 self.writer = retained;
                 let state = write_failure_state(state, self.writer.is_some());
                 if self.writer.is_none() {
-                    self.terminal_abort_outcome =
-                        Some(abort_outcome_from_failure(state));
+                    self.terminal_abort_outcome = Some(abort_outcome_from_failure(state));
                 }
                 Err(SpiWriteFailure::new(
                     error_mapper::map_without_path(
@@ -245,8 +240,9 @@ impl FileWriterSpi for LocalFileWriterSpi {
 #[inline]
 const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
     match state {
-        WriteFailureState::RetryableNotPublished
-        | WriteFailureState::NotPublished => FsEffectState::Unchanged,
+        WriteFailureState::RetryableNotPublished | WriteFailureState::NotPublished => {
+            FsEffectState::Unchanged
+        }
         WriteFailureState::Published => FsEffectState::Applied,
         WriteFailureState::Indeterminate => FsEffectState::Indeterminate,
     }
@@ -256,8 +252,9 @@ const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
 #[inline]
 fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
     match state {
-        WriteFailureState::RetryableNotPublished
-        | WriteFailureState::NotPublished => WriteAbortOutcome::NotPublished,
+        WriteFailureState::RetryableNotPublished | WriteFailureState::NotPublished => {
+            WriteAbortOutcome::NotPublished
+        }
         WriteFailureState::Published => WriteAbortOutcome::Published,
         WriteFailureState::Indeterminate => WriteAbortOutcome::Indeterminate,
     }
@@ -269,8 +266,7 @@ fn abort_outcome(
     state: Option<native_files::outcome::LocalWriteFailureState>,
 ) -> WriteAbortOutcome {
     match state {
-        None
-        | Some(native_files::outcome::LocalWriteFailureState::NotPublished) => {
+        None | Some(native_files::outcome::LocalWriteFailureState::NotPublished) => {
             WriteAbortOutcome::NotPublished
         }
         Some(native_files::outcome::LocalWriteFailureState::Published) => {
@@ -298,17 +294,13 @@ fn write_failure_state(
     retained: bool,
 ) -> WriteFailureState {
     match state {
-        native_files::outcome::LocalWriteFailureState::NotPublished
-            if retained =>
-        {
+        native_files::outcome::LocalWriteFailureState::NotPublished if retained => {
             WriteFailureState::RetryableNotPublished
         }
         native_files::outcome::LocalWriteFailureState::NotPublished => {
             WriteFailureState::NotPublished
         }
-        native_files::outcome::LocalWriteFailureState::Published => {
-            WriteFailureState::Published
-        }
+        native_files::outcome::LocalWriteFailureState::Published => WriteFailureState::Published,
         native_files::outcome::LocalWriteFailureState::Indeterminate => {
             WriteFailureState::Indeterminate
         }
@@ -325,10 +317,7 @@ fn write_failure_state(
 ///
 /// A facade abort error with local provider context.
 #[inline(always)]
-fn abort_error(
-    error: native_files::LocalFileError,
-    provider_id: &str,
-) -> FsError {
+fn abort_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     error_mapper::map_without_path(
         error,
         FsOperation::AbortWriter,
