@@ -25,6 +25,13 @@ native lengths, excluding allocator overhead. Deadlines are cooperative.
 `with_delete_limits(None)` explicitly removes deletion ceilings at provider
 construction time. No deletion limit is inferred from a listing or copy limit.
 
+The adapter preserves native deletion classification: deleting a directory through
+`delete_file` reports `IsDirectory`, and deleting a regular file or final symbolic
+link through `delete_directory` reports `NotDirectory` without removing it. If
+recursive deletion has already removed entries, inspect the returned `FsError`
+effect state before retrying. Its native `LocalFileError` source exposes
+`cause_kind()` separately; an absent effect state means that no effect was proven.
+
 ## Conceptual Model
 
 `LocalFileSystems` is a factory for a concrete `FileSystem` facade.
@@ -123,6 +130,11 @@ Native operation failures are reported through the `qubit-fs` error model; the
 local adapter identifies itself as `local-file`. Registry creation and
 resolution errors are returned by `qubit-fs-registry`. Inspect the returned
 error rather than assuming a URI was accepted.
+
+For native `PublicationIncomplete`, the adapter reports
+`FsEffectState::PartiallyApplied` and keeps the underlying native error as the
+source. Cause and effect are independent: the effect state describes namespace
+progress, while the mapped error kind follows the native cause when available.
 
 The provider rejects configurations outside its local-file contract: a remote
 authority, query, relative path, non-`file` scheme, options, and credentials.
