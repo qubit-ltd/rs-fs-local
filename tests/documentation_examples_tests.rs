@@ -43,6 +43,7 @@ fn test_readme_and_user_guide_examples_compile() {
     fs::create_dir_all(&bin).expect("bin directory");
     let fs_dependency = root.join("../rs-fs");
     let registry_dependency = root.join("../rs-fs-registry");
+    let spi_dependency = root.join("../rs-spi");
     let filesystem = if fs_dependency.join("Cargo.toml").is_file() {
         format!("{{ path = \"{}\" }}", toml_path(&fs_dependency))
     } else {
@@ -53,8 +54,13 @@ fn test_readme_and_user_guide_examples_compile() {
     } else {
         "\"0.1\"".to_owned()
     };
+    let spi = if spi_dependency.join("Cargo.toml").is_file() {
+        format!("{{ path = \"{}\" }}", toml_path(&spi_dependency))
+    } else {
+        "\"0.11\"".to_owned()
+    };
     let manifest = format!(
-        "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\n",
+        "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\nqubit-spi = {spi}\n",
         toml_path(root),
     );
     fs::write(workspace.path().join("Cargo.toml"), manifest)
