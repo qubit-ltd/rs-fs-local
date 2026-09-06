@@ -20,6 +20,11 @@ pending_path_bytes, deadline)))` 设置删除上限。删除请求选择递归�
 开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
 删除上限；不会从 list/copy 预算推导隐藏的删除限制。
 
+adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 `IsDirectory`，通过
+`delete_directory` 删除普通文件或最终符号链接返回 `NotDirectory`，且不会删除该 entry。
+递归删除已经移除条目后失败时，应在重试前检查返回 `FsError` 的副作用状态。其 native
+`LocalFileError` source 单独提供 `cause_kind()`；effect 缺失表示没有证据证明副作用。
+
 ## 概念模型
 
 `LocalFileSystems` 是创建具体 `FileSystem` 门面的工厂。
@@ -107,6 +112,10 @@ authority，不会重新打开配置的根路径。
 
 原生操作失败会经由 `qubit-fs` 错误模型报告；本地 adapter 的 provider ID 为 `local-file`。
 registry 的创建和解析错误由 `qubit-fs-registry` 返回。应检查返回错误，而非假设 URI 已被接受。
+
+native `PublicationIncomplete` 会映射为 `FsEffectState::PartiallyApplied`，并将底层 native
+错误保留为 source。原因与副作用彼此独立：副作用状态描述命名空间进度，映射后的错误类别
+在可用时遵循 native cause。
 
 provider 会拒绝超出本地文件契约的配置：远程 authority、query、相对路径、非 `file` scheme、
 options 和 credentials。
