@@ -131,15 +131,15 @@ impl LocalFileSystemProvider {
     fn decode_config(
         config: &FileSystemConfig,
     ) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
-        let uri = config
-            .uri()
-            .try_to_uri()
-            .map_err(ProviderFailure::invalid_configuration)?;
-        if uri.scheme() != FILE_SCHEME {
+        if config.uri().scheme() != FILE_SCHEME {
             return Err(unsupported_scheme(
                 "local filesystem provider requires the file URI scheme",
             ));
         }
+        let uri = config
+            .uri()
+            .try_to_uri()
+            .map_err(ProviderFailure::invalid_configuration)?;
         if !config.options().is_empty()
             || !config.metadata().is_empty()
             || config.credential().is_some()
