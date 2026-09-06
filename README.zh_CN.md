@@ -32,7 +32,8 @@ cargo add qubit-fs-local --features registry
 ```rust
 use std::path::Path;
 
-use qubit_fs::{FileSystemId, Path as LogicalPath};
+use qubit_fs::Path as LogicalPath;
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let file_system = LocalFileSystems::rooted_with_id(
@@ -49,6 +50,27 @@ println!("{metadata:?}");
 `unbounded()`，否则使用带完整 list/copy 预算的 `bounded(...)`。`LocalFileSystems::host(policy)`
 打开进程主机命名空间；`rooted(root, policy)` 生成进程本地标识；`rooted_with_id(id, root, policy)`
 保留调用方提供的标识。若该标识必须在进程之外保持稳定，应使用后者。
+
+当原生主机路径来自 `std::env::current_dir` 等 API 时，应先使用
+`host_path_to_logical` 转换，再传给门面。这样可以保留百分号转义和 Unix 非 UTF-8 文件名。
+已经是 rooted 逻辑路径时使用 `qubit_fs::Path::parse`；两者表示的 authority 不同。
+
+```rust
+use qubit_fs::read::ReadOptions;
+use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
+
+let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+let native = std::env::current_dir()?.join("Cargo.toml");
+let path = host_path_to_logical(&native)?;
+let prefix = file_system.read_prefix(&path, ReadOptions::default(), 4096)?;
+assert!(prefix.len() <= 4096);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`bounded_operations(list, copy, delete)` 显式设置三类普通操作的每次请求上限。兼容入口
+`bounded(list, copy)` 只限制列表与复制，删除仍需单独配置。列表的 provider 条目计数为
+native walker 在 prefix 过滤前产出的条目；请求条目上限计数为过滤后返回的条目。临时资源
+cleanup、Drop 和原生发布清理不继承普通删除预算；这些配置也不是并发请求的累计配额。
 
 ## 提供的能力
 

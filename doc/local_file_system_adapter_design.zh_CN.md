@@ -61,7 +61,7 @@ Host 与 rooted 不对应两套 SPI 类型。`LocalFileSystemSpi` 内部持有�
 
 ## 4. 普通调用入口
 
-应用通过零变体 enum 的关联方法创建门面：
+应用通过仅作为类型命名空间的 `LocalFileSystems` 关联方法创建门面：
 
 ```rust
 pub struct LocalFileSystems {
@@ -69,15 +69,17 @@ pub struct LocalFileSystems {
 }
 
 impl LocalFileSystems {
-    pub fn host() -> FsResult<FileSystem>;
+    pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem>;
 
     pub fn rooted(
         root: &Path,
+        policy: LocalResourcePolicy,
     ) -> FsResult<FileSystem>;
 
     pub fn rooted_with_id(
         id: FileSystemId,
         root: &Path,
+        policy: LocalResourcePolicy,
     ) -> FsResult<FileSystem>;
 }
 ```
@@ -149,8 +151,11 @@ Capability 只声明当前平台和当前配置真正保证的语义。例如：
 - `SizeLimit::VariesByPath` 和 `SizeLimit::Unknown` 都保守映射为
   `FileSystemLimit::Unknown`，不使用猜测常量。
 
-只有 `SizeLimit::Maximum(value)` 才会写入 `FileSystemLimits`；provider 不会把
-host-wide 的 path-dependent 值当成全局上限。
+原生 `NAME_MAX`、`PATH_MAX` 等限制的单位和 authority 不等同于逻辑路径 UTF-8 文本长度，
+百分号编码和非 UTF-8 文件名还会造成文本展开。因此 local provider 的
+`max_path_text_bytes` 与 `max_component_text_bytes` 报告 `FileSystemLimit::Unknown`；它不
+将 native 限制乘以猜测常量写入逻辑属性。解码后的路径仍由 codec、native 校验和操作系统
+限制共同约束。
 
 两个 local configured filesystem 都使用 hierarchical、absolute logical path：
 
@@ -171,12 +176,12 @@ Properties 构造完成后不能因某次调用结果而动态改变。
 
 ### 7.1 Codec ownership
 
-Adapter 的私有 `LocalPathMapper` 不包含平台算法，而是直接委托
+Adapter 的私有 `path::local_path_mapper` 不包含平台算法，而是直接委托
 `qubit-local-files` 的 codec 和 `LocalPaths`：
 
 ```text
 qubit_fs::Path canonical component text
-  → LocalPathMapper
+  → `path::local_path_mapper::{native,logical}`
   → native_files::path::LocalPaths / LocalPathCodec
   → OsStr / OsString
 ```
@@ -185,8 +190,10 @@ Unix raw byte、Windows UTF-16/WTF-8、canonical escape、separator、root 和 p
 判定全部由 `qubit-local-files` 提供。Adapter 只组织逻辑 component 与 native
 component/path 的组合。
 
-所有路径转换集中在私有零变体 `LocalPathMapper` 的关联方法中，不提供 free
-function。Codec 或路径校验错误由 `LocalFileErrorMapper` 映射为无副作用的
+路径转换实际集中在 `path::local_path_mapper` 的私有 free functions
+`native` 与 `logical` 中。公共 `host_path_to_logical` 是 host native 路径进入门面的唯一
+推荐入口；它要求绝对 native 路径，并保留非 UTF-8 与百分号编码，不通过 lossy display
+文本。Codec 或路径校验错误由 `LocalFileErrorMapper` 映射为无副作用的
 `FsError`。
 
 ### 7.2 Host filesystem
@@ -194,7 +201,7 @@ function。Codec 或路径校验错误由 `LocalFileErrorMapper` 映射为无副
 Host SPI 将 absolute hierarchical `qubit_fs::Path` 逐 component 转换为 native
 absolute path：
 
-- `LocalPathMapper` 把 scope 与 logical component iterator 交给
+- `local_path_mapper::native` 把 scope 与 logical component iterator 交给
   `native_files::path::LocalPaths::from_canonical_components`；
 - native 层统一处理 component codec、separator、root、drive、prefix 和 NUL；
 - Windows 第一版只接受 drive-absolute canonical form；UNC/remote authority 在没有
@@ -243,7 +250,7 @@ credential-free canonical URI。
 Adapter 不调用公开 options 的 `validate_against`，因为 SPI request 已代表完成的通用
 preflight。Native 层仍可拒绝平台运行时条件。
 
-所有 options conversion 集中在私有零变体 `LocalOptionsMapper` 的关联方法中。特别是
+所有 options conversion 集中在 `spi::local_options_mapper` 的私有 free functions 中。特别是
 `WriteDisposition::{CreateNew, CreateOrReplace, Append}` 必须逐项映射到 native
 disposition；只有 properties 声明 append 且 resolved atomicity 不是 `Required` 时
 才能创建 native append writer。未知或不可表示的字段返回 contract error，不能静默
@@ -261,8 +268,8 @@ Local SPI 的 `try_copy` 采用两阶段规则：
 结果映射如下：
 
 ```text
-未进入 native copy，且本次组合不适用
-  → CopyAttempt::Declined(NotApplicable)
+未进入 native copy，且本次组合不可表达
+  → SpiCopyFailure(RequirementNotMet, Unchanged, zero partial stats)
 
 native copy 成功
   → CopyAttempt::Completed(mapped outcome)
@@ -271,10 +278,11 @@ native copy 已被调用且失败
   → SpiCopyFailure(mapped state + partial stats)
 ```
 
-`Declined` 前可以执行 codec、options classification 和其他确定无副作用的检查；不得
-创建 staging、打开写 handle 或修改 namespace。一旦调用 native copy，任何
-`LocalCopyFailure` 都是终止 failure，不能再按 I/O kind、`EXDEV` 或
-`Unsupported` 转成 `Declined`。
+不可表达的 options 可以在 codec、options classification 等确定无副作用的检查阶段被
+拒绝；不得创建 staging、打开写 handle 或修改 namespace。local provider 不向门面
+`Declined`，因此不会触发 facade stream fallback。一旦调用 native copy，任何
+`LocalCopyFailure` 都是终止 failure，不能再按 I/O kind、`EXDEV` 或 `Unsupported` 转成
+`Declined`。
 
 Native local copy 内部使用流复制、clone 或跨设备 fallback，仍属于 provider-native
 attempt。当前 `qubit-fs` 将 provider 已接管的这些原语统一表示为
@@ -362,6 +370,11 @@ Persist failure state 一一映射：
 `ResolvedPersistOptions` 的 overwrite、atomicity 和 metadata preservation 映射到
 `LocalPersistOptions`；native durability 使用 provider 明确声明的默认 requirement。
 
+普通 `delete_file`/`delete_directory` 的预算不自动应用于 temporary session 的
+`cleanup`、Drop 或 publication 失败后的 native 清理。cleanup 仍可能执行同步递归工作；
+显式 cleanup 报告错误，Drop 是 best effort。需要对清理工作设预算时，应在 native 层另立
+包含残留资源和恢复权属的设计，不能把普通删除预算解释为全部生命周期操作的总配额。
+
 任何无法确定 source/target 状态的 native failure 都必须映射为 `Indeterminate`。
 
 ## 11. 异步边界
@@ -439,7 +452,8 @@ src/
 ├── local_file_systems.rs
 ├── spi/
 │   ├── local_file_system_spi.rs
-│   ├── rooted_local_file_system_spi.rs
+│   ├── local_options_mapper.rs
+│   ├── local_outcome_mapper.rs
 │   ├── local_file_writer_spi.rs
 │   ├── local_directory_stream_spi.rs
 │   ├── local_temp_resource_spi.rs
@@ -451,8 +465,9 @@ src/
     └── local_file_uri_path.rs
 ```
 
-重构以此模块布局为目标。共享转换逻辑只能进入列出的私有 mapper/session 模块，不能
-合并回一个包含平台算法的巨大 adapter 文件。
+当前实现只有一个 `LocalFileSystemSpi`；Host/rooted 由其持有的 native scope 区分，
+没有 `rooted_local_file_system_spi.rs`。共享转换逻辑进入实际的私有 mapper/session 模块，
+不能合并回一个包含平台算法的巨大 adapter 文件。
 
 ## 16. 验证策略
 
@@ -468,7 +483,7 @@ src/
    验证 host/rooted factory 返回 `FileSystem`，opened/temp handle 保留正确
    filesystem identity，registry 返回 concrete resolution。
 
-   另外覆盖全部输入路径转换发生在 I/O 前、`Declined` 零副作用、native copy
+   另外覆盖全部输入路径转换发生在 I/O 前、不可表达 copy 的零副作用终止失败、native copy
    failure 不 fallback、copy/rename typed state 与 partial stats 无损映射，以及
    rooted temp 在 root 诊断路径变化后仍使用原 authority。
 
