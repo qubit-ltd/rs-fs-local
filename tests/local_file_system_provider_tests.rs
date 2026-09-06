@@ -633,8 +633,7 @@ impl ServiceProvider<FileSystemSpec> for AlwaysUnsupportedProvider {
     fn create_configured(
         &self,
         _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>>
-    {
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         Err(ProviderFailure::unsupported(FsError::new(
             FsErrorKind::UnsupportedOperation,
             FsOperation::Provider,
@@ -653,8 +652,7 @@ impl ServiceProvider<FileSystemSpec> for ChainFallbackProvider {
     fn create_configured(
         &self,
         config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<FsError>>
-    {
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         self.received_schemes
             .lock()
             .expect("the fixture scheme log must not be poisoned")
