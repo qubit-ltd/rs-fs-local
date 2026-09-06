@@ -58,8 +58,9 @@ fn typed_copy_failure_exposes_unchanged_effect_and_request_context() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let source = Path::parse("/missing").expect("valid source path");
     let target = Path::parse("/target").expect("valid target path");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem should construct");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
 
     let failure = filesystem
         .copy(&source, &target, CopyOptions::file())
@@ -79,15 +80,18 @@ fn typed_copy_failure_exposes_unchanged_effect_and_request_context() {
 fn writer_conflict_retains_unchanged_effect_and_native_source() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let target = path("/target");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem should construct");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
     let mut writer = filesystem
         .open_writer(
             &target,
-            WriteOptions::default().with_disposition(WriteDisposition::CreateNew),
+            WriteOptions::default()
+                .with_disposition(WriteDisposition::CreateNew),
         )
         .expect("writer should open before the conflict");
-    Output::write_fully(&mut writer, b"staged").expect("writer should accept bytes");
+    Output::write_fully(&mut writer, b"staged")
+        .expect("writer should accept bytes");
     std::fs::write(root.path().join("target"), b"concurrent")
         .expect("concurrent target should be installed");
 

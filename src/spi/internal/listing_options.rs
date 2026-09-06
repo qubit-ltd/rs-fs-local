@@ -62,7 +62,8 @@ impl ListingOptions {
     #[must_use]
     pub(in crate::spi) fn matches(&self, relative: &Path) -> bool {
         self.prefix.as_ref().is_none_or(|prefix| {
-            let relative = relative.as_str().strip_prefix('/').unwrap_or_default();
+            let relative =
+                relative.as_str().strip_prefix('/').unwrap_or_default();
             relative == *prefix
                 || relative
                     .strip_prefix(prefix)
