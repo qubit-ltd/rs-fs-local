@@ -373,6 +373,64 @@ fn test_local_provider_chain_does_not_fallback_for_file_configuration_error() {
     );
 }
 
+/// An embedded credential makes a `file:` configuration terminal in an
+/// absence-only chain before the next provider is invoked.
+#[test]
+fn test_local_provider_chain_does_not_fallback_for_embedded_file_credential() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
+        .expect("the local provider descriptor must register");
+    let root = tempfile::tempdir().expect("fallback provider root must be created");
+    let fallback = LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(
+            ProviderId::new("chain-fallback").expect("provider id must be valid"),
+        ),
+        FileSystemId::new("chain-fallback-root").expect("filesystem id must be valid"),
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("the fallback local provider must open");
+    let received_schemes = Arc::new(Mutex::new(Vec::new()));
+    registry
+        .register(ChainFallbackProvider {
+            inner: fallback,
+            received_schemes: Arc::clone(&received_schemes),
+        })
+        .expect("the chain fallback provider must register");
+
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("file://user@localhost/data")
+            .expect("test URI must parse"),
+    )
+    .with_selection(
+        ProviderSelection::chain(["local-file", "chain-fallback"])
+            .expect("provider chain must parse")
+            .with_fallback_policy(FallbackPolicy::OnAbsence),
+    );
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("embedded file credentials must be terminal in an absence-only chain");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+
+    assert_eq!(creation.attempts().len(), 1);
+    assert_eq!(
+        creation.decisive_attempt().failure().error().kind(),
+        FsErrorKind::InvalidOptions,
+    );
+    assert!(
+        received_schemes
+            .lock()
+            .expect("the fixture scheme log must not be poisoned")
+            .is_empty(),
+        "the second provider must not be invoked",
+    );
+}
+
 /// Embedded secrets are unsupported by the local provider and must return a
 /// provider-creation error instead of panicking while decoding the URI.
 #[test]
