@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use qubit_fs::FileSystem;
+use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::FileSystemId;
@@ -632,9 +633,9 @@ impl ServiceProvider<FileSystemSpec> for AlwaysUnsupportedProvider {
     fn create_configured(
         &self,
         _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>>
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>>
     {
-        Err(ProviderFailure::unsupported(qubit_fs::error::FsError::new(
+        Err(ProviderFailure::unsupported(FsError::new(
             FsErrorKind::UnsupportedOperation,
             FsOperation::Provider,
             "test provider does not support this URI",
@@ -652,7 +653,7 @@ impl ServiceProvider<FileSystemSpec> for ChainFallbackProvider {
     fn create_configured(
         &self,
         config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>>
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>>
     {
         self.received_schemes
             .lock()
