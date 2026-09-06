@@ -70,6 +70,13 @@ impl LocalFileSystemProvider {
     /// # Returns
     ///
     /// A provider that resolves accepted paths below the opened `root`.
+    /// The default descriptor is `local-file` with the `file` URI alias.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `root` cannot be opened as the provider's native
+    /// authority. No provider is returned in that case, so it cannot be
+    /// registered or considered by a later fallback resolution.
     #[inline]
     pub fn rooted(
         id: FileSystemId,
@@ -83,7 +90,9 @@ impl LocalFileSystemProvider {
     ///
     /// The descriptor ID is also exposed by the configured filesystem, so
     /// multiple rooted local providers can coexist in one registry when they
-    /// use distinct IDs and aliases.
+    /// use distinct IDs and aliases. The supplied descriptor is retained as
+    /// provided, including its aliases; this constructor does not add the
+    /// default `file` alias.
     pub fn rooted_with_descriptor(
         descriptor: ProviderDescriptor,
         id: FileSystemId,
@@ -166,8 +175,10 @@ impl ProviderMetadata for LocalFileSystemProvider {
     ///
     /// # Returns
     ///
-    /// Metadata identifying the provider as `local-file` with the `file`
-    /// alias.
+    /// The retained registration descriptor. Host providers and rooted
+    /// providers created by [`Self::rooted`] use the default `local-file`
+    /// descriptor with the `file` alias; [`Self::rooted_with_descriptor`]
+    /// preserves the caller-supplied descriptor unchanged.
     #[inline]
     fn descriptor(&self) -> ProviderDescriptor {
         self.descriptor.clone().unwrap_or_else(default_descriptor)

@@ -57,9 +57,18 @@ println!("{metadata:?}");
   解析为文件系统、路径和 canonical URI。
 - provider 仅接受绝对 `file:` URI；会拒绝远程 authority、query、相对路径、非 `file`
   scheme，以及配置 options 或 credentials。
+- rooted provider 会在构造阶段打开原生 authority。打开失败时构造函数返回错误，不会产生可
+  注册或参与 fallback 的 provider。默认 `rooted` descriptor 是带有 `file` alias 的
+  `local-file`；`rooted_with_descriptor` 原样保留调用方传入的 descriptor 及其 aliases。
 - 如果同一个 registry 需要注册多个 rooted authority，请使用
   `LocalFileSystemProvider::rooted_with_descriptor`，每个 descriptor ID 会成为其文件系统的
   provider identity。
+
+只有显式的 provider `chain`、自动的 `ProviderSelection::auto()`，或 registry 默认 selection
+才会启用 fallback。`FileSystemConfig` 未设置 selection 时，`resolve_config` 会从 URI scheme
+派生一个 named selection；该单 provider selection 不会自动 fallback。在
+`FallbackPolicy::OnAbsence` 下，`file:` 配置错误仍然是终止错误，unsupported scheme 才可能
+继续交给下一个 provider。
 
 当前版本仅提供同步本地文件系统门面，不提供异步本地文件系统门面。
 

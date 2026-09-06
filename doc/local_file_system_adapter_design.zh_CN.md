@@ -405,7 +405,10 @@ target context；host 与 rooted SPI 共享这组映射函数。
 
 `registry` feature 提供 `LocalFileSystemProvider`。它负责：
 
-- 声明 canonical `local-file` provider identity，并注册 `file` scheme alias；
+- 声明默认的 canonical `local-file` provider identity，并注册 `file` scheme alias；
+- `rooted` 使用上述默认 descriptor；`rooted_with_descriptor` 原样保留调用方 descriptor
+  及其 aliases，不自动添加 `file` alias；rooted authority 在 provider 构造阶段打开，打开
+  失败时不会产生可注册或参与 fallback 的 provider；
 - 从受控 `ConnectionUri` 配置边界读取原始输入；
 - 对非 `file` scheme 直接返回 `ProviderFailureKind::Unsupported`，其错误 kind 为
   `FsErrorKind::UnsupportedOperation`；在 `FallbackPolicy::OnAbsence` 下，registry
@@ -428,6 +431,10 @@ Provider 返回的是 `FileSystem` 门面，不是 `Arc<dyn FileSystem>` 或 ope
 remote authority、query、options、credentials 或非法路径，则返回
 `InvalidConfiguration`（或对应的 `InitializationFailed`），不能借助 `OnAbsence`
 跳过；rooted authority 无法打开也会终止解析。
+
+Fallback 只由显式的 `chain`、`Auto` 或 registry 默认 selection 提供。`FileSystemConfig` 未
+设置 selection 时，registry 会从 URI scheme 派生 `Named` selection；该 selection 只调用一个
+provider，不会自动 fallback。
 
 Rooted provider 的 native authority 不写入 canonical URI。比如两个 provider 分别保留
 `/srv/tenant-a` 和 `/srv/tenant-b`，都将 URI `file:///reports/summary.csv` 解码为逻辑
