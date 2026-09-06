@@ -1,3 +1,4 @@
+use qubit_fs::copy::CopyOptions;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
@@ -65,7 +66,7 @@ fn test_rooted_copy_budget_rejects_second_entry_without_partial_files() {
         .copy(
             &Path::parse("/source").expect("source path should parse"),
             &Path::parse("/target").expect("target path should parse"),
-            qubit_fs::copy::CopyOptions::tree().with_max_entries(Some(1)),
+            CopyOptions::tree().with_max_entries(Some(1)),
         )
         .expect_err("second entry should exceed the copy budget");
     assert_eq!(FsErrorKind::ResourceLimitExceeded, failure.error().kind());
