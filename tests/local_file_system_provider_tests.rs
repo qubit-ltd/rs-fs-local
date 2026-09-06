@@ -7,6 +7,9 @@
 // =============================================================================
 //! Registry integration tests for the local `file:` provider.
 
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use qubit_fs::FileSystem;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
@@ -197,8 +200,12 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
         LocalResourcePolicy::unbounded(),
     )
     .expect("the fallback local provider must open");
+    let received_schemes = Arc::new(Mutex::new(Vec::new()));
     registry
-        .register(ChainFallbackProvider { inner: fallback })
+        .register(ChainFallbackProvider {
+            inner: fallback,
+            received_schemes: Arc::clone(&received_schemes),
+        })
         .expect("the chain fallback provider must register");
     let config = config.with_selection(
         ProviderSelection::chain(["local-file", "chain-fallback"])
@@ -212,6 +219,71 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
 
     assert_eq!(resolution.path(), &Path::parse("/fallback").expect("path must parse"));
     assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
+    assert_eq!(
+        received_schemes
+            .lock()
+            .expect("the fixture scheme log must not be poisoned")
+            .as_slice(),
+        ["memory"],
+    );
+}
+
+/// A `file:` configuration error stops an absence-only chain before the next
+/// provider is invoked.
+#[test]
+fn test_local_provider_chain_does_not_fallback_for_file_configuration_error() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
+        .expect("the local provider descriptor must register");
+    let root = tempfile::tempdir().expect("fallback provider root must be created");
+    let fallback = LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(
+            ProviderId::new("chain-fallback").expect("provider id must be valid"),
+        ),
+        FileSystemId::new("chain-fallback-root").expect("filesystem id must be valid"),
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("the fallback local provider must open");
+    let received_schemes = Arc::new(Mutex::new(Vec::new()));
+    registry
+        .register(ChainFallbackProvider {
+            inner: fallback,
+            received_schemes: Arc::clone(&received_schemes),
+        })
+        .expect("the chain fallback provider must register");
+
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("file:///data?cache=true").expect("test URI must parse"),
+    )
+    .with_selection(
+        ProviderSelection::chain(["local-file", "chain-fallback"])
+            .expect("provider chain must parse")
+            .with_fallback_policy(FallbackPolicy::OnAbsence),
+    );
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("file configuration errors must be terminal in an absence-only chain");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+
+    assert_eq!(creation.attempts().len(), 1);
+    assert_eq!(creation.attempts()[0].provider_id().as_str(), "local-file");
+    assert_eq!(
+        creation.decisive_attempt().failure().error().kind(),
+        FsErrorKind::InvalidOptions,
+    );
+    assert!(
+        received_schemes
+            .lock()
+            .expect("the fixture scheme log must not be poisoned")
+            .is_empty(),
+        "the second provider must not be invoked",
+    );
 }
 
 /// Embedded secrets are unsupported by the local provider and must return a
@@ -381,6 +453,7 @@ fn test_rooted_local_provider_rejects_missing_root() {
 
 struct ChainFallbackProvider {
     inner: LocalFileSystemProvider,
+    received_schemes: Arc<Mutex<Vec<String>>>,
 }
 
 impl ProviderMetadata for ChainFallbackProvider {
@@ -392,8 +465,12 @@ impl ProviderMetadata for ChainFallbackProvider {
 impl ServiceProvider<FileSystemSpec> for ChainFallbackProvider {
     fn create_configured(
         &self,
-        _: &FileSystemConfig,
+        config: &FileSystemConfig,
     ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>> {
+        self.received_schemes
+            .lock()
+            .expect("the fixture scheme log must not be poisoned")
+            .push(config.uri().scheme().to_owned());
         let fallback_config = FileSystemConfig::new(
             ConnectionUri::parse("file:///fallback").expect("fallback URI must parse"),
         );

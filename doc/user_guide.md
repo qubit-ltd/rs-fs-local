@@ -113,9 +113,13 @@ let _metadata = resolution.file_system().stat(resolution.path())?;
 during provider construction and returns `FsResult<LocalFileSystemProvider>`.
 Every later resolution reuses that opened authority instead of reopening the
 configured root path.
+If opening the authority fails, construction returns an error, so no provider is
+registered or considered by a later fallback. The convenience `rooted`
+constructor uses the default `local-file` descriptor with the `file` alias.
 Use `rooted_with_descriptor` when registering multiple rooted authorities in one
 registry; each descriptor ID must be distinct and becomes the filesystem
-provider identity.
+provider identity. The supplied descriptor is preserved exactly, including its
+aliases; the constructor does not add the default `file` alias.
 
 For example, two rooted providers can resolve the same logical path while
 retaining separate native authorities and identities:
@@ -183,6 +187,12 @@ continue to another provider. Once the scheme is `file`, configuration errors
 such as a remote authority, query, options, credentials, or an invalid path
 remain terminal; `OnAbsence` does not skip them. Failure to open a rooted
 authority is also terminal initialization failure.
+
+Fallback requires an explicit `ProviderSelection::chain`, an automatic
+`ProviderSelection::auto()`, or resolution through the registry's default
+selection. When `FileSystemConfig` has no selection,
+`FileSystemRegistry::resolve_config` derives a named selection from the URI
+scheme; named selection targets one provider and never falls back.
 
 ## Troubleshooting
 

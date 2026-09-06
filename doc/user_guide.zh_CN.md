@@ -99,9 +99,12 @@ let _metadata = resolution.file_system().stat(resolution.path())?;
 
 如改用 `LocalFileSystemProvider::rooted(id, root, policy)` 注册 provider，它会在构造阶段打开给定的
 原生 authority，并返回 `FsResult<LocalFileSystemProvider>`。后续 resolution 会复用已打开的
-authority，不会重新打开配置的根路径。
+authority，不会重新打开配置的根路径。打开 authority 失败时构造函数返回错误，因此不会注册
+provider，也不会让它进入后续 fallback。便捷的 `rooted` 构造函数使用带有 `file` alias 的
+默认 `local-file` descriptor。
 如果同一个 registry 需要多个 rooted authority，请改用
-`rooted_with_descriptor`，并为每个 provider 使用不同的 descriptor ID。
+`rooted_with_descriptor`，并为每个 provider 使用不同的 descriptor ID。该构造函数会原样保留
+调用方传入的 descriptor（包括 aliases），不会自动添加默认的 `file` alias。
 
 例如，两个 rooted provider 可以解析同一个逻辑路径，同时保留各自的原生 authority 和 identity：
 
@@ -164,6 +167,11 @@ options 和 credentials。
 provider。scheme 已经是 `file` 后，远程 authority、query、options、credentials 或非法路径
 等配置错误仍然是终止错误；`OnAbsence` 不会跳过这些错误。rooted authority 无法打开时也会
 以终止性的 initialization failure 结束。
+
+只有显式的 `ProviderSelection::chain`、自动的 `ProviderSelection::auto()`，或经由 registry
+默认 selection 的解析才会启用 fallback。`FileSystemConfig` 未设置 selection 时，
+`FileSystemRegistry::resolve_config` 会从 URI scheme 派生 named selection；named selection
+只选择一个 provider，不会自动 fallback。
 
 ## 排障
 

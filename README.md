@@ -65,9 +65,21 @@ identity must be stable outside the process.
 - The provider accepts absolute `file:` URIs only. It rejects a remote
   authority, query, relative path, non-`file` scheme, and configuration options
   or credentials.
+- Rooted provider construction opens the native authority immediately. If it
+  fails, construction returns an error and no provider is available for
+  registration or fallback. The default `rooted` descriptor is `local-file`
+  with the `file` alias; `rooted_with_descriptor` preserves the supplied
+  descriptor and aliases unchanged.
 - Use `LocalFileSystemProvider::rooted_with_descriptor` when multiple rooted
   local authorities must be registered in one registry; each descriptor ID
   becomes the provider identity exposed by its filesystem.
+
+Fallback is enabled only by an explicit provider `chain`, an automatic
+`ProviderSelection::auto()` selection, or the registry's default selection.
+When `FileSystemConfig` has no selection, `resolve_config` derives a named
+selection from the URI scheme; that single-provider selection never falls back.
+With `FallbackPolicy::OnAbsence`, a `file:` configuration error remains
+terminal, while an unsupported scheme may continue to another provider.
 
 This crate is synchronous today. It does not provide an asynchronous local
 filesystem facade.
