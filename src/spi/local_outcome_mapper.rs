@@ -33,28 +33,20 @@ use qubit_local_files as native_files;
 ///
 /// Portable kind, length, and timestamp fields supported by the native
 /// snapshot.
-pub(crate) fn metadata(
-    value: native_files::outcome::LocalFileMetadata,
-) -> FileMetadata {
+pub(crate) fn metadata(value: native_files::outcome::LocalFileMetadata) -> FileMetadata {
     let kind = match value.kind() {
         native_files::outcome::LocalFileKind::File => FileKind::File,
         native_files::outcome::LocalFileKind::Directory => FileKind::Directory,
         native_files::outcome::LocalFileKind::Symlink => FileKind::Symlink,
-        native_files::outcome::LocalFileKind::Fifo => {
-            FileKind::Other("local-fifo".to_owned())
-        }
-        native_files::outcome::LocalFileKind::Socket => {
-            FileKind::Other("local-socket".to_owned())
-        }
+        native_files::outcome::LocalFileKind::Fifo => FileKind::Other("local-fifo".to_owned()),
+        native_files::outcome::LocalFileKind::Socket => FileKind::Other("local-socket".to_owned()),
         native_files::outcome::LocalFileKind::BlockDevice => {
             FileKind::Other("local-block-device".to_owned())
         }
         native_files::outcome::LocalFileKind::CharDevice => {
             FileKind::Other("local-char-device".to_owned())
         }
-        native_files::outcome::LocalFileKind::Other => {
-            FileKind::Other("local".to_owned())
-        }
+        native_files::outcome::LocalFileKind::Other => FileKind::Other("local".to_owned()),
         _ => FileKind::Other("local".to_owned()),
     };
     FileMetadata::new(kind)
@@ -74,9 +66,7 @@ pub(crate) fn metadata(
 ///
 /// Portable copy statistics, method, atomicity, durability, and metadata
 /// preservation guarantees.
-pub(crate) fn copy(
-    value: native_files::outcome::LocalCopyOutcome,
-) -> CopyOutcome {
+pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcome {
     let stats = value.stats();
     let mut result = CopyOutcome::new(
         CopyStats {
@@ -88,12 +78,8 @@ pub(crate) fn copy(
             ..Default::default()
         },
         match value.method() {
-            native_files::outcome::LocalCopyMethod::StagedFile => {
-                CopyMethod::Native
-            }
-            native_files::outcome::LocalCopyMethod::Recursive => {
-                CopyMethod::Native
-            }
+            native_files::outcome::LocalCopyMethod::StagedFile => CopyMethod::Native,
+            native_files::outcome::LocalCopyMethod::Recursive => CopyMethod::Native,
             _ => CopyMethod::Native,
         },
         if value.atomic() {
@@ -104,9 +90,7 @@ pub(crate) fn copy(
     );
     result = result.with_durable(value.durable());
     result = result.with_metadata(match value.metadata_preservation() {
-        native_files::options::LocalMetadataPreservePolicy::None => {
-            MetadataPreservePolicy::None
-        }
+        native_files::options::LocalMetadataPreservePolicy::None => MetadataPreservePolicy::None,
         native_files::options::LocalMetadataPreservePolicy::Permissions => {
             MetadataPreservePolicy::Portable
         }
@@ -155,15 +139,11 @@ pub(crate) fn copy_failure_state(
     state: native_files::outcome::LocalCopyFailureState,
 ) -> CopyFailureState {
     match state {
-        native_files::outcome::LocalCopyFailureState::Unchanged => {
-            CopyFailureState::Unchanged
-        }
+        native_files::outcome::LocalCopyFailureState::Unchanged => CopyFailureState::Unchanged,
         native_files::outcome::LocalCopyFailureState::PartiallyPublished => {
             CopyFailureState::PartiallyPublished
         }
-        native_files::outcome::LocalCopyFailureState::Published => {
-            CopyFailureState::Published
-        }
+        native_files::outcome::LocalCopyFailureState::Published => CopyFailureState::Published,
         native_files::outcome::LocalCopyFailureState::Indeterminate => {
             CopyFailureState::Indeterminate
         }
@@ -184,12 +164,8 @@ pub(crate) fn rename_failure_state(
     state: native_files::outcome::LocalRenameFailureState,
 ) -> RenameFailureState {
     match state {
-        native_files::outcome::LocalRenameFailureState::Unchanged => {
-            RenameFailureState::Unchanged
-        }
-        native_files::outcome::LocalRenameFailureState::Renamed => {
-            RenameFailureState::Renamed
-        }
+        native_files::outcome::LocalRenameFailureState::Unchanged => RenameFailureState::Unchanged,
+        native_files::outcome::LocalRenameFailureState::Renamed => RenameFailureState::Renamed,
         native_files::outcome::LocalRenameFailureState::Indeterminate => {
             RenameFailureState::Indeterminate
         }

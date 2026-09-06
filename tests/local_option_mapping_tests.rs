@@ -26,22 +26,18 @@ fn path(value: &str) -> Path {
 }
 
 fn bounded_policy() -> LocalResourcePolicy {
-    let list =
-        LocalListResourceLimits::new(8, 64, 255, 4, Duration::from_secs(5))
-            .expect("list policy should be valid");
-    let copy =
-        LocalCopyResourceLimits::new(8, 64, 1024, 4, Duration::from_secs(5))
-            .expect("copy policy should be valid");
+    let list = LocalListResourceLimits::new(8, 64, 255, 4, Duration::from_secs(5))
+        .expect("list policy should be valid");
+    let copy = LocalCopyResourceLimits::new(8, 64, 1024, 4, Duration::from_secs(5))
+        .expect("copy policy should be valid");
     LocalResourcePolicy::bounded(list, copy)
 }
 
 #[test]
 fn caller_list_entry_budget_is_enforced_with_local_policy() {
     let root = tempfile::tempdir().expect("fixture root should exist");
-    std::fs::write(root.path().join("one"), b"1")
-        .expect("first fixture should be written");
-    std::fs::write(root.path().join("two"), b"2")
-        .expect("second fixture should be written");
+    std::fs::write(root.path().join("one"), b"1").expect("first fixture should be written");
+    std::fs::write(root.path().join("two"), b"2").expect("second fixture should be written");
     let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy())
         .expect("rooted filesystem should construct");
     let mut stream = filesystem
@@ -64,8 +60,7 @@ fn caller_list_entry_budget_is_enforced_with_local_policy() {
 #[test]
 fn caller_copy_byte_budget_is_forwarded_to_native_copy() {
     let root = tempfile::tempdir().expect("fixture root should exist");
-    std::fs::write(root.path().join("source"), b"four")
-        .expect("source should be written");
+    std::fs::write(root.path().join("source"), b"four").expect("source should be written");
     let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy())
         .expect("rooted filesystem should construct");
 
@@ -83,16 +78,14 @@ fn caller_copy_byte_budget_is_forwarded_to_native_copy() {
 #[test]
 fn required_write_durability_is_forwarded_and_reported() {
     let root = tempfile::tempdir().expect("fixture root should exist");
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted filesystem should construct");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
 
     let outcome = filesystem
         .write_all(
             &path("/durable"),
             b"payload",
-            WriteOptions::default()
-                .with_durability(DurabilityRequirement::Required),
+            WriteOptions::default().with_durability(DurabilityRequirement::Required),
         )
         .expect("durability-required local write should succeed");
     assert!(outcome.durable());
@@ -125,8 +118,7 @@ fn test_recursive_delete_cannot_bypass_provider_resource_limits() {
         let root = tempfile::tempdir().expect("fixture should exist");
         let tree = root.path().join("tree");
         std::fs::create_dir(&tree).expect("tree should exist");
-        std::fs::write(tree.join("child"), b"data")
-            .expect("child should exist");
+        std::fs::write(tree.join("child"), b"data").expect("child should exist");
         let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(
             LocalDeleteResourceLimits::new(8, 1, 4096, Duration::from_secs(60)),
         ));
@@ -142,10 +134,7 @@ fn test_recursive_delete_cannot_bypass_provider_resource_limits() {
             host_path_to_logical(&tree).expect("Host path should convert")
         };
         let error = filesystem
-            .delete_directory(
-                &operand,
-                DeleteOptions::default().with_recursive(true),
-            )
+            .delete_directory(&operand, DeleteOptions::default().with_recursive(true))
             .expect_err("request must retain the provider ceiling");
         assert_eq!(FsErrorKind::ResourceLimitExceeded, error.kind());
         assert!(tree.join("child").exists());
@@ -157,24 +146,16 @@ fn test_recursive_delete_cannot_bypass_provider_resource_limits() {
 fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
     for requested in [None, Some(100)] {
         let root = tempfile::tempdir().expect("fixture should exist");
-        std::fs::write(root.path().join("one"), b"ab")
-            .expect("first fixture should exist");
-        std::fs::write(root.path().join("two"), b"cd")
-            .expect("second fixture should exist");
+        std::fs::write(root.path().join("one"), b"ab").expect("first fixture should exist");
+        std::fs::write(root.path().join("two"), b"cd").expect("second fixture should exist");
         let policy = LocalResourcePolicy::bounded(
-            LocalListResourceLimits::new(
-                8,
-                1,
-                4096,
-                4,
-                Duration::from_secs(60),
-            )
-            .expect("listing limits should be valid"),
+            LocalListResourceLimits::new(8, 1, 4096, 4, Duration::from_secs(60))
+                .expect("listing limits should be valid"),
             LocalCopyResourceLimits::new(8, 10, 1, 4, Duration::from_secs(60))
                 .expect("copy limits should be valid"),
         );
-        let filesystem = LocalFileSystems::rooted(root.path(), policy)
-            .expect("filesystem should open");
+        let filesystem =
+            LocalFileSystems::rooted(root.path(), policy).expect("filesystem should open");
         let mut stream = filesystem
             .list(
                 &Path::root(),
@@ -193,8 +174,7 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
             .copy(
                 &path("/one"),
                 &path("/target"),
-                CopyOptions::file()
-                    .with_max_bytes(requested.map(|value| value as u64)),
+                CopyOptions::file().with_max_bytes(requested.map(|value| value as u64)),
             )
             .expect_err("copy must retain provider byte ceiling");
         assert_eq!(FsErrorKind::ResourceLimitExceeded, failure.error().kind());
@@ -216,14 +196,12 @@ fn test_recursive_delete_preserves_budget_cause_and_partial_effect() {
     for name in ["first", "second"] {
         let branch = root.path().join("tree").join(name);
         std::fs::create_dir_all(&branch).expect("branch should exist");
-        std::fs::write(branch.join("payload"), b"data")
-            .expect("payload should exist");
+        std::fs::write(branch.join("payload"), b"data").expect("payload should exist");
     }
     let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(
         LocalDeleteResourceLimits::new(8, 4, 4096, Duration::from_secs(60)),
     ));
-    let filesystem = LocalFileSystems::rooted(root.path(), policy)
-        .expect("filesystem should open");
+    let filesystem = LocalFileSystems::rooted(root.path(), policy).expect("filesystem should open");
     let error = filesystem
         .delete_directory(
             &path("/tree"),
@@ -252,17 +230,15 @@ fn test_delete_deadline_preserves_timeout_and_partial_effects() {
     use qubit_local_files::test_support::install_test_fault;
 
     let directory = tempfile::tempdir().expect("fixture should exist");
-    std::fs::create_dir(directory.path().join("tree"))
-        .expect("tree should exist");
-    std::fs::write(directory.path().join("tree/child"), b"data")
-        .expect("child should exist");
+    std::fs::create_dir(directory.path().join("tree")).expect("tree should exist");
+    std::fs::write(directory.path().join("tree/child"), b"data").expect("child should exist");
     let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(
         LocalDeleteResourceLimits::new(10, 10, 1024, Duration::from_secs(60)),
     ));
-    let filesystem = LocalFileSystems::rooted(directory.path(), policy)
-        .expect("Rooted facade should open");
-    let _fault = install_test_fault("local-delete-deadline-8")
-        .expect("deadline fault should install");
+    let filesystem =
+        LocalFileSystems::rooted(directory.path(), policy).expect("Rooted facade should open");
+    let _fault =
+        install_test_fault("local-delete-deadline-8").expect("deadline fault should install");
     let error = filesystem
         .delete_directory(
             &path("/tree"),

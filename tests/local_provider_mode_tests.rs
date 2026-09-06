@@ -31,8 +31,7 @@ fn test_local_provider_modes_select_expected_authority() {
         .expect("host provider must register");
     let host_resolution = host_registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///tmp")
-                .expect("host test URI must parse"),
+            ConnectionUri::parse("file:///tmp").expect("host test URI must parse"),
         ))
         .expect("host provider must resolve an absolute file URI");
     assert_eq!(
@@ -46,8 +45,8 @@ fn test_local_provider_modes_select_expected_authority() {
     );
 
     let root = tempfile::tempdir().expect("provider root must be created");
-    let rooted_id = FileSystemId::new("provider-mode-root")
-        .expect("rooted provider identity must be valid");
+    let rooted_id =
+        FileSystemId::new("provider-mode-root").expect("rooted provider identity must be valid");
     let rooted_registry = FileSystemRegistry::default();
     rooted_registry
         .register(
@@ -61,8 +60,7 @@ fn test_local_provider_modes_select_expected_authority() {
         .expect("rooted provider must register");
     let rooted_resolution = rooted_registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///inside")
-                .expect("rooted test URI must parse"),
+            ConnectionUri::parse("file:///inside").expect("rooted test URI must parse"),
         ))
         .expect("rooted provider must resolve an absolute file URI");
     assert_eq!(
@@ -91,8 +89,7 @@ fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
         .register(
             LocalFileSystemProvider::rooted_with_descriptor(
                 first_descriptor,
-                FileSystemId::new("first-root")
-                    .expect("filesystem ID must be valid"),
+                FileSystemId::new("first-root").expect("filesystem ID must be valid"),
                 first_root.path(),
                 LocalResourcePolicy::unbounded(),
             )
@@ -103,8 +100,7 @@ fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
         .register(
             LocalFileSystemProvider::rooted_with_descriptor(
                 second_descriptor,
-                FileSystemId::new("second-root")
-                    .expect("filesystem ID must be valid"),
+                FileSystemId::new("second-root").expect("filesystem ID must be valid"),
                 second_root.path(),
                 LocalResourcePolicy::unbounded(),
             )
@@ -112,19 +108,16 @@ fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {
         )
         .expect("second rooted provider must register");
 
-    let first = FileSystemConfig::new(
-        ConnectionUri::parse("file:///inside").expect("URI must parse"),
-    )
-    .with_selection(
-        ProviderSelection::named("rooted-first").expect("selection must parse"),
-    );
-    let second = FileSystemConfig::new(
-        ConnectionUri::parse("file:///inside").expect("URI must parse"),
-    )
-    .with_selection(
-        ProviderSelection::named("rooted-second")
-            .expect("selection must parse"),
-    );
+    let first =
+        FileSystemConfig::new(ConnectionUri::parse("file:///inside").expect("URI must parse"))
+            .with_selection(
+                ProviderSelection::named("rooted-first").expect("selection must parse"),
+            );
+    let second =
+        FileSystemConfig::new(ConnectionUri::parse("file:///inside").expect("URI must parse"))
+            .with_selection(
+                ProviderSelection::named("rooted-second").expect("selection must parse"),
+            );
     assert_eq!(
         "rooted-first",
         registry
@@ -162,8 +155,7 @@ fn test_rooted_provider_errors_retain_descriptor_identity() {
         .register(
             LocalFileSystemProvider::rooted_with_descriptor(
                 descriptor,
-                FileSystemId::new("errors-root")
-                    .expect("filesystem ID must be valid"),
+                FileSystemId::new("errors-root").expect("filesystem ID must be valid"),
                 root.path(),
                 LocalResourcePolicy::unbounded(),
             )
@@ -173,12 +165,10 @@ fn test_rooted_provider_errors_retain_descriptor_identity() {
     let resolution = registry
         .resolve_config(
             &FileSystemConfig::new(
-                ConnectionUri::parse("file:///missing")
-                    .expect("URI must parse"),
+                ConnectionUri::parse("file:///missing").expect("URI must parse"),
             )
             .with_selection(
-                ProviderSelection::named("rooted-errors")
-                    .expect("selection must parse"),
+                ProviderSelection::named("rooted-errors").expect("selection must parse"),
             ),
         )
         .expect("provider must resolve");
