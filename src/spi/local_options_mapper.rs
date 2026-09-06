@@ -13,6 +13,7 @@ use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyMode;
 use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::copy::ServerSidePreference;
+use qubit_fs::directory::ListFilter;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -69,8 +70,14 @@ pub(crate) fn list(
     defaults: native_files::options::LocalListOptions,
 ) -> Result<native_files::options::LocalListOptions, FsError> {
     let mut native = defaults;
-    if options.options().recursive() || options.options().prefix().is_some() {
+    let filter = options.options().filter();
+    if options.options().recursive()
+        || matches!(filter, Some(ListFilter::Subtree(_)))
+    {
         native = native.with_recursive();
+    }
+    if matches!(filter, Some(ListFilter::LiteralPrefix(_))) {
+        return Err(unsupported(FsOperation::List));
     }
     if let Some(policy) = options.options().symlink_policy_override() {
         native = native.with_symlink_policy(native_symlink_policy(
@@ -85,7 +92,7 @@ pub(crate) fn list(
     }
     // With a prefix, the facade counts returned entries after adapter
     // filtering. The native walker keeps only its provider-side entry cap.
-    if options.options().prefix().is_none()
+    if filter.is_none()
         && let Some(maximum) = options.options().max_entries()
     {
         native = native
