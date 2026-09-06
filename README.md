@@ -35,7 +35,8 @@ absolute logical paths inside that authority:
 ```rust
 use std::path::Path;
 
-use qubit_fs::{FileSystemId, Path as LogicalPath};
+use qubit_fs::Path as LogicalPath;
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let file_system = LocalFileSystems::rooted_with_id(
@@ -54,6 +55,33 @@ pass `bounded(...)` with all listing and copy budgets. `LocalFileSystems::host(p
 generates a process-local identity, while `rooted_with_id(id, root)` preserves
 the caller-provided identity. The latter is the appropriate choice when that
 identity must be stable outside the process.
+
+When a native host path comes from an API such as `std::env::current_dir`,
+convert it with `host_path_to_logical` before passing it to the facade. This
+preserves percent escapes and non-UTF-8 Unix names. Use `qubit_fs::Path::parse`
+for a path that is already a rooted logical path; the two representations have
+different authorities.
+
+```rust
+use qubit_fs::read::ReadOptions;
+use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
+
+let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+let native = std::env::current_dir()?.join("Cargo.toml");
+let path = host_path_to_logical(&native)?;
+let prefix = file_system.read_prefix(&path, ReadOptions::default(), 4096)?;
+assert!(prefix.len() <= 4096);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`bounded_operations(list, copy, delete)` sets explicit per-request ceilings
+for the three ordinary operation categories. The compatible
+`bounded(list, copy)` entry point limits only listing and copying; deletion
+requires separate configuration. A provider listing entry ceiling counts
+entries yielded by the native walker before prefix filtering, while a request
+entry limit counts entries returned after filtering. Temporary-resource
+cleanup, Drop, and native publication cleanup do not inherit ordinary deletion
+ceilings. These settings are not aggregate quotas across concurrent requests.
 
 ## What It Provides
 

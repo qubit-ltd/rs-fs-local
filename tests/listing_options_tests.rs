@@ -9,9 +9,12 @@
 
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
+use qubit_fs_local::LocalCopyResourceLimits;
 use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 
 /// Prefix filtering includes the exact subtree and preserves requested
@@ -72,5 +75,131 @@ fn test_listing_options_filter_prefix_and_include_metadata() {
             "/reports/nested/report.txt".to_owned(),
         ],
         entries
+    );
+}
+
+#[test]
+fn prefix_request_budget_counts_only_matching_entries() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::create_dir(root.path().join("nested")).expect("parent");
+    std::fs::write(root.path().join("nested/item"), b"x").expect("child");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
+    let mut stream = fs
+        .list(
+            &Path::root(),
+            ListOptions::default()
+                .with_prefix(Some("nested/item".to_owned()))
+                .with_max_entries(Some(1)),
+        )
+        .expect("list");
+    assert_eq!(
+        Path::parse("/nested/item").expect("path"),
+        stream
+            .next_entry()
+            .expect("unmatched parent does not consume returned budget")
+            .expect("matching child")
+            .path
+    );
+    assert!(stream.next_entry().expect("complete").is_none());
+}
+
+#[test]
+fn prefix_zero_return_budget_allows_no_matches() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::write(root.path().join("unmatched"), b"x").expect("fixture");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
+    let mut stream = fs
+        .list(
+            &Path::root(),
+            ListOptions::default()
+                .with_prefix(Some("missing".to_owned()))
+                .with_max_entries(Some(0)),
+        )
+        .expect("list");
+    assert!(
+        stream
+            .next_entry()
+            .expect("zero returned entries fit")
+            .is_none()
+    );
+}
+
+#[test]
+fn prefix_does_not_bypass_provider_walker_budget() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::create_dir(root.path().join("nested")).expect("parent");
+    std::fs::write(root.path().join("nested/item"), b"x").expect("child");
+    let policy = LocalResourcePolicy::bounded(
+        LocalListResourceLimits::new(
+            8,
+            1,
+            4096,
+            4,
+            std::time::Duration::from_secs(60),
+        )
+        .expect("list budget"),
+        LocalCopyResourceLimits::new(
+            8,
+            64,
+            4096,
+            4,
+            std::time::Duration::from_secs(60),
+        )
+        .expect("copy budget"),
+    );
+    let fs = LocalFileSystems::rooted(root.path(), policy).expect("rooted");
+    for requested in [None, Some(1), Some(100)] {
+        let mut stream = fs
+            .list(
+                &Path::root(),
+                ListOptions::default()
+                    .with_prefix(Some("nested/item".to_owned()))
+                    .with_max_entries(requested),
+            )
+            .expect("list");
+        assert_eq!(
+            FsErrorKind::ResourceLimitExceeded,
+            stream
+                .next_entry()
+                .expect_err("provider still counts parent and child")
+                .kind()
+        );
+    }
+}
+
+#[test]
+fn prefix_return_budget_still_rejects_second_match() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::create_dir(root.path().join("nested")).expect("parent");
+    std::fs::write(root.path().join("nested/item"), b"x").expect("child");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
+    let mut stream = fs
+        .list(
+            &Path::root(),
+            ListOptions::default()
+                .with_prefix(Some("nested".to_owned()))
+                .with_max_entries(Some(1)),
+        )
+        .expect("list");
+    assert_eq!(
+        Path::parse("/nested").expect("path"),
+        stream
+            .next_entry()
+            .expect("first match")
+            .expect("entry")
+            .path
+    );
+    assert_eq!(
+        FsErrorKind::ResourceLimitExceeded,
+        stream
+            .next_entry()
+            .expect_err("second match exceeds returned budget")
+            .kind()
     );
 }

@@ -65,7 +65,8 @@ impl LocalListResourceLimits {
         self.max_depth
     }
 
-    /// Returns the maximum number of returned entries.
+    /// Returns the maximum entries yielded by the native walker before
+    /// adapter prefix filtering.
     #[must_use]
     pub const fn max_entries(self) -> usize {
         self.max_entries
@@ -180,14 +181,20 @@ impl LocalCopyResourceLimits {
 
 /// Per-request provider ceilings for recursive local operations.
 ///
-/// Request list/copy limits can only tighten these ceilings. Deletion limits
-/// are selected independently with [`Self::with_delete_limits`]. These are
-/// not aggregate quotas across concurrent requests.
+/// Provider ceilings bound native operation work. A caller's listing limit
+/// counts entries returned after adapter filtering; copy limits and other
+/// comparable request limits may only tighten provider ceilings. Deletion
+/// limits apply only to ordinary recursive deletion and are selected
+/// independently. Temporary-resource cleanup, `Drop`, and native publication
+/// cleanup have separate lifecycle semantics and do not inherit deletion
+/// ceilings. These are not aggregate quotas across concurrent requests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalResourcePolicy {
     list: Option<LocalListResourceLimits>,
     copy: Option<LocalCopyResourceLimits>,
-    /// Independently selected ceilings for recursive deletion requests.
+    /// Independently selected ceilings for ordinary recursive deletion
+    /// requests. Temporary-resource cleanup, `Drop`, and native publication
+    /// cleanup use separate lifecycle semantics.
     delete: Option<LocalDeleteResourceLimits>,
     open_retry_timeout: Option<Duration>,
     temp_max_attempts: Option<NonZeroUsize>,
@@ -195,8 +202,9 @@ pub struct LocalResourcePolicy {
 }
 
 impl LocalResourcePolicy {
-    /// Creates listing and copy ceilings; deletion remains unbounded until
-    /// explicitly configured with [`Self::with_delete_limits`].
+    /// Creates listing and copy ceilings; ordinary deletion remains unbounded
+    /// until explicitly configured with [`Self::with_delete_limits`]. Use
+    /// [`Self::bounded_operations`] to select finite deletion ceilings as well.
     #[must_use]
     pub const fn bounded(
         list: LocalListResourceLimits,
@@ -210,6 +218,31 @@ impl LocalResourcePolicy {
             temp_max_attempts: None,
             directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
         }
+    }
+
+    /// Sets finite per-request ceilings for listing, copying, and deletion.
+    ///
+    /// This does not enable recursive operation modes. Temporary-resource
+    /// cleanup, `Drop`, and native publication cleanup have separate lifecycle
+    /// semantics and do not inherit these operation ceilings. The ceilings are
+    /// not aggregate quotas across concurrent requests.
+    ///
+    /// # Parameters
+    ///
+    /// - `list`: Limits on native listing work before adapter prefix filtering.
+    /// - `copy`: Limits on each native copy operation.
+    /// - `delete`: Limits on each ordinary recursive deletion operation.
+    ///
+    /// # Returns
+    ///
+    /// A policy retaining all three explicit operation ceilings.
+    #[must_use]
+    pub const fn bounded_operations(
+        list: LocalListResourceLimits,
+        copy: LocalCopyResourceLimits,
+        delete: LocalDeleteResourceLimits,
+    ) -> Self {
+        Self::bounded(list, copy).with_delete_limits(Some(delete))
     }
 
     /// Explicitly opts into unbounded recursive resource usage.
@@ -237,14 +270,20 @@ impl LocalResourcePolicy {
         self.copy
     }
 
-    /// Returns the optional per-request recursive deletion ceilings.
+    /// Returns the optional per-request ordinary recursive deletion ceilings.
+    ///
+    /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
+    /// not use these ceilings.
     #[must_use]
     pub const fn delete_limits(self) -> Option<LocalDeleteResourceLimits> {
         self.delete
     }
 
-    /// Selects recursive deletion ceilings; `None` explicitly leaves them
-    /// unbounded.
+    /// Selects ordinary recursive deletion ceilings; `None` explicitly leaves
+    /// ordinary deletion unbounded.
+    ///
+    /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
+    /// not use these ceilings.
     #[must_use]
     pub const fn with_delete_limits(
         mut self,

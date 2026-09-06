@@ -554,6 +554,31 @@ fn test_rooted_operations_map_missing_entries() {
     assert_eq!(Some(&regular_file), temporary_directory.path());
 }
 
+/// Recursive directory deletion rejects a regular file without removing it.
+#[test]
+fn test_rooted_delete_directory_rejects_regular_file() {
+    let root = tempfile::tempdir().expect("rooted fixture root must exist");
+    let file = root.path().join("regular-file");
+    std::fs::write(&file, b"must survive")
+        .expect("regular fixture file must be written");
+    let file_system =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted local filesystem must be opened");
+
+    let error = file_system
+        .delete_directory(
+            &path("/regular-file"),
+            DeleteOptions::default().with_recursive(true),
+        )
+        .expect_err("a regular file is not a directory");
+
+    assert_eq!(FsErrorKind::NotDirectory, error.kind());
+    assert_eq!(
+        b"must survive",
+        std::fs::read(&file).expect("file must remain").as_slice(),
+    );
+}
+
 /// Relative logical paths are rejected before native filesystem operations.
 #[test]
 fn test_relative_paths_are_rejected_by_facade_operations() {
@@ -665,6 +690,32 @@ fn test_host_operations_map_missing_native_entries() {
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
     assert_eq!(Some(&file_parent), temporary_directory.path());
+}
+
+/// Recursive directory deletion rejects a host regular file without removing
+/// it.
+#[cfg(unix)]
+#[test]
+fn test_host_delete_directory_rejects_regular_file() {
+    let root = tempfile::tempdir().expect("host fixture root must exist");
+    let file = root.path().join("regular-file");
+    std::fs::write(&file, b"must survive")
+        .expect("regular fixture file must be written");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host local filesystem must be opened");
+
+    let error = file_system
+        .delete_directory(
+            &host_path(&root, "regular-file"),
+            DeleteOptions::default().with_recursive(true),
+        )
+        .expect_err("a regular file is not a directory");
+
+    assert_eq!(FsErrorKind::NotDirectory, error.kind());
+    assert_eq!(
+        b"must survive",
+        std::fs::read(&file).expect("file must remain").as_slice(),
+    );
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.
