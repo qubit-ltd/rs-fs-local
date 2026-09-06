@@ -21,6 +21,7 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_registry::CredentialRef;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
@@ -317,12 +318,22 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
         assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
     }
 
+    let credential_config = FileSystemConfig::new(
+        ConnectionUri::parse("memory:///data").expect("test URI must parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain)
+    .with_selection(selection);
+    let resolution = registry
+        .resolve_config(&credential_config)
+        .expect("unsupported scheme must precede external credential handling");
+    assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
+
     assert_eq!(
         received_schemes
             .lock()
             .expect("the fixture scheme log must not be poisoned")
             .as_slice(),
-        ["memory", "memory", "memory"],
+        ["memory", "memory", "memory", "memory"],
     );
 }
 
@@ -436,6 +447,69 @@ fn test_local_provider_chain_does_not_fallback_for_embedded_file_credential() {
     };
 
     assert_eq!(creation.attempts().len(), 1);
+    assert_eq!(
+        creation.decisive_attempt().failure().error().kind(),
+        FsErrorKind::InvalidOptions,
+    );
+    assert!(
+        received_schemes
+            .lock()
+            .expect("the fixture scheme log must not be poisoned")
+            .is_empty(),
+        "the second provider must not be invoked",
+    );
+}
+
+/// An external credential reference makes a `file:` configuration terminal in
+/// an absence-only chain before the next provider is invoked.
+#[test]
+fn test_local_provider_chain_does_not_fallback_for_referenced_file_credential()
+{
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
+        .expect("the local provider descriptor must register");
+    let root =
+        tempfile::tempdir().expect("fallback provider root must be created");
+    let fallback = LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(
+            ProviderId::new("chain-fallback")
+                .expect("provider id must be valid"),
+        ),
+        FileSystemId::new("chain-fallback-root")
+            .expect("filesystem id must be valid"),
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("the fallback local provider must open");
+    let received_schemes = Arc::new(Mutex::new(Vec::new()));
+    registry
+        .register(ChainFallbackProvider {
+            inner: fallback,
+            received_schemes: Arc::clone(&received_schemes),
+        })
+        .expect("the chain fallback provider must register");
+
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("file:///data").expect("test URI must parse"),
+    )
+    .with_credential(CredentialRef::DefaultChain)
+    .with_selection(
+        ProviderSelection::chain(["local-file", "chain-fallback"])
+            .expect("provider chain must parse")
+            .with_fallback_policy(FallbackPolicy::OnAbsence),
+    );
+    let error = registry.resolve_config(&config).expect_err(
+        "referenced file credentials must be terminal in an absence-only chain",
+    );
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+
+    assert_eq!(creation.attempts().len(), 1);
+    assert_eq!(creation.attempts()[0].provider_id().as_str(), "local-file");
     assert_eq!(
         creation.decisive_attempt().failure().error().kind(),
         FsErrorKind::InvalidOptions,
