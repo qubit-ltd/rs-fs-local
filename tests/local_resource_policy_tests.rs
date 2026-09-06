@@ -102,3 +102,33 @@ fn test_delete_resource_limits_are_explicit() {
     assert_eq!(None, policy.copy_limits());
     assert_eq!(None, policy.with_delete_limits(None).delete_limits());
 }
+
+#[test]
+fn bounded_operations_requires_all_three_operation_budgets() {
+    use qubit_fs_local::LocalDeleteResourceLimits;
+
+    let list =
+        LocalListResourceLimits::new(2, 3, 4096, 4, Duration::from_secs(5))
+            .expect("list");
+    let copy =
+        LocalCopyResourceLimits::new(6, 7, 8192, 8, Duration::from_secs(9))
+            .expect("copy");
+    let delete =
+        LocalDeleteResourceLimits::new(10, 11, 16384, Duration::from_secs(12));
+    let policy = LocalResourcePolicy::bounded_operations(list, copy, delete);
+
+    assert_eq!(Some(list), policy.list_limits());
+    assert_eq!(Some(copy), policy.copy_limits());
+    assert_eq!(Some(delete), policy.delete_limits());
+    assert_eq!(None, policy.open_retry_timeout());
+    assert_eq!(None, policy.temp_max_attempts());
+    assert_eq!(
+        LocalDirectoryReopenPolicy::Reopen,
+        policy.directory_reopen_policy()
+    );
+    assert_eq!(
+        None,
+        LocalResourcePolicy::bounded(list, copy).delete_limits()
+    );
+    assert_eq!(None, policy.with_delete_limits(None).delete_limits());
+}

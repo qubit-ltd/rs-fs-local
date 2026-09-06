@@ -83,7 +83,11 @@ pub(crate) fn list(
         native =
             native.with_max_depth(minimum_usize(native.max_depth(), maximum));
     }
-    if let Some(maximum) = options.options().max_entries() {
+    // With a prefix, the facade counts returned entries after adapter
+    // filtering. The native walker keeps only its provider-side entry cap.
+    if options.options().prefix().is_none()
+        && let Some(maximum) = options.options().max_entries()
+    {
         native = native
             .with_max_entries(minimum_usize(native.max_entries(), maximum));
     }
