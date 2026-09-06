@@ -103,6 +103,52 @@ authority，不会重新打开配置的根路径。
 如果同一个 registry 需要多个 rooted authority，请改用
 `rooted_with_descriptor`，并为每个 provider 使用不同的 descriptor ID。
 
+例如，两个 rooted provider 可以解析同一个逻辑路径，同时保留各自的原生 authority 和 identity：
+
+```rust
+use std::path::Path as NativePath;
+
+use qubit_fs::{ConnectionUri, FileSystemId};
+use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
+use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
+
+let registry = FileSystemRegistry::default();
+registry.register(LocalFileSystemProvider::rooted_with_descriptor(
+    ProviderDescriptor::new(ProviderId::new("tenant-a")?),
+    FileSystemId::new("tenant-a-files")?,
+    NativePath::new("/srv/tenant-a"),
+    LocalResourcePolicy::unbounded(),
+)?)?;
+registry.register(LocalFileSystemProvider::rooted_with_descriptor(
+    ProviderDescriptor::new(ProviderId::new("tenant-b")?),
+    FileSystemId::new("tenant-b-files")?,
+    NativePath::new("/srv/tenant-b"),
+    LocalResourcePolicy::unbounded(),
+)?)?;
+
+let uri = ConnectionUri::parse("file:///reports/summary.csv")?;
+let first = registry.resolve_config(&FileSystemConfig::new(uri.clone()).with_selection(
+    ProviderSelection::named("tenant-a")?,
+))?;
+let second = registry.resolve_config(&FileSystemConfig::new(uri).with_selection(
+    ProviderSelection::named("tenant-b")?,
+))?;
+assert_eq!(first.canonical_uri(), second.canonical_uri());
+assert_ne!(
+    first.file_system().properties().info().id(),
+    second.file_system().properties().info().id(),
+);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+两个 resolution 的 canonical URI 都是 `file:///reports/summary.csv`：其中只有 provider
+解码后的逻辑路径，不携带 rooted 原生 authority。因此，单独使用 canonical URI 无法恢复
+rooted provider 或 filesystem identity。若要持久化或 replay rooted resolution，必须将
+provider selection/descriptor 和 filesystem identity 一并保存。只把 canonical URI 交给 host
+provider replay 时，会得到相同的 URI 和逻辑路径，但文件系统会变成 `local-host`，不会回到
+原来的任一 rooted filesystem。
+
 ## 错误与诊断
 
 原生操作失败会经由 `qubit-fs` 错误模型报告；本地 adapter 的 provider ID 为 `local-file`。
@@ -112,6 +158,12 @@ provider 会拒绝超出本地文件契约的配置：远程 authority、query�
 options 和 credentials。
 它按 URI component 解码百分号编码的路径字节；编码后的分隔符和 NUL 字节会被拒绝，避免其
 改变逻辑层级。
+
+对于非 `file` scheme，provider 返回 `Unsupported`，错误 kind 为
+`UnsupportedOperation`。使用 `FallbackPolicy::OnAbsence` 的 registry 可以继续尝试下一个
+provider。scheme 已经是 `file` 后，远程 authority、query、options、credentials 或非法路径
+等配置错误仍然是终止错误；`OnAbsence` 不会跳过这些错误。rooted authority 无法打开时也会
+以终止性的 initialization failure 结束。
 
 ## 排障
 
@@ -127,6 +179,7 @@ options 和 credentials。
 - 公共门面是同步的；本 crate 不提供异步本地文件系统门面。
 - rooted containment 与原生文件系统行为属于 provider 边界；应保留 rooted 门面，而非在应用中反复拼接原生路径。
 - 将 `file:` URI 视为仅本地输入。远程 authority 和 URI options 有意不作为该 provider 的配置通道。
+- 如果需要 replay rooted resolution，应将 provider selection 和 filesystem identity 与 canonical URI 一起保存；URI 本身不能标识其保留的原生 authority。
 
 ## 延伸阅读
 
