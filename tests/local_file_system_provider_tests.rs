@@ -19,6 +19,16 @@ use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
+use qubit_fs_registry::FileSystemResolution;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_spi::FallbackPolicy;
+use qubit_spi::ProviderDescriptor;
+use qubit_spi::ProviderId;
+use qubit_spi::ProviderMetadata;
+use qubit_spi::ProviderSelection;
+use qubit_spi::ServiceProvider;
+use qubit_spi::error::ProviderFailure;
+use qubit_spi::error::ProviderFailureKind;
 
 /// A registered host provider resolves an absolute `file:` URI.
 #[test]
@@ -153,6 +163,55 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
         creation.decisive_attempt().failure().error().kind(),
         FsErrorKind::InvalidPath
     );
+}
+
+/// An unsupported local scheme permits a chained provider to resolve the URI.
+#[test]
+fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
+    let local = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("memory:///data").expect("test URI must parse"),
+    )
+    .with_options(NonSensitiveMetadata::from(
+        UserMetadata::new()
+            .with("mode", "test")
+            .expect("test metadata must be valid"),
+    ));
+    let direct_failure = local
+        .create_configured(&config)
+        .expect_err("local provider must reject unsupported schemes");
+    assert_eq!(direct_failure.kind(), ProviderFailureKind::Unsupported);
+    assert_eq!(direct_failure.error().kind(), FsErrorKind::UnsupportedOperation);
+
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(local)
+        .expect("the local provider descriptor must register");
+    let root = tempfile::tempdir().expect("fallback provider root must be created");
+    let fallback = LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(
+            ProviderId::new("chain-fallback").expect("provider id must be valid"),
+        ),
+        FileSystemId::new("chain-fallback-root").expect("filesystem id must be valid"),
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("the fallback local provider must open");
+    registry
+        .register(ChainFallbackProvider { inner: fallback })
+        .expect("the chain fallback provider must register");
+    let config = config.with_selection(
+        ProviderSelection::chain(["local-file", "chain-fallback"])
+            .expect("provider chain must parse")
+            .with_fallback_policy(FallbackPolicy::OnAbsence),
+    );
+
+    let resolution = registry
+        .resolve_config(&config)
+        .expect("unsupported local scheme must fall back to the next provider");
+
+    assert_eq!(resolution.path(), &Path::parse("/fallback").expect("path must parse"));
+    assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
 }
 
 /// Embedded secrets are unsupported by the local provider and must return a
@@ -318,4 +377,26 @@ fn test_rooted_local_provider_rejects_missing_root() {
         .is_err(),
         "a missing rooted authority must be rejected"
     );
+}
+
+struct ChainFallbackProvider {
+    inner: LocalFileSystemProvider,
+}
+
+impl ProviderMetadata for ChainFallbackProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        self.inner.descriptor()
+    }
+}
+
+impl ServiceProvider<FileSystemSpec> for ChainFallbackProvider {
+    fn create_configured(
+        &self,
+        _: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>> {
+        let fallback_config = FileSystemConfig::new(
+            ConnectionUri::parse("file:///fallback").expect("fallback URI must parse"),
+        );
+        self.inner.create_configured(&fallback_config)
+    }
 }
