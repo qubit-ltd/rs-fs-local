@@ -160,12 +160,14 @@ fn test_rooted_provider_identity_is_scoped_beyond_canonical_uri() {
     let second_id = FileSystemId::new("identity-second-root")
         .expect("second filesystem ID must be valid");
     let first_descriptor = ProviderDescriptor::new(
-        ProviderId::new("identity-first").expect("first provider ID must be valid"),
+        ProviderId::new("identity-first")
+            .expect("first provider ID must be valid"),
     )
     .with_aliases(["identity-first-file"])
     .expect("first provider alias must be valid");
     let second_descriptor = ProviderDescriptor::new(
-        ProviderId::new("identity-second").expect("second provider ID must be valid"),
+        ProviderId::new("identity-second")
+            .expect("second provider ID must be valid"),
     )
     .with_aliases(["identity-second-file"])
     .expect("second provider alias must be valid");
@@ -196,15 +198,20 @@ fn test_rooted_provider_identity_is_scoped_beyond_canonical_uri() {
     let uri = ConnectionUri::parse("file:///identity-scope.txt")
         .expect("identity-scope URI must parse");
     let first = registry
-        .resolve_config(&FileSystemConfig::new(uri.clone()).with_selection(
-            ProviderSelection::named("identity-first").expect("first selection must parse"),
-        ))
+        .resolve_config(
+            &FileSystemConfig::new(uri.clone()).with_selection(
+                ProviderSelection::named("identity-first")
+                    .expect("first selection must parse"),
+            ),
+        )
         .expect("first rooted provider must resolve");
     let second = registry
-        .resolve_config(&FileSystemConfig::new(uri).with_selection(
-            ProviderSelection::named("identity-second")
-                .expect("second selection must parse"),
-        ))
+        .resolve_config(
+            &FileSystemConfig::new(uri).with_selection(
+                ProviderSelection::named("identity-second")
+                    .expect("second selection must parse"),
+            ),
+        )
         .expect("second rooted provider must resolve");
 
     assert_eq!(first.canonical_uri(), second.canonical_uri());
@@ -244,14 +251,8 @@ fn test_rooted_provider_identity_is_scoped_beyond_canonical_uri() {
             .expect("second rooted content must be readable")
             .as_slice(),
     );
-    assert_eq!(
-        &first_id,
-        first.file_system().properties().info().id(),
-    );
-    assert_eq!(
-        &second_id,
-        second.file_system().properties().info().id(),
-    );
+    assert_eq!(&first_id, first.file_system().properties().info().id(),);
+    assert_eq!(&second_id, second.file_system().properties().info().id(),);
     assert_ne!(
         first.file_system().properties().info().id(),
         second.file_system().properties().info().id(),

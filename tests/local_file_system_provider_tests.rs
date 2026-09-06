@@ -182,7 +182,8 @@ fn test_named_local_provider_rejects_non_file_uri_without_fallback() {
         ConnectionUri::parse("memory:///data").expect("test URI must parse"),
     )
     .with_selection(
-        ProviderSelection::named("local-file").expect("local selection must parse"),
+        ProviderSelection::named("local-file")
+            .expect("local selection must parse"),
     );
 
     let error = registry
@@ -261,18 +262,24 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
         .create_configured(&direct_config)
         .expect_err("local provider must reject unsupported schemes");
     assert_eq!(direct_failure.kind(), ProviderFailureKind::Unsupported);
-    assert_eq!(direct_failure.error().kind(), FsErrorKind::UnsupportedOperation);
+    assert_eq!(
+        direct_failure.error().kind(),
+        FsErrorKind::UnsupportedOperation
+    );
 
     let registry = FileSystemRegistry::default();
     registry
         .register(local)
         .expect("the local provider descriptor must register");
-    let root = tempfile::tempdir().expect("fallback provider root must be created");
+    let root =
+        tempfile::tempdir().expect("fallback provider root must be created");
     let fallback = LocalFileSystemProvider::rooted_with_descriptor(
         ProviderDescriptor::new(
-            ProviderId::new("chain-fallback").expect("provider id must be valid"),
+            ProviderId::new("chain-fallback")
+                .expect("provider id must be valid"),
         ),
-        FileSystemId::new("chain-fallback-root").expect("filesystem id must be valid"),
+        FileSystemId::new("chain-fallback-root")
+            .expect("filesystem id must be valid"),
         root.path(),
         LocalResourcePolicy::unbounded(),
     )
@@ -298,11 +305,14 @@ fn test_local_provider_chain_falls_back_for_unsupported_scheme() {
         )
         .with_selection(selection.clone());
 
-        let resolution = registry
-            .resolve_config(&config)
-            .expect("unsupported local scheme must fall back to the next provider");
+        let resolution = registry.resolve_config(&config).expect(
+            "unsupported local scheme must fall back to the next provider",
+        );
 
-        assert_eq!(resolution.path(), &Path::parse("/fallback").expect("path must parse"));
+        assert_eq!(
+            resolution.path(),
+            &Path::parse("/fallback").expect("path must parse")
+        );
         assert_eq!(resolution.canonical_uri().as_str(), "file:///fallback");
     }
 
@@ -325,12 +335,15 @@ fn test_local_provider_chain_does_not_fallback_for_file_configuration_error() {
             LocalResourcePolicy::unbounded(),
         ))
         .expect("the local provider descriptor must register");
-    let root = tempfile::tempdir().expect("fallback provider root must be created");
+    let root =
+        tempfile::tempdir().expect("fallback provider root must be created");
     let fallback = LocalFileSystemProvider::rooted_with_descriptor(
         ProviderDescriptor::new(
-            ProviderId::new("chain-fallback").expect("provider id must be valid"),
+            ProviderId::new("chain-fallback")
+                .expect("provider id must be valid"),
         ),
-        FileSystemId::new("chain-fallback-root").expect("filesystem id must be valid"),
+        FileSystemId::new("chain-fallback-root")
+            .expect("filesystem id must be valid"),
         root.path(),
         LocalResourcePolicy::unbounded(),
     )
@@ -344,16 +357,17 @@ fn test_local_provider_chain_does_not_fallback_for_file_configuration_error() {
         .expect("the chain fallback provider must register");
 
     let config = FileSystemConfig::new(
-        ConnectionUri::parse("file:///data?cache=true").expect("test URI must parse"),
+        ConnectionUri::parse("file:///data?cache=true")
+            .expect("test URI must parse"),
     )
     .with_selection(
         ProviderSelection::chain(["local-file", "chain-fallback"])
             .expect("provider chain must parse")
             .with_fallback_policy(FallbackPolicy::OnAbsence),
     );
-    let error = registry
-        .resolve_config(&config)
-        .expect_err("file configuration errors must be terminal in an absence-only chain");
+    let error = registry.resolve_config(&config).expect_err(
+        "file configuration errors must be terminal in an absence-only chain",
+    );
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected provider creation error")
     };
@@ -383,12 +397,15 @@ fn test_local_provider_chain_does_not_fallback_for_embedded_file_credential() {
             LocalResourcePolicy::unbounded(),
         ))
         .expect("the local provider descriptor must register");
-    let root = tempfile::tempdir().expect("fallback provider root must be created");
+    let root =
+        tempfile::tempdir().expect("fallback provider root must be created");
     let fallback = LocalFileSystemProvider::rooted_with_descriptor(
         ProviderDescriptor::new(
-            ProviderId::new("chain-fallback").expect("provider id must be valid"),
+            ProviderId::new("chain-fallback")
+                .expect("provider id must be valid"),
         ),
-        FileSystemId::new("chain-fallback-root").expect("filesystem id must be valid"),
+        FileSystemId::new("chain-fallback-root")
+            .expect("filesystem id must be valid"),
         root.path(),
         LocalResourcePolicy::unbounded(),
     )
@@ -410,9 +427,9 @@ fn test_local_provider_chain_does_not_fallback_for_embedded_file_credential() {
             .expect("provider chain must parse")
             .with_fallback_policy(FallbackPolicy::OnAbsence),
     );
-    let error = registry
-        .resolve_config(&config)
-        .expect_err("embedded file credentials must be terminal in an absence-only chain");
+    let error = registry.resolve_config(&config).expect_err(
+        "embedded file credentials must be terminal in an absence-only chain",
+    );
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected provider creation error")
     };
@@ -615,7 +632,8 @@ impl ServiceProvider<FileSystemSpec> for AlwaysUnsupportedProvider {
     fn create_configured(
         &self,
         _: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>> {
+    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>>
+    {
         Err(ProviderFailure::unsupported(qubit_fs::error::FsError::new(
             FsErrorKind::UnsupportedOperation,
             FsOperation::Provider,
@@ -634,13 +652,15 @@ impl ServiceProvider<FileSystemSpec> for ChainFallbackProvider {
     fn create_configured(
         &self,
         config: &FileSystemConfig,
-    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>> {
+    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>>
+    {
         self.received_schemes
             .lock()
             .expect("the fixture scheme log must not be poisoned")
             .push(config.uri().scheme().to_owned());
         let fallback_config = FileSystemConfig::new(
-            ConnectionUri::parse("file:///fallback").expect("fallback URI must parse"),
+            ConnectionUri::parse("file:///fallback")
+                .expect("fallback URI must parse"),
         );
         self.inner.create_configured(&fallback_config)
     }
