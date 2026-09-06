@@ -159,7 +159,7 @@ provider，也不会让它进入后续 fallback。便捷的 `rooted` 构造函�
 ```rust
 use std::path::Path as NativePath;
 
-use qubit_fs::{ConnectionUri, FileSystemId};
+use qubit_fs::{metadata::FileSystemId, path::ConnectionUri};
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
