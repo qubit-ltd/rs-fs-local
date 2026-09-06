@@ -28,7 +28,6 @@ use qubit_fs::metadata::FileSystemCapabilities;
 use qubit_fs::metadata::FileSystemCapability;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::metadata::FileSystemInfo;
-use qubit_fs::metadata::FileSystemLimit;
 use qubit_fs::metadata::FileSystemLimits;
 use qubit_fs::metadata::FileSystemProperties;
 use qubit_fs::metadata::OpenedFileInfo;
@@ -277,7 +276,10 @@ impl LocalFileSystemSpi {
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
                 .with_scheme(FILE_SCHEME)?,
             capabilities,
-            native_limits(native.limits()),
+            // Native path units and canonical escaped text have different
+            // lengths. Native validity and size limits remain enforced by
+            // the native backend.
+            FileSystemLimits::unknown(),
             PathConstraints::absolute(),
             match native.symlink_policy() {
                 native_files::policy::LocalSymlinkPolicy::Reject => {
@@ -356,41 +358,6 @@ impl LocalFileSystemSpi {
         path: &Path,
     ) -> FsError {
         error_mapper::map(error, operation, path, None, &self.provider_id)
-    }
-}
-
-/// Maps native authority path limits into portable logical path limits.
-#[inline(always)]
-fn native_limits(
-    limits: native_files::capability::LocalFileSystemLimits,
-) -> FileSystemLimits {
-    if limits.length_unit()
-        != native_files::capability::LocalPathLengthUnit::Bytes
-    {
-        return FileSystemLimits::unknown();
-    }
-    FileSystemLimits::unknown()
-        .with_max_path_text_bytes(native_limit(limits.max_path_length()))
-        .with_max_component_text_bytes(native_limit(
-            limits.max_component_length(),
-        ))
-}
-
-/// Preserves finite, path-dependent, and unavailable native limit semantics.
-#[inline(always)]
-const fn native_limit(
-    limit: native_files::capability::SizeLimit,
-) -> FileSystemLimit {
-    match limit {
-        native_files::capability::SizeLimit::Maximum(value) => {
-            FileSystemLimit::Maximum(value)
-        }
-        native_files::capability::SizeLimit::VariesByPath => {
-            FileSystemLimit::Unknown
-        }
-        native_files::capability::SizeLimit::Unknown => {
-            FileSystemLimit::Unknown
-        }
     }
 }
 
@@ -667,8 +634,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// # Returns
     ///
-    /// `Completed` for a native copy or `Declined` when its options require
-    /// facade fallback.
+    /// `Completed` when the configured native copy succeeds. This local
+    /// provider does not decline into the facade stream fallback.
+    /// Unrepresentable options fail before native copying starts.
     ///
     /// # Errors
     ///
@@ -943,51 +911,5 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 self.provider_id.clone(),
             )),
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use qubit_fs::metadata::FileSystemLimit;
-    use qubit_local_files::capability::LocalFileSystemLimits;
-    use qubit_local_files::capability::LocalPathLengthUnit;
-    use qubit_local_files::capability::SizeLimit;
-
-    use super::native_limits;
-
-    /// Verifies byte-native limits map directly into portable text budgets.
-    #[test]
-    fn test_native_limits_maps_byte_units() {
-        let limits = LocalFileSystemLimits::new(
-            SizeLimit::Maximum(4096),
-            SizeLimit::Maximum(255),
-            LocalPathLengthUnit::Bytes,
-        );
-
-        let mapped = native_limits(limits);
-
-        assert_eq!(
-            FileSystemLimit::Maximum(4096),
-            mapped.max_path_text_bytes()
-        );
-        assert_eq!(
-            FileSystemLimit::Maximum(255),
-            mapped.max_component_text_bytes()
-        );
-    }
-
-    /// Verifies UTF-16 limits are not misrepresented as portable byte budgets.
-    #[test]
-    fn test_native_limits_does_not_convert_utf16_units_to_bytes() {
-        let limits = LocalFileSystemLimits::new(
-            SizeLimit::Unknown,
-            SizeLimit::Maximum(255),
-            LocalPathLengthUnit::Utf16CodeUnits,
-        );
-
-        let mapped = native_limits(limits);
-
-        assert_eq!(FileSystemLimit::Unknown, mapped.max_path_text_bytes());
-        assert_eq!(FileSystemLimit::Unknown, mapped.max_component_text_bytes());
     }
 }
