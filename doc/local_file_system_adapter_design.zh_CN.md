@@ -296,6 +296,11 @@ attempt。当前 `qubit-fs` 将 provider 已接管的这些原语统一表示为
 `CopyMethod::Native`；“native”描述的是调用边界，不要求底层一定使用单次系统调用。
 Adapter 仍按事实映射 atomicity、durability、metadata 和统计。
 
+Native listing 返回的 path 已经属于请求的 namespace；Host 下层即使通过 alias 访问物理
+目录，也不能在 adapter 中再次 canonicalize 或拼接物理前缀。Native copy 的 entry、byte、
+depth 和 open-directory budgets 及其 `ResourceLimit`/partial stats 必须原样映射，不能为了
+接受结果而放宽 provider contract。
+
 `LocalCopyFailureState::{Unchanged, PartiallyPublished, Published, Indeterminate}` 与
 partial stats 一一映射到 `SpiCopyFailure`。Native staging cleanup failure 保留为
 typed source/安全 diagnostics，不能丢弃主 copy failure。
