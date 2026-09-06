@@ -12,6 +12,7 @@ use std::sync::Mutex;
 
 use qubit_fs::FileSystem;
 use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::metadata::NonSensitiveMetadata;
 use qubit_fs::metadata::UserMetadata;
@@ -165,6 +166,82 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
     assert_eq!(
         creation.decisive_attempt().failure().error().kind(),
         FsErrorKind::InvalidPath
+    );
+}
+
+/// A named local selection makes one unsupported attempt for a non-`file:` URI.
+#[test]
+fn test_named_local_provider_rejects_non_file_uri_without_fallback() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
+        .expect("the local provider descriptor must register");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("memory:///data").expect("test URI must parse"),
+    )
+    .with_selection(
+        ProviderSelection::named("local-file").expect("local selection must parse"),
+    );
+
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("a named local selection must reject a non-file URI");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+
+    assert_eq!(creation.attempts().len(), 1);
+    assert_eq!(creation.attempts()[0].provider_id().as_str(), "local-file");
+    assert_eq!(
+        creation.decisive_attempt().failure().kind(),
+        ProviderFailureKind::Unsupported,
+    );
+    assert_eq!(
+        creation.decisive_attempt().failure().error().kind(),
+        FsErrorKind::UnsupportedOperation,
+    );
+}
+
+/// Automatic selection tries the priority-zero local provider before a
+/// priority-negative remote candidate and records both attempts.
+#[test]
+fn test_auto_selection_orders_local_before_lower_priority_remote() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(
+            LocalResourcePolicy::unbounded(),
+        ))
+        .expect("the local provider descriptor must register");
+    registry
+        .register(AlwaysUnsupportedProvider {
+            descriptor: ProviderDescriptor::new(
+                ProviderId::new("remote").expect("provider ID must be valid"),
+            )
+            .with_priority(-1),
+        })
+        .expect("the remote provider descriptor must register");
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse("memory:///data").expect("test URI must parse"),
+    )
+    .with_selection(ProviderSelection::auto());
+
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("both test providers must reject the memory URI");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+
+    assert_eq!(creation.attempts().len(), 2);
+    assert_eq!(
+        creation
+            .attempts()
+            .iter()
+            .map(|attempt| attempt.provider_id().as_str())
+            .collect::<Vec<_>>(),
+        ["local-file", "remote"],
     );
 }
 
@@ -464,6 +541,29 @@ fn test_rooted_local_provider_rejects_missing_root() {
 struct ChainFallbackProvider {
     inner: LocalFileSystemProvider,
     received_schemes: Arc<Mutex<Vec<String>>>,
+}
+
+struct AlwaysUnsupportedProvider {
+    descriptor: ProviderDescriptor,
+}
+
+impl ProviderMetadata for AlwaysUnsupportedProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        self.descriptor.clone()
+    }
+}
+
+impl ServiceProvider<FileSystemSpec> for AlwaysUnsupportedProvider {
+    fn create_configured(
+        &self,
+        _: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<qubit_fs::error::FsError>> {
+        Err(ProviderFailure::unsupported(qubit_fs::error::FsError::new(
+            FsErrorKind::UnsupportedOperation,
+            FsOperation::Provider,
+            "test provider does not support this URI",
+        )))
+    }
 }
 
 impl ProviderMetadata for ChainFallbackProvider {
