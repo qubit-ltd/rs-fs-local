@@ -177,12 +177,13 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
         .and_then(|source| source.parse::<toml::Value>().ok())
         .and_then(|value| value["package"]["name"].as_str().map(str::to_owned));
     if let Some(package) = package
-        && let Some(suffix) = package.strip_prefix("qubit-") {
-            let mapped = sibling_root.join(format!("rs-{suffix}"));
-            if mapped.join("Cargo.toml").is_file() {
-                return mapped;
-            }
+        && let Some(suffix) = package.strip_prefix("qubit-")
+    {
+        let mapped = sibling_root.join(format!("rs-{suffix}"));
+        if mapped.join("Cargo.toml").is_file() {
+            return mapped;
         }
+    }
     root.join(declared_path)
 }
 
