@@ -12,6 +12,7 @@ use std::ffi::OsStr;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::DeleteOptions;
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
@@ -130,6 +131,10 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
         .expect_err("persist must report the existing destination");
     assert_eq!(failure.state(), PersistFailureState::NotPublished);
     assert_eq!(failure.error().kind(), FsErrorKind::AlreadyExists);
+    assert_eq!(
+        failure.error().effect_state(),
+        Some(FsEffectState::Unchanged),
+    );
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
     file_system
@@ -170,6 +175,10 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         .expect_err("persist must report the existing destination");
     assert_eq!(failure.state(), PersistFailureState::NotPublished);
     assert_eq!(failure.error().kind(), FsErrorKind::AlreadyExists);
+    assert_eq!(
+        failure.error().effect_state(),
+        Some(FsEffectState::Unchanged),
+    );
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
     file_system
@@ -234,34 +243,132 @@ fn test_temp_file_persist_overwrites_and_becomes_terminal() {
     let mut temporary = file_system
         .create_temp_file(TempFileOptions::default())
         .expect("temporary file must be created");
+    std::fs::write(
+        root.path()
+            .join(temporary.path().as_str().trim_start_matches('/')),
+        b"published",
+    )
+    .expect("temporary file fixture must be written");
     let outcome = temporary
         .persist(&target, PersistOptions::default().with_overwrite(true))
         .expect("overwrite persistence must replace the destination file");
 
     assert_eq!(outcome.target(), &target);
     assert_eq!(temporary.state(), TempResourceState::Persisted);
+    let failure = temporary
+        .persist(&target, PersistOptions::default())
+        .expect_err("published temporary file must reject persistence");
     assert_eq!(
-        temporary
+        PersistFailureState::PublishedSourceReleased,
+        failure.state(),
+    );
+    assert_eq!(FsErrorKind::InvalidState, failure.error().kind());
+    assert_eq!(None, failure.error().effect_state());
+    let keep_failure = temporary
+        .keep()
+        .expect_err("published temporary file must reject keep");
+    assert_eq!(
+        PersistFailureState::PublishedSourceReleased,
+        keep_failure.state(),
+    );
+    assert_eq!(FsErrorKind::InvalidState, keep_failure.error().kind());
+    assert_eq!(None, keep_failure.error().effect_state());
+    let cleanup_error = temporary
+        .cleanup()
+        .expect_err("published temporary file must reject cleanup");
+    assert_eq!(FsErrorKind::InvalidState, cleanup_error.kind());
+    assert_eq!(None, cleanup_error.effect_state());
+    drop(temporary);
+    assert_eq!(
+        b"published",
+        std::fs::read(root.path().join("published.txt"))
+            .expect("dropping the terminal handle must preserve the target")
+            .as_slice(),
+    );
+}
+
+/// Persistence can create a missing destination parent without changing the
+/// requested publication target.
+#[test]
+fn test_temp_file_persist_creates_missing_parent() {
+    let root = tempfile::tempdir().expect("test root must be created");
+    let file_system = LocalFileSystems::rooted(
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
+    let target = Path::parse("/missing/parent/published.txt")
+        .expect("target path must be valid");
+    let mut temporary = file_system
+        .create_temp_file(TempFileOptions::default())
+        .expect("temporary file must be created");
+    std::fs::write(
+        root.path()
+            .join(temporary.path().as_str().trim_start_matches('/')),
+        b"payload",
+    )
+    .expect("temporary file fixture must be written");
+
+    let outcome = temporary
+        .persist(
+            &target,
+            PersistOptions::default().with_create_parent(),
+        )
+        .expect("persistence must create missing parents");
+
+    assert_eq!(&target, outcome.target());
+    assert_eq!(TempResourceState::Persisted, temporary.state());
+    assert_eq!(
+        b"payload",
+        std::fs::read(root.path().join("missing/parent/published.txt"))
+            .expect("published target must be readable")
+            .as_slice(),
+    );
+}
+
+/// An injected install failure reports indeterminate effects and does not let
+/// handle destruction reclaim a pre-existing destination.
+#[test]
+fn test_temp_file_indeterminate_persist_preserves_existing_target_on_drop() {
+    const TEST_NAME: &str =
+        "test_temp_file_indeterminate_persist_preserves_existing_target_on_drop";
+    run_in_test_fault_process(TEST_NAME, "persist-install-indeterminate", || {
+        let root = tempfile::tempdir().expect("test root must be created");
+        let parent = host_path_to_logical(root.path())
+            .expect("host parent path must be valid");
+        let target = host_path_to_logical(&root.path().join("existing.txt"))
+            .expect("host target path must be valid");
+        let file_system =
+            LocalFileSystems::host(LocalResourcePolicy::unbounded())
+                .expect("host filesystem must be created");
+        file_system
+            .write_all(&target, b"existing", WriteOptions::default())
+            .expect("existing target must be written");
+        let mut temporary = file_system
+            .create_temp_file(
+                TempFileOptions::default().with_parent(Some(parent)),
+            )
+            .expect("temporary file must be created");
+
+        let failure = temporary
             .persist(&target, PersistOptions::default())
-            .expect_err("published temporary file must reject persistence")
-            .state(),
-        PersistFailureState::PublishedSourceReleased
-    );
-    assert_eq!(
-        temporary
-            .keep()
-            .expect_err("published temporary file must reject keep")
-            .error()
-            .kind(),
-        FsErrorKind::InvalidState
-    );
-    assert_eq!(
-        temporary
-            .cleanup()
-            .expect_err("published temporary file must reject cleanup")
-            .kind(),
-        FsErrorKind::InvalidState
-    );
+            .expect_err("injected install failure must be reported");
+
+        assert_eq!(PersistFailureState::Indeterminate, failure.state());
+        assert_eq!(FsErrorKind::PermissionDenied, failure.error().kind());
+        assert_eq!(
+            Some(FsEffectState::Indeterminate),
+            failure.error().effect_state(),
+        );
+        assert_eq!(TempResourceState::Indeterminate, temporary.state());
+        drop(temporary);
+        assert_eq!(
+            b"existing",
+            std::fs::read(root.path().join("existing.txt"))
+                .expect("drop must preserve the existing target")
+                .as_slice(),
+        );
+    });
 }
 
 /// Verifies the local provider preserves residual native sandbox cleanup state.
@@ -492,7 +599,14 @@ fn test_temp_file_cleanup_makes_persist_terminal() {
         failure.state(),
         PersistFailureState::NotPublishedSourceReleased
     );
+    assert_eq!(FsErrorKind::InvalidState, failure.error().kind());
+    assert_eq!(None, failure.error().effect_state());
     assert_eq!(temporary.state(), TempResourceState::Cleaned);
+    let cleanup_error = temporary
+        .cleanup()
+        .expect_err("cleaned temporary file must reject another cleanup");
+    assert_eq!(FsErrorKind::InvalidState, cleanup_error.kind());
+    assert_eq!(None, cleanup_error.effect_state());
 }
 
 /// A kept temporary directory rejects a later keep request.

@@ -16,6 +16,7 @@ use qubit_fs::copy::ServerSidePreference;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::DeleteOptions;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::Checksum;
 use qubit_fs::metadata::ChecksumAlgorithm;
@@ -72,6 +73,76 @@ fn test_rooted_append_abort_reports_published_destination() {
     assert_eq!(WriterState::Published, writer.state());
 }
 
+/// A successful commit is terminal, and rejected lifecycle retries do not
+/// change the published destination.
+#[test]
+fn test_rooted_writer_commit_rejects_repeated_terminal_operations() {
+    let (root, file_system) = rooted_file_system();
+    let target = path("/committed-terminal");
+    let mut writer = file_system
+        .open_writer(&target, WriteOptions::default())
+        .expect("writer must open");
+    Output::write_fully(&mut writer, b"committed")
+        .expect("writer must accept payload");
+
+    writer.commit().expect("initial commit must succeed");
+
+    let commit_failure = writer
+        .commit()
+        .expect_err("committed writer must reject another commit");
+    assert_eq!(FsErrorKind::InvalidState, commit_failure.error().kind());
+    assert_eq!(WriteFailureState::Published, commit_failure.state());
+    assert_eq!(None, commit_failure.error().effect_state());
+    let abort_error = writer
+        .abort()
+        .expect_err("committed writer must reject abort");
+    assert_eq!(FsErrorKind::InvalidState, abort_error.kind());
+    assert_eq!(None, abort_error.effect_state());
+    assert_eq!(
+        b"committed",
+        std::fs::read(root.path().join("committed-terminal"))
+            .expect("committed destination must remain unchanged")
+            .as_slice(),
+    );
+}
+
+/// A successful abort is terminal, and rejected lifecycle retries do not
+/// create the destination.
+#[test]
+fn test_rooted_writer_abort_rejects_repeated_terminal_operations() {
+    let (_root, file_system) = rooted_file_system();
+    let target = path("/aborted-terminal");
+    let mut writer = file_system
+        .open_writer(&target, WriteOptions::default())
+        .expect("writer must open");
+    Output::write_fully(&mut writer, b"discarded")
+        .expect("writer must accept payload");
+
+    assert_eq!(
+        WriteAbortOutcome::NotPublished,
+        writer.abort().expect("initial abort must succeed"),
+    );
+
+    let commit_failure = writer
+        .commit()
+        .expect_err("aborted writer must reject commit");
+    assert_eq!(FsErrorKind::InvalidState, commit_failure.error().kind());
+    assert_eq!(WriteFailureState::NotPublished, commit_failure.state());
+    assert_eq!(None, commit_failure.error().effect_state());
+    let abort_error = writer
+        .abort()
+        .expect_err("aborted writer must reject another abort");
+    assert_eq!(FsErrorKind::InvalidState, abort_error.kind());
+    assert_eq!(None, abort_error.effect_state());
+    assert_eq!(
+        FsErrorKind::NotFound,
+        file_system
+            .stat(&target)
+            .expect_err("aborted destination must remain absent")
+            .kind(),
+    );
+}
+
 /// A terminal pre-publication conflict retains its confirmed destination state
 /// for explicit facade cleanup without inventing a retryable native writer.
 #[test]
@@ -98,6 +169,11 @@ fn test_host_commit_conflict_preserves_not_published_state() {
         .commit()
         .expect_err("concurrent destination must fail create-new commit");
 
+    assert_eq!(FsErrorKind::AlreadyExists, failure.error().kind());
+    assert_eq!(
+        Some(FsEffectState::Unchanged),
+        failure.error().effect_state(),
+    );
     assert_eq!(WriteFailureState::NotPublished, failure.state(),);
     assert_eq!(WriterState::NotPublished, writer.state());
     assert_eq!(

@@ -519,6 +519,17 @@ fn persist_failure_state(
     }
 }
 
+/// Maps a portable persistence failure state to its confirmed external effect.
+///
+/// # Parameters
+///
+/// - `state`: Source-ownership and destination-publication state after a
+///   failed persistence attempt.
+///
+/// # Returns
+///
+/// `Unchanged` when no target was published, `Applied` when publication is
+/// confirmed, or `Indeterminate` when publication cannot be determined.
 #[inline]
 const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
     match state {
