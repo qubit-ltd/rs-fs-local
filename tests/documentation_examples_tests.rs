@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 
 fn rust_blocks(markdown: &str) -> Vec<String> {
@@ -138,8 +139,10 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
     table.remove("optional");
     if let Some(path) = table.remove("path") {
         let declared_path = Path::new(path.as_str().expect("dependency path"));
-        let path = if let Some(sibling_root) = std::env::var_os("QUBIT_FS_SIBLING_ROOT") {
-            sibling_root.join(
+        let path = if let Some(sibling_root) =
+            std::env::var_os("QUBIT_FS_SIBLING_ROOT")
+        {
+            PathBuf::from(sibling_root).join(
                 declared_path
                     .file_name()
                     .expect("dependency path must name a sibling crate"),
@@ -148,7 +151,8 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
             root.join(declared_path)
         };
         if path.join("Cargo.toml").is_file() {
-            let path = path.canonicalize().expect("dependency path must resolve");
+            let path =
+                path.canonicalize().expect("dependency path must resolve");
             table.insert(
                 "path".into(),
                 toml::Value::String(
