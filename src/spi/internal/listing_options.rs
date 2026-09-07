@@ -64,7 +64,8 @@ impl ListingOptions {
         match self.filter.as_ref() {
             None => true,
             Some(ListFilter::Subtree(prefix)) => {
-                let relative = relative.as_str().strip_prefix('/').unwrap_or_default();
+                let relative =
+                    relative.as_str().strip_prefix('/').unwrap_or_default();
                 relative == prefix
                     || relative
                         .strip_prefix(prefix)
@@ -96,11 +97,15 @@ mod tests {
 
         assert!(
             options.matches(
-                &Path::parse("/reports/annual.txt").expect("matching relative logical path"),
+                &Path::parse("/reports/annual.txt")
+                    .expect("matching relative logical path"),
             )
         );
-        assert!(!options.matches(
-            &Path::parse("/archive/report.txt").expect("non-matching relative logical path"),
-        ));
+        assert!(
+            !options.matches(
+                &Path::parse("/archive/report.txt")
+                    .expect("non-matching relative logical path"),
+            )
+        );
     }
 }
