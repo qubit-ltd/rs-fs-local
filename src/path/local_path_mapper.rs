@@ -41,9 +41,7 @@ pub(crate) fn native(
 ) -> FsResult<PathBuf> {
     require_absolute(path)?;
     let paths = match scope {
-        native_files::path::LocalFileSystemScope::Host => {
-            native_files::path::LocalPaths::host()
-        }
+        native_files::path::LocalFileSystemScope::Host => native_files::path::LocalPaths::host(),
         native_files::path::LocalFileSystemScope::Rooted => {
             native_files::path::LocalPaths::rooted()
         }
@@ -75,9 +73,7 @@ pub(crate) fn logical(
     operation: FsOperation,
 ) -> FsResult<Path> {
     let paths = match scope {
-        native_files::path::LocalFileSystemScope::Host => {
-            native_files::path::LocalPaths::host()
-        }
+        native_files::path::LocalFileSystemScope::Host => native_files::path::LocalPaths::host(),
         native_files::path::LocalFileSystemScope::Rooted => {
             native_files::path::LocalPaths::rooted()
         }
@@ -143,11 +139,7 @@ fn logical_components(components: &[String]) -> FsResult<Path> {
 ///
 /// An `InvalidPath` facade error retaining `path` and the native source.
 #[inline(always)]
-fn map(
-    error: native_files::LocalFileError,
-    path: &Path,
-    operation: FsOperation,
-) -> FsError {
+fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation) -> FsError {
     map_native(error, operation).with_path(path.clone())
 }
 
@@ -162,10 +154,7 @@ fn map(
 ///
 /// An `InvalidPath` facade error retaining the native source.
 #[inline(always)]
-fn map_native(
-    error: native_files::LocalFileError,
-    operation: FsOperation,
-) -> FsError {
+fn map_native(error: native_files::LocalFileError, operation: FsOperation) -> FsError {
     FsError::with_source(
         FsErrorKind::InvalidPath,
         operation,

@@ -1,5 +1,5 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
 //
@@ -28,14 +28,19 @@ use crate::LocalListResourceLimits;
 /// ceilings. These are not aggregate quotas across concurrent requests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalResourcePolicy {
+    /// Optional native traversal ceilings for recursive listings.
     list: Option<LocalListResourceLimits>,
+    /// Optional native traversal ceilings for recursive copies.
     copy: Option<LocalCopyResourceLimits>,
     /// Independently selected ceilings for ordinary recursive deletion
     /// requests. Temporary-resource cleanup, `Drop`, and native publication
     /// cleanup use separate lifecycle semantics.
     delete: Option<LocalDeleteResourceLimits>,
+    /// Retry interval used while opening readers and writers.
     open_retry_timeout: Option<Duration>,
+    /// Maximum attempts used when generating temporary names.
     temp_max_attempts: Option<NonZeroUsize>,
+    /// Whether recursive walkers reopen directories after exhausting handles.
     directory_reopen_policy: LocalDirectoryReopenPolicy,
 }
 
@@ -56,6 +61,21 @@ impl LocalResourcePolicy {
     /// # Returns
     ///
     /// A policy retaining all three explicit operation ceilings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use qubit_fs_local::{LocalCopyResourceLimits, LocalDeleteResourceLimits};
+    /// use qubit_fs_local::{LocalListResourceLimits, LocalResourcePolicy};
+    ///
+    /// let list = LocalListResourceLimits::new(8, 1_000, 4_096, 8, Duration::from_secs(30))?;
+    /// let copy = LocalCopyResourceLimits::new(8, 1_000, 1 << 20, 8, Duration::from_secs(30))?;
+    /// let delete = LocalDeleteResourceLimits::new(8, 1_000, 4_096, Duration::from_secs(30));
+    /// let policy = LocalResourcePolicy::bounded(list, copy, delete);
+    /// assert_eq!(policy.list_limits(), Some(list));
+    /// # Ok::<(), qubit_fs::error::FsError>(())
+    /// ```
     #[must_use]
     pub const fn bounded(
         list: LocalListResourceLimits,
@@ -73,6 +93,13 @@ impl LocalResourcePolicy {
     }
 
     /// Explicitly opts into unbounded recursive resource usage.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use qubit_fs_local::LocalResourcePolicy;
+    /// assert!(LocalResourcePolicy::unbounded().list_limits().is_none());
+    /// ```
     #[must_use]
     pub const fn unbounded() -> Self {
         Self {
@@ -112,18 +139,13 @@ impl LocalResourcePolicy {
     /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
     /// not use these ceilings.
     #[must_use]
-    pub const fn with_delete_limits(
-        mut self,
-        limits: Option<LocalDeleteResourceLimits>,
-    ) -> Self {
+    pub const fn with_delete_limits(mut self, limits: Option<LocalDeleteResourceLimits>) -> Self {
         self.delete = limits;
         self
     }
 
     /// Converts deletion ceilings without enabling recursive deletion itself.
-    pub(crate) const fn delete_options(
-        self,
-    ) -> native_files::options::LocalDeleteOptions {
+    pub(crate) const fn delete_options(self) -> native_files::options::LocalDeleteOptions {
         match self.delete {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalDeleteOptions::new(),
@@ -150,20 +172,14 @@ impl LocalResourcePolicy {
 
     /// Sets the local open retry timeout used for readers and writers.
     #[must_use]
-    pub const fn with_open_retry_timeout(
-        mut self,
-        timeout: Option<Duration>,
-    ) -> Self {
+    pub const fn with_open_retry_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.open_retry_timeout = timeout;
         self
     }
 
     /// Sets the maximum number of temporary-name attempts.
     #[must_use]
-    pub const fn with_temp_max_attempts(
-        mut self,
-        max_attempts: Option<NonZeroUsize>,
-    ) -> Self {
+    pub const fn with_temp_max_attempts(mut self, max_attempts: Option<NonZeroUsize>) -> Self {
         self.temp_max_attempts = max_attempts;
         self
     }
@@ -178,9 +194,8 @@ impl LocalResourcePolicy {
         self
     }
 
-    pub(crate) const fn list_options(
-        self,
-    ) -> native_files::options::LocalListOptions {
+    /// Translates listing ceilings and reopen policy for the native adapter.
+    pub(crate) const fn list_options(self) -> native_files::options::LocalListOptions {
         let options = match self.list {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalListOptions::new(),
@@ -195,9 +210,8 @@ impl LocalResourcePolicy {
         })
     }
 
-    pub(crate) const fn copy_options(
-        self,
-    ) -> native_files::options::LocalCopyOptions {
+    /// Translates copy ceilings for the native adapter.
+    pub(crate) const fn copy_options(self) -> native_files::options::LocalCopyOptions {
         match self.copy {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalCopyOptions::new(),

@@ -1,3 +1,10 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::DurabilityRequirement;
@@ -13,8 +20,7 @@ use qubit_local_files::test_support::install_test_fault;
 
 #[cfg(unix)]
 #[test]
-fn test_host_required_writer_preserves_published_state_after_parent_sync_failure()
- {
+fn test_host_required_writer_preserves_published_state_after_parent_sync_failure() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let target = host_path_to_logical(&root.path().join("one/two/payload"))
         .expect("target should be representable");
@@ -29,8 +35,7 @@ fn test_host_required_writer_preserves_published_state_after_parent_sync_failure
                 .with_durability(DurabilityRequirement::Required),
         )
         .expect("writer should open");
-    Output::write_fully(&mut writer, b"payload")
-        .expect("writer should accept payload");
+    Output::write_fully(&mut writer, b"payload").expect("writer should accept payload");
     let _fault = install_test_fault("atomic-writer-created-parent-sync")
         .expect("fault controller should install");
 
@@ -50,8 +55,7 @@ fn test_host_required_writer_preserves_published_state_after_parent_sync_failure
 #[test]
 fn test_rooted_copy_budget_rejects_second_entry_without_partial_files() {
     let root = tempfile::tempdir().expect("fixture root should exist");
-    std::fs::create_dir(root.path().join("source"))
-        .expect("source should exist");
+    std::fs::create_dir(root.path().join("source")).expect("source should exist");
     for index in 0..100 {
         std::fs::write(
             root.path().join("source").join(format!("entry-{index}")),
@@ -59,9 +63,8 @@ fn test_rooted_copy_budget_rejects_second_entry_without_partial_files() {
         )
         .expect("source entry should exist");
     }
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted filesystem should construct");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
     let failure = filesystem
         .copy(
             &Path::parse("/source").expect("source path should parse"),

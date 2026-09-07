@@ -50,6 +50,17 @@ impl LocalFileSystemProvider {
     ///
     /// A provider that resolves absolute `file:` paths against the process
     /// host filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "registry")]
+    /// use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
+    /// # #[cfg(feature = "registry")]
+    /// let provider = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+    /// # #[cfg(feature = "registry")]
+    /// let _ = provider;
+    /// ```
     #[inline(always)]
     pub const fn host(policy: LocalResourcePolicy) -> Self {
         Self {
@@ -99,17 +110,13 @@ impl LocalFileSystemProvider {
         root: &Path,
         policy: LocalResourcePolicy,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(
-            id,
-            descriptor.id(),
-            root,
-            policy,
+        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root, policy).map(
+            |file_system| Self {
+                mode: LocalProviderMode::Rooted { file_system },
+                descriptor: Some(descriptor),
+                policy,
+            },
         )
-        .map(|file_system| Self {
-            mode: LocalProviderMode::Rooted { file_system },
-            descriptor: Some(descriptor),
-            policy,
-        })
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -128,9 +135,7 @@ impl LocalFileSystemProvider {
     /// Returns an unsupported failure for non-`file` schemes before checking
     /// provider-specific configuration, or an invalid-configuration failure
     /// for malformed `file:` configurations.
-    fn decode_config(
-        config: &FileSystemConfig,
-    ) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
+    fn decode_config(config: &FileSystemConfig) -> Result<(FsPath, Uri), ProviderFailure<FsError>> {
         if config.uri().scheme() != FILE_SCHEME {
             return Err(unsupported_scheme(
                 "local filesystem provider requires the file URI scheme",
@@ -189,8 +194,7 @@ impl ProviderMetadata for LocalFileSystemProvider {
 #[inline]
 fn default_descriptor() -> ProviderDescriptor {
     ProviderDescriptor::new(
-        ProviderId::new(LOCAL_PROVIDER_ID)
-            .expect("static provider identity is valid"),
+        ProviderId::new(LOCAL_PROVIDER_ID).expect("static provider identity is valid"),
     )
     .with_aliases([FILE_SCHEME])
     .expect("static provider alias is valid")
@@ -219,9 +223,7 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(self.policy),
-            LocalProviderMode::Rooted { file_system } => {
-                Ok(file_system.clone())
-            }
+            LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
         }
         .map_err(ProviderFailure::initialization_failed)?;
         FileSystemResolution::try_new(file_system, path, uri)

@@ -44,12 +44,7 @@ pub(crate) fn map(
     let kind = error_kind(&error);
     let effect_state = native_effect_state(&error);
     let error = attach_native_effect(
-        FsError::with_source(
-            kind,
-            operation,
-            "local filesystem operation failed",
-            error,
-        ),
+        FsError::with_source(kind, operation, "local filesystem operation failed", error),
         effect_state,
     )
     .with_path(path.clone())
@@ -98,11 +93,7 @@ pub(crate) fn map_without_path(
 /// A copy failure with unchanged namespace state and empty statistics.
 #[inline(always)]
 pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
-    SpiCopyFailure::new(
-        error,
-        CopyFailureState::Unchanged,
-        CopyStats::default(),
-    )
+    SpiCopyFailure::new(error, CopyFailureState::Unchanged, CopyStats::default())
 }
 
 /// Converts a complete native copy failure without discarding staging or
@@ -117,23 +108,16 @@ pub(crate) fn copy_failure(
     provider_id: &str,
 ) -> FsError {
     let kind = error_kind(error.error());
-    let error = FsError::with_source(
-        kind,
-        FsOperation::Copy,
-        "local copy failed",
-        error,
-    )
-    .with_path(path.clone())
-    .with_target(target.clone())
-    .with_provider(provider_id);
+    let error = FsError::with_source(kind, FsOperation::Copy, "local copy failed", error)
+        .with_path(path.clone())
+        .with_target(target.clone())
+        .with_provider(provider_id);
     let error = match failure_path {
         Some(failure_path) => error.with_failure_path(failure_path.clone()),
         None => error,
     };
     match failure_target {
-        Some(failure_target) => {
-            error.with_failure_target(failure_target.clone())
-        }
+        Some(failure_target) => error.with_failure_target(failure_target.clone()),
         None => error,
     }
 }
@@ -141,20 +125,16 @@ pub(crate) fn copy_failure(
 /// Attaches an explicit effect state for native error categories that prove
 /// publication progress independently of a typed operation failure.
 #[inline]
-fn attach_native_effect(
-    error: FsError,
-    effect_state: Option<FsEffectState>,
-) -> FsError {
+fn attach_native_effect(error: FsError, effect_state: Option<FsEffectState>) -> FsError {
     match effect_state {
         Some(effect_state) => error.with_effect_state(effect_state),
         None => error,
     }
 }
 
+/// Maps native lifecycle effects into portable request effects.
 #[inline]
-fn native_effect_state(
-    error: &native_files::LocalFileError,
-) -> Option<FsEffectState> {
+fn native_effect_state(error: &native_files::LocalFileError) -> Option<FsEffectState> {
     match error.effect_state() {
         Some(native_files::error::LocalFileEffectState::Unchanged) => {
             Some(FsEffectState::Unchanged)
@@ -162,9 +142,7 @@ fn native_effect_state(
         Some(native_files::error::LocalFileEffectState::PartiallyApplied) => {
             Some(FsEffectState::PartiallyApplied)
         }
-        Some(native_files::error::LocalFileEffectState::Applied) => {
-            Some(FsEffectState::Applied)
-        }
+        Some(native_files::error::LocalFileEffectState::Applied) => Some(FsEffectState::Applied),
         Some(native_files::error::LocalFileEffectState::Indeterminate) => {
             Some(FsEffectState::Indeterminate)
         }
@@ -175,9 +153,7 @@ fn native_effect_state(
 
 /// Converts portable copy failure state into provider-neutral effect state.
 #[inline]
-pub(crate) const fn copy_effect_state(
-    state: CopyFailureState,
-) -> FsEffectState {
+pub(crate) const fn copy_effect_state(state: CopyFailureState) -> FsEffectState {
     match state {
         CopyFailureState::Unchanged => FsEffectState::Unchanged,
         CopyFailureState::PartiallyPublished => FsEffectState::PartiallyApplied,
@@ -188,9 +164,7 @@ pub(crate) const fn copy_effect_state(
 
 /// Converts portable rename failure state into provider-neutral effect state.
 #[inline]
-pub(crate) const fn rename_effect_state(
-    state: RenameFailureState,
-) -> FsEffectState {
+pub(crate) const fn rename_effect_state(state: RenameFailureState) -> FsEffectState {
     match state {
         RenameFailureState::Unchanged => FsEffectState::Unchanged,
         RenameFailureState::Renamed => FsEffectState::Applied,
@@ -206,34 +180,18 @@ pub(crate) const fn rename_effect_state(
 fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
     let Some(cause) = error.cause_kind() else {
         return match error.kind() {
-            native_files::error::LocalFileErrorKind::PublicationIncomplete => {
-                FsErrorKind::Io
-            }
-            native_files::error::LocalFileErrorKind::Indeterminate => {
-                FsErrorKind::Indeterminate
-            }
+            native_files::error::LocalFileErrorKind::PublicationIncomplete => FsErrorKind::Io,
+            native_files::error::LocalFileErrorKind::Indeterminate => FsErrorKind::Indeterminate,
             kind => native_kind(kind),
         };
     };
     match cause {
-        native_files::error::LocalFileErrorKind::InvalidPath => {
-            FsErrorKind::InvalidPath
-        }
-        native_files::error::LocalFileErrorKind::InvalidOptions => {
-            FsErrorKind::InvalidOptions
-        }
-        native_files::error::LocalFileErrorKind::InvalidState => {
-            FsErrorKind::InvalidState
-        }
-        native_files::error::LocalFileErrorKind::NotDirectory => {
-            FsErrorKind::NotDirectory
-        }
-        native_files::error::LocalFileErrorKind::IsDirectory => {
-            FsErrorKind::IsDirectory
-        }
-        native_files::error::LocalFileErrorKind::TypeConflict => {
-            FsErrorKind::Conflict
-        }
+        native_files::error::LocalFileErrorKind::InvalidPath => FsErrorKind::InvalidPath,
+        native_files::error::LocalFileErrorKind::InvalidOptions => FsErrorKind::InvalidOptions,
+        native_files::error::LocalFileErrorKind::InvalidState => FsErrorKind::InvalidState,
+        native_files::error::LocalFileErrorKind::NotDirectory => FsErrorKind::NotDirectory,
+        native_files::error::LocalFileErrorKind::IsDirectory => FsErrorKind::IsDirectory,
+        native_files::error::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
         _ if error.io_error().is_some() => io_kind(error.io_error_kind()),
         _ => native_kind(cause),
     }
@@ -265,51 +223,25 @@ pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
 /// map to `Other`.
 fn native_kind(kind: native_files::error::LocalFileErrorKind) -> FsErrorKind {
     match kind {
-        native_files::error::LocalFileErrorKind::InvalidPath => {
-            FsErrorKind::InvalidPath
-        }
-        native_files::error::LocalFileErrorKind::InvalidOptions => {
-            FsErrorKind::InvalidOptions
-        }
-        native_files::error::LocalFileErrorKind::InvalidState => {
-            FsErrorKind::InvalidState
-        }
-        native_files::error::LocalFileErrorKind::NotFound => {
-            FsErrorKind::NotFound
-        }
-        native_files::error::LocalFileErrorKind::AlreadyExists => {
-            FsErrorKind::AlreadyExists
-        }
-        native_files::error::LocalFileErrorKind::NotDirectory => {
-            FsErrorKind::NotDirectory
-        }
-        native_files::error::LocalFileErrorKind::IsDirectory => {
-            FsErrorKind::IsDirectory
-        }
-        native_files::error::LocalFileErrorKind::TypeConflict => {
-            FsErrorKind::Conflict
-        }
-        native_files::error::LocalFileErrorKind::PermissionDenied => {
-            FsErrorKind::PermissionDenied
-        }
-        native_files::error::LocalFileErrorKind::Unsupported => {
-            FsErrorKind::UnsupportedOperation
-        }
+        native_files::error::LocalFileErrorKind::InvalidPath => FsErrorKind::InvalidPath,
+        native_files::error::LocalFileErrorKind::InvalidOptions => FsErrorKind::InvalidOptions,
+        native_files::error::LocalFileErrorKind::InvalidState => FsErrorKind::InvalidState,
+        native_files::error::LocalFileErrorKind::NotFound => FsErrorKind::NotFound,
+        native_files::error::LocalFileErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
+        native_files::error::LocalFileErrorKind::NotDirectory => FsErrorKind::NotDirectory,
+        native_files::error::LocalFileErrorKind::IsDirectory => FsErrorKind::IsDirectory,
+        native_files::error::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
+        native_files::error::LocalFileErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
+        native_files::error::LocalFileErrorKind::Unsupported => FsErrorKind::UnsupportedOperation,
         native_files::error::LocalFileErrorKind::RequirementNotMet => {
             FsErrorKind::RequirementNotMet
         }
         native_files::error::LocalFileErrorKind::ResourceLimit => {
             FsErrorKind::ResourceLimitExceeded
         }
-        native_files::error::LocalFileErrorKind::DataCorruption => {
-            FsErrorKind::DataCorruption
-        }
-        native_files::error::LocalFileErrorKind::PublicationIncomplete => {
-            FsErrorKind::Io
-        }
-        native_files::error::LocalFileErrorKind::Indeterminate => {
-            FsErrorKind::Indeterminate
-        }
+        native_files::error::LocalFileErrorKind::DataCorruption => FsErrorKind::DataCorruption,
+        native_files::error::LocalFileErrorKind::PublicationIncomplete => FsErrorKind::Io,
+        native_files::error::LocalFileErrorKind::Indeterminate => FsErrorKind::Indeterminate,
         native_files::error::LocalFileErrorKind::Io => FsErrorKind::Io,
         _ => FsErrorKind::Other,
     }
@@ -364,7 +296,7 @@ mod tests {
     use super::rename_effect_state;
 
     #[test]
-    fn maps_every_native_error_category_without_losing_its_source() {
+    fn test_maps_every_native_error_category_without_losing_its_source() {
         let path = Path::parse("/source").expect("valid test path");
         let target = Path::parse("/target").expect("valid test target");
         for (native, expected, effect) in [
@@ -464,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_publication_cause_separately_from_effect() {
+    fn test_maps_publication_cause_separately_from_effect() {
         let path = Path::parse("/source").expect("valid test path");
         let native = LocalFileError::new(
             LocalFileErrorKind::PublicationIncomplete,
@@ -478,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_native_cause_precedes_a_coarser_io_source() {
+    fn test_explicit_native_cause_precedes_a_coarser_io_source() {
         let path = Path::parse("/source").expect("valid test path");
         let native = LocalFileError::new(
             LocalFileErrorKind::TypeConflict,
@@ -492,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_io_error_categories_to_portable_kinds() {
+    fn test_maps_io_error_categories_to_portable_kinds() {
         let path = Path::parse("/source").expect("valid test path");
         let target = Path::parse("/target").expect("valid test target");
         for (io_kind, expected) in [
@@ -535,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_typed_copy_and_rename_failure_states() {
+    fn test_maps_typed_copy_and_rename_failure_states() {
         for (state, expected) in [
             (CopyFailureState::Unchanged, FsEffectState::Unchanged),
             (
@@ -543,27 +475,36 @@ mod tests {
                 FsEffectState::PartiallyApplied,
             ),
             (CopyFailureState::Published, FsEffectState::Applied),
-            (CopyFailureState::Indeterminate, FsEffectState::Indeterminate),
+            (
+                CopyFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
         ] {
             assert_eq!(expected, copy_effect_state(state));
         }
         for (state, expected) in [
             (RenameFailureState::Unchanged, FsEffectState::Unchanged),
             (RenameFailureState::Renamed, FsEffectState::Applied),
-            (RenameFailureState::Indeterminate, FsEffectState::Indeterminate),
+            (
+                RenameFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
         ] {
             assert_eq!(expected, rename_effect_state(state));
         }
     }
 
     #[test]
-    fn maps_native_effect_states_without_changing_their_meaning() {
+    fn test_maps_native_effect_states_without_changing_their_meaning() {
         for (kind, expected) in [
             (
                 LocalFileErrorKind::PublicationIncomplete,
                 FsEffectState::PartiallyApplied,
             ),
-            (LocalFileErrorKind::Indeterminate, FsEffectState::Indeterminate),
+            (
+                LocalFileErrorKind::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
         ] {
             let native = LocalFileError::new(kind, LocalFileOperation::Metadata);
             assert_eq!(Some(expected), native_effect_state(&native));
