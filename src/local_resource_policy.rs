@@ -26,6 +26,14 @@ use crate::LocalListResourceLimits;
 /// independently. Temporary-resource cleanup, `Drop`, and native publication
 /// cleanup have separate lifecycle semantics and do not inherit deletion
 /// ceilings. These are not aggregate quotas across concurrent requests.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_local::LocalResourcePolicy;
+/// let policy = LocalResourcePolicy::unbounded();
+/// assert!(policy.list_limits().is_none());
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalResourcePolicy {
     /// Optional native traversal ceilings for recursive listings.

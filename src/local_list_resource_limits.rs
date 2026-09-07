@@ -16,6 +16,16 @@ use qubit_fs::error::FsResult;
 use qubit_local_files as native_files;
 
 /// Resource limits applied to recursive local listings.
+///
+/// # Examples
+///
+/// ```
+/// use std::time::Duration;
+/// use qubit_fs_local::LocalListResourceLimits;
+/// let limits = LocalListResourceLimits::new(4, 100, 4096, 4, Duration::from_secs(5))?;
+/// assert_eq!(limits.max_entries(), 100);
+/// # Ok::<(), qubit_fs::error::FsError>(())
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalListResourceLimits {
     /// Maximum recursive depth, with the request root at depth zero.

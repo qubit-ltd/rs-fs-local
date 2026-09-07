@@ -63,6 +63,7 @@ impl LocalFileSystems {
     /// # Parameters
     ///
     /// - `root`: Native directory to retain as filesystem authority.
+    /// - `policy`: Recursive resource and lifecycle policy.
     ///
     /// # Returns
     ///
@@ -102,6 +103,7 @@ impl LocalFileSystems {
     ///
     /// - `id`: Stable identity exposed by the rooted filesystem.
     /// - `root`: Native directory to retain as filesystem authority.
+    /// - `policy`: Recursive resource and lifecycle policy.
     ///
     /// # Returns
     ///
