@@ -14,6 +14,8 @@ use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::path::Path;
+use qubit_fs::rename::RenameFailureState;
+use qubit_fs::rename::RenameOptions;
 use qubit_fs::write::WriteDisposition;
 use qubit_fs::write::WriteFailureState;
 use qubit_fs::write::WriteOptions;
@@ -75,6 +77,27 @@ fn typed_copy_failure_exposes_unchanged_effect_and_request_context() {
     );
     assert_eq!(Some(&source), failure.error().path());
     assert_eq!(Some(&target), failure.error().target());
+    assert!(failure.error().source().is_some());
+}
+
+#[test]
+fn typed_rename_failure_exposes_unchanged_effect_and_request_context() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    let source = Path::parse("/missing").expect("valid source path");
+    let target = Path::parse("/target").expect("valid target path");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
+
+    let failure = filesystem
+        .rename(&source, &target, RenameOptions::default())
+        .expect_err("missing source should fail");
+
+    assert_eq!(RenameFailureState::Unchanged, failure.state());
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+    assert_eq!(Some(&source), failure.error().path());
+    assert_eq!(Some(&target), failure.error().target());
+    assert_eq!(Some("local-file"), failure.error().provider());
     assert!(failure.error().source().is_some());
 }
 
