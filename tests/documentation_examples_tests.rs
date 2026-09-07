@@ -217,6 +217,18 @@ fn test_documentation_dependencies_without_siblings() {
 #[test]
 fn test_current_documentation_versions_and_signatures_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
+        .expect("read manifest")
+        .parse()
+        .expect("parse manifest");
+    let version = manifest["package"]["version"]
+        .as_str()
+        .expect("package version")
+        .split('.')
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(".");
+    let version_marker = version;
     for document in [
         "README.md",
         "README.zh_CN.md",
@@ -225,6 +237,10 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
     ] {
         let text = fs::read_to_string(root.join(document))
             .expect("document should be readable");
+        assert!(
+            text.contains(&version_marker),
+            "{document} must identify the manifest's current major/minor version"
+        );
         assert!(
             !text.contains("qubit-fs-local 0.1")
                 && !text.contains("qubit-fs-local 0.2")
@@ -240,8 +256,15 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             .expect("README should be readable");
         assert!(
             text.contains("rooted_with_id(")
-                && text.contains("LocalResourcePolicy"),
+                && text.contains("LocalResourcePolicy")
+                && text.contains("LocalResourcePolicy::bounded(")
+                && text.contains("bounded(list, copy, delete)"),
             "{document} must explain the three-argument rooted_with_id API"
+        );
+        assert!(
+            !text.contains("rooted_with_id(id, root)`")
+                && !text.contains("rooted_with_id(id, root)"),
+            "{document} must not retain the old rooted_with_id signature"
         );
     }
 }

@@ -64,12 +64,10 @@ Host 与 rooted 不对应两套 SPI 类型。`LocalFileSystemSpi` 内部持有�
 
 ## 4. 普通调用入口
 
-应用通过仅作为类型命名空间的 `LocalFileSystems` 关联方法创建门面：
+应用通过仅作为类型命名空间的空枚举 `LocalFileSystems` 的关联方法创建门面：
 
 ```rust
-pub struct LocalFileSystems {
-    _private: (),
-}
+pub enum LocalFileSystems {}
 
 impl LocalFileSystems {
     pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem>;
@@ -135,11 +133,10 @@ SPI 类型可以公开，便于 provider 开发与测试，但不在 crate 根�
 
 ## 6. Properties
 
-Local SPI 的 `properties()` 返回稳定、无 I/O 的 `FileSystemProperties`，包括：
+Local SPI 的 `properties()` 返回稳定、无 I/O 的 `ProviderProperties`，包括：
 
-- configured `FileSystemId`；
-- provider id；
-- `PathSemantics::Hierarchical`；
+- `ProviderProperties::new` 中的 `FileSystemInfo`（configured `FileSystemId`、provider id
+  和 `PathSemantics::Hierarchical`）；
 - host-wide 或 rooted authority 描述；
 - 从 native capability 映射出的 `FileSystemCapabilities`；
 - 从平台和配置映射出的 `FileSystemLimits`；
@@ -409,8 +406,9 @@ nonblocking/async 本地原语之前：
 ## 12. Error 映射
 
 错误映射集中在 `spi/error_mapper.rs` 的私有 free functions 中，不把 mapper 暴露为应用 API。
-`map`、`map_without_path` 和 `map_copy_failure` 都补齐 canonical provider、逻辑路径和
-target context；host 与 rooted SPI 共享这组映射函数。
+`map` 与 `map_without_path` 补齐 canonical provider、逻辑路径和 target context；copy
+failure 通过独立的 typed `LocalCopyFailure` 映射路径保留完整状态。host 与 rooted SPI
+共享这组映射函数。
 
 映射规则：
 

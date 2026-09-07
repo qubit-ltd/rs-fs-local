@@ -12,6 +12,8 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
+This README documents `qubit-fs-local` 0.4.
+
 ## Installation
 
 ```bash
@@ -95,7 +97,7 @@ assert!(prefix.len() <= 4096);
 ```
 
 `bounded(list, copy, delete)` sets explicit per-request ceilings
-for the three ordinary operation categories. The compatible
+for the three ordinary operation categories.
 The three limit families are independent: listing and copy use their own
 depth/entry/byte/open-directory/deadline values, while deletion uses depth,
 entry, pending-path-byte, and deadline values. A provider listing entry ceiling counts
@@ -137,6 +139,8 @@ filesystem facade.
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
+- [Adapter design](doc/local_file_system_adapter_design.md)
+- [中文设计文档](doc/local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
 - [中文 README](README.zh_CN.md)
 
