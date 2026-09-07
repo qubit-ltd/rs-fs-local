@@ -3,6 +3,7 @@
 //
 //    SPDX-License-Identifier: Apache-2.0
 //
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use qubit_fs::directory::ListOptions;
@@ -22,11 +23,9 @@ fn test_rooted_paths_accept_expanded_percent_components() {
     let native_name = "%".repeat(100);
     std::fs::write(root.path().join(&native_name), b"before")
         .expect("native filename must be valid");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted facade");
-    let path = Path::parse(&format!("/{}", "%25".repeat(100)))
-        .expect("canonical path");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted facade");
+    let path = Path::parse(&format!("/{}", "%25".repeat(100))).expect("canonical path");
     assert_eq!(Some(6), fs.stat(&path).expect("stat escaped name").len());
     assert_eq!(
         b"before",
@@ -60,11 +59,9 @@ fn test_rooted_paths_accept_expanded_percent_components() {
 #[test]
 fn test_local_properties_do_not_claim_native_limits_are_text_limits() {
     let root = tempfile::tempdir().expect("fixture root");
-    let host =
-        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
     let rooted =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     for fs in [host, rooted] {
         assert_eq!(
             FileSystemLimit::Unknown,
@@ -88,10 +85,8 @@ fn test_rooted_paths_preserve_long_non_utf8_components() {
     let name = OsString::from_vec(vec![0xff; 100]);
     std::fs::write(root.path().join(name), b"raw").expect("native bytes");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
-    let path =
-        Path::parse(&format!("/{}", "%FF".repeat(100))).expect("logical bytes");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let path = Path::parse(&format!("/{}", "%FF".repeat(100))).expect("logical bytes");
     assert_eq!(
         b"raw",
         fs.read_all(&path, Default::default(), 8)
@@ -123,10 +118,9 @@ fn test_absolute_host_paths_preserve_non_utf8_components() {
     let name = OsString::from_vec(vec![b'r', b'a', b'w', 0xff]);
     let native = directory.path().join(name);
     std::fs::write(&native, b"host").expect("native host fixture");
-    let logical = host_path_to_logical(&native)
-        .expect("absolute host path must convert without lossy text");
-    let fs =
-        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
+    let logical =
+        host_path_to_logical(&native).expect("absolute host path must convert without lossy text");
+    let fs = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
 
     assert!(logical.as_str().ends_with("/raw%FF"));
     assert_eq!(
@@ -151,13 +145,11 @@ fn test_rooted_paths_accept_expanded_total_path_text() {
     std::fs::create_dir_all(&native).expect("native total path fits");
     std::fs::write(native.join("item"), b"deep").expect("deep fixture");
     components.push("item".to_owned());
-    let path = Path::parse(&format!("/{}", components.join("/")))
-        .expect("logical path");
+    let path = Path::parse(&format!("/{}", components.join("/"))).expect("logical path");
     assert!(path.as_str().len() > 4096);
     assert!(components.iter().all(|component| component.len() <= 255));
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     assert_eq!(
         b"deep",
         fs.read_all(&path, Default::default(), 8)
@@ -171,8 +163,7 @@ fn test_rooted_paths_accept_expanded_total_path_text() {
 fn test_unknown_text_limits_do_not_accept_invalid_native_components() {
     let root = tempfile::tempdir().expect("fixture root");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let invalid = Path::parse("/bad%00name").expect("logical spelling");
     assert!(fs.stat(&invalid).is_err());
     let oversized = Path::parse(&format!("/{}", "x".repeat(65536)))
@@ -191,8 +182,7 @@ fn test_unknown_text_limits_do_not_accept_invalid_native_components() {
 fn test_rooted_relative_logical_path_fails_before_io() {
     let root = tempfile::tempdir().expect("fixture root");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let relative = Path::parse("relative-target").expect("relative path text");
 
     let error = fs
@@ -208,8 +198,7 @@ fn test_rooted_relative_logical_path_fails_before_io() {
 fn test_rooted_dot_components_fail_before_io() {
     let root = tempfile::tempdir().expect("fixture root");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
 
     for text in ["/%2E/target", "/%2E%2E/target"] {
         let path = Path::parse(text).expect("escaped dot path text");
@@ -231,8 +220,7 @@ fn test_rooted_dot_components_fail_before_io() {
 fn test_rooted_nul_component_fails_before_io() {
     let root = tempfile::tempdir().expect("fixture root");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let path = Path::parse("/invalid%00target").expect("escaped NUL text");
 
     let error = fs

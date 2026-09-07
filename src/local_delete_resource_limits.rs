@@ -45,6 +45,16 @@ impl LocalDeleteResourceLimits {
     /// # Returns
     ///
     /// Independent per-request deletion ceilings for a provider policy.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use qubit_fs_local::LocalDeleteResourceLimits;
+    ///
+    /// let limits = LocalDeleteResourceLimits::new(8, 1_000, 4_096, Duration::from_secs(30));
+    /// assert_eq!(limits.max_entries(), 1_000);
+    /// ```
     #[must_use]
     pub const fn new(
         max_depth: usize,

@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::fs;
@@ -46,17 +48,14 @@ fn test_readme_and_user_guide_examples_compile() {
         .expect("read manifest")
         .parse()
         .expect("parse manifest");
-    let filesystem =
-        dependency_spec(root, &package["dependencies"]["qubit-fs"]);
-    let registry =
-        dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
+    let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
+    let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
     let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
     let manifest = format!(
         "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\nqubit-spi = {spi}\n",
         toml_path(root),
     );
-    fs::write(workspace.path().join("Cargo.toml"), manifest)
-        .expect("manifest should be written");
+    fs::write(workspace.path().join("Cargo.toml"), manifest).expect("manifest should be written");
 
     for (document_index, document) in [
         "README.md",
@@ -68,14 +67,12 @@ fn test_readme_and_user_guide_examples_compile() {
     .enumerate()
     {
         let blocks = rust_blocks(
-            &fs::read_to_string(root.join(document))
-                .expect("document should be readable"),
+            &fs::read_to_string(root.join(document)).expect("document should be readable"),
         );
         assert!(!blocks.is_empty(), "{document} must have Rust examples");
         for (block_index, block) in blocks.iter().enumerate() {
-            let code = format!(
-                "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n"
-            );
+            let code =
+                format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n");
             fs::write(
                 bin.join(format!("doc_{document_index}_{block_index}.rs")),
                 code,
@@ -94,8 +91,8 @@ fn test_readme_and_user_guide_examples_compile() {
         "{}",
         String::from_utf8_lossy(&metadata.stderr)
     );
-    let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout)
-        .expect("parse dependency graph");
+    let graph: serde_json::Value =
+        serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
     for name in [
         "qubit-fs",
         "qubit-fs-registry",
@@ -144,13 +141,10 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
         let declared_path = Path::new(path.as_str().expect("dependency path"));
         let path = resolve_dependency_path(root, declared_path);
         if path.join("Cargo.toml").is_file() {
-            let path =
-                path.canonicalize().expect("dependency path must resolve");
+            let path = path.canonicalize().expect("dependency path must resolve");
             table.insert(
                 "path".into(),
-                toml::Value::String(
-                    path.to_str().expect("UTF-8 path").to_owned(),
-                ),
+                toml::Value::String(path.to_str().expect("UTF-8 path").to_owned()),
             );
         }
     }

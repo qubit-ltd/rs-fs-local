@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::time::Duration;
@@ -19,22 +21,17 @@ use qubit_fs_local::LocalResourcePolicy;
 
 fn policy_with_zero_delete_entries() -> LocalResourcePolicy {
     LocalResourcePolicy::bounded(
-        LocalListResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60))
-            .expect("list"),
-        LocalCopyResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60))
-            .expect("copy"),
+        LocalListResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60)).expect("list"),
+        LocalCopyResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60)).expect("copy"),
         LocalDeleteResourceLimits::new(8, 0, 4096, Duration::from_secs(60)),
     )
 }
 
 #[test]
-fn ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
+fn test_ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
     let root = tempfile::tempdir().expect("root");
-    let fs = LocalFileSystems::rooted(
-        root.path(),
-        policy_with_zero_delete_entries(),
-    )
-    .expect("rooted");
+    let fs =
+        LocalFileSystems::rooted(root.path(), policy_with_zero_delete_entries()).expect("rooted");
     std::fs::create_dir(root.path().join("ordinary")).expect("directory");
     std::fs::write(root.path().join("ordinary/child"), b"x").expect("child");
     let error = fs
@@ -50,8 +47,7 @@ fn ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
         .create_temp_directory(TempOptions::default())
         .expect("temp");
     let temporary_path = temporary.path().clone();
-    let child = Path::parse(&format!("{}/child", temporary_path.as_str()))
-        .expect("child path");
+    let child = Path::parse(&format!("{}/child", temporary_path.as_str())).expect("child path");
     fs.write_all(&child, b"x", Default::default())
         .expect("populate temp");
     temporary
@@ -62,19 +58,15 @@ fn ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
 }
 
 #[test]
-fn temp_drop_keeps_existing_best_effort_cleanup_scope() {
+fn test_temp_drop_keeps_existing_best_effort_cleanup_scope() {
     let root = tempfile::tempdir().expect("root");
-    let fs = LocalFileSystems::rooted(
-        root.path(),
-        policy_with_zero_delete_entries(),
-    )
-    .expect("rooted");
+    let fs =
+        LocalFileSystems::rooted(root.path(), policy_with_zero_delete_entries()).expect("rooted");
     let temporary = fs
         .create_temp_directory(TempOptions::default())
         .expect("temp");
     let path = temporary.path().clone();
-    let child =
-        Path::parse(&format!("{}/child", path.as_str())).expect("child path");
+    let child = Path::parse(&format!("{}/child", path.as_str())).expect("child path");
     fs.write_all(&child, b"x", Default::default())
         .expect("populate temp");
     drop(temporary);

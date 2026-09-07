@@ -1,5 +1,5 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
 //
@@ -27,6 +27,17 @@ pub struct LocalListResourceLimits {
 
 impl LocalListResourceLimits {
     /// Creates complete recursive listing limits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use qubit_fs_local::LocalListResourceLimits;
+    ///
+    /// let limits = LocalListResourceLimits::new(8, 1_000, 4_096, 8, Duration::from_secs(30))?;
+    /// assert_eq!(limits.max_open_directories(), 8);
+    /// # Ok::<(), qubit_fs::error::FsError>(())
+    /// ```
     pub fn new(
         max_depth: usize,
         max_entries: usize,
@@ -79,9 +90,7 @@ impl LocalListResourceLimits {
 
     /// Converts these resource-only limits to neutral native list options.
     #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(
-        self,
-    ) -> native_files::options::LocalListOptions {
+    pub(crate) const fn native_options(self) -> native_files::options::LocalListOptions {
         native_files::options::LocalListOptions::new()
             .with_max_depth(self.max_depth)
             .with_max_entries(self.max_entries)
@@ -92,6 +101,8 @@ impl LocalListResourceLimits {
 }
 
 /// Creates the error returned when no directory handle may be opened.
+///
+/// The zero handle budget is rejected before any native I/O occurs.
 fn invalid_open_directories() -> FsError {
     FsError::new(
         FsErrorKind::InvalidOptions,

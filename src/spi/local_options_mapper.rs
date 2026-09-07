@@ -42,9 +42,7 @@ use qubit_local_files as native_files;
 ///
 /// Default native local read options.
 #[inline(always)]
-pub(crate) fn read(
-    _: &ResolvedReadOptions,
-) -> native_files::options::LocalReadOptions {
+pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::options::LocalReadOptions {
     native_files::options::LocalReadOptions::new()
 }
 
@@ -71,36 +69,28 @@ pub(crate) fn list(
 ) -> Result<native_files::options::LocalListOptions, FsError> {
     let mut native = defaults;
     let filter = options.options().filter();
-    if options.options().recursive()
-        || matches!(filter, Some(ListFilter::Subtree(_)))
-    {
+    if options.options().recursive() || matches!(filter, Some(ListFilter::Subtree(_))) {
         native = native.with_recursive();
     }
     if matches!(filter, Some(ListFilter::LiteralPrefix(_))) {
         return Err(unsupported(FsOperation::List));
     }
     if let Some(policy) = options.options().symlink_policy_override() {
-        native = native.with_symlink_policy(native_symlink_policy(
-            policy,
-            scope,
-            FsOperation::List,
-        )?);
+        native =
+            native.with_symlink_policy(native_symlink_policy(policy, scope, FsOperation::List)?);
     }
     if let Some(maximum) = options.options().max_depth() {
-        native =
-            native.with_max_depth(minimum_usize(native.max_depth(), maximum));
+        native = native.with_max_depth(minimum_usize(native.max_depth(), maximum));
     }
     // With a prefix, the facade counts returned entries after adapter
     // filtering. The native walker keeps only its provider-side entry cap.
     if filter.is_none()
         && let Some(maximum) = options.options().max_entries()
     {
-        native = native
-            .with_max_entries(minimum_usize(native.max_entries(), maximum));
+        native = native.with_max_entries(minimum_usize(native.max_entries(), maximum));
     }
     if let Some(deadline) = options.options().deadline() {
-        native =
-            native.with_deadline(minimum_duration(native.deadline(), deadline));
+        native = native.with_deadline(minimum_duration(native.deadline(), deadline));
     }
     Ok(native)
 }
@@ -125,15 +115,9 @@ pub(crate) fn write(
 ) -> Result<native_files::options::LocalWriteOptions, FsError> {
     let options = options.options();
     let mode = match options.disposition() {
-        WriteDisposition::CreateNew => {
-            native_files::options::LocalWriteMode::CreateNew
-        }
-        WriteDisposition::CreateOrReplace => {
-            native_files::options::LocalWriteMode::CreateOrReplace
-        }
-        WriteDisposition::Append => {
-            native_files::options::LocalWriteMode::Append
-        }
+        WriteDisposition::CreateNew => native_files::options::LocalWriteMode::CreateNew,
+        WriteDisposition::CreateOrReplace => native_files::options::LocalWriteMode::CreateOrReplace,
+        WriteDisposition::Append => native_files::options::LocalWriteMode::Append,
     };
     let mut native = native_files::options::LocalWriteOptions::new(mode)
         .with_atomicity(atomicity(options.atomicity()))
@@ -218,9 +202,7 @@ pub(crate) fn delete(
 /// always atomic, so the adapter does not forward the facade's redundant
 /// atomicity preference.
 #[inline]
-pub(crate) fn rename(
-    options: &ResolvedRenameOptions,
-) -> native_files::options::LocalRenameOptions {
+pub(crate) fn rename(options: &ResolvedRenameOptions) -> native_files::options::LocalRenameOptions {
     let mut native = native_files::options::LocalRenameOptions::new();
     if options.options().overwrite() {
         native = native.with_overwrite();
@@ -261,16 +243,12 @@ pub(crate) fn copy(
 ) -> Result<native_files::options::LocalCopyOptions, FsError> {
     let symlink_policy = options.symlink_policy();
     let options = options.options();
-    if options.continue_on_error()
-        || options.server_side() == ServerSidePreference::Require
-    {
+    if options.continue_on_error() || options.server_side() == ServerSidePreference::Require {
         return Err(unsupported(FsOperation::Copy));
     }
     let mut native = defaults
         .with_conflict(copy_conflict(options.conflict()))
-        .with_metadata_preservation(metadata_preservation(
-            options.preserve_metadata(),
-        )?)
+        .with_metadata_preservation(metadata_preservation(options.preserve_metadata())?)
         .with_atomicity(atomicity(options.atomicity()))
         .with_durability(durability(options.durability()));
     if options.symlink_policy_override().is_some() {
@@ -282,46 +260,43 @@ pub(crate) fn copy(
     }
     native = copy_source_options(native, options.mode());
     if options.conflict() == CopyConflictPolicy::Overwrite {
-        native = native.with_type_conflict(
-            native_files::options::LocalCopyTypeConflictPolicy::Replace,
-        );
+        native =
+            native.with_type_conflict(native_files::options::LocalCopyTypeConflictPolicy::Replace);
     } else if options.conflict() == CopyConflictPolicy::Skip {
-        native = native.with_type_conflict(
-            native_files::options::LocalCopyTypeConflictPolicy::Skip,
-        );
+        native =
+            native.with_type_conflict(native_files::options::LocalCopyTypeConflictPolicy::Skip);
     }
     if options.create_parent() {
         native = native.with_create_parent();
     }
     if let Some(maximum) = options.max_depth() {
-        native =
-            native.with_max_depth(minimum_usize(native.max_depth(), maximum));
+        native = native.with_max_depth(minimum_usize(native.max_depth(), maximum));
     }
     if let Some(maximum) = options.max_entries() {
-        native = native
-            .with_max_entries(minimum_usize(native.max_entries(), maximum));
+        native = native.with_max_entries(minimum_usize(native.max_entries(), maximum));
     }
     if let Some(maximum) = options.max_bytes() {
-        native =
-            native.with_max_bytes(minimum_u64(native.max_bytes(), maximum));
+        native = native.with_max_bytes(minimum_u64(native.max_bytes(), maximum));
     }
     if let Some(deadline) = options.deadline() {
-        native =
-            native.with_deadline(minimum_duration(native.deadline(), deadline));
+        native = native.with_deadline(minimum_duration(native.deadline(), deadline));
     }
     Ok(native)
 }
 
+/// Tightens an optional `usize` ceiling without allowing it to grow.
 #[inline(always)]
 fn minimum_usize(current: Option<usize>, requested: usize) -> usize {
     current.map_or(requested, |value| value.min(requested))
 }
 
+/// Tightens an optional byte ceiling without allowing it to grow.
 #[inline(always)]
 fn minimum_u64(current: Option<u64>, requested: u64) -> u64 {
     current.map_or(requested, |value| value.min(requested))
 }
 
+/// Tightens an optional deadline to the earliest requested duration.
 #[inline(always)]
 fn minimum_duration(
     current: Option<std::time::Duration>,
@@ -337,9 +312,7 @@ fn native_symlink_policy(
     operation: FsOperation,
 ) -> Result<native_files::policy::LocalSymlinkPolicy, FsError> {
     match policy {
-        SymlinkPolicy::Reject => {
-            Ok(native_files::policy::LocalSymlinkPolicy::Reject)
-        }
+        SymlinkPolicy::Reject => Ok(native_files::policy::LocalSymlinkPolicy::Reject),
         SymlinkPolicy::FollowWithinFileSystem => Ok(match scope {
             native_files::path::LocalFileSystemScope::Host => {
                 native_files::policy::LocalSymlinkPolicy::FollowAcrossScope
@@ -362,19 +335,11 @@ fn native_symlink_policy(
 ///
 /// The equivalent native conflict policy.
 #[inline]
-fn copy_conflict(
-    value: CopyConflictPolicy,
-) -> native_files::options::LocalCopyConflictPolicy {
+fn copy_conflict(value: CopyConflictPolicy) -> native_files::options::LocalCopyConflictPolicy {
     match value {
-        CopyConflictPolicy::Fail => {
-            native_files::options::LocalCopyConflictPolicy::Fail
-        }
-        CopyConflictPolicy::Overwrite => {
-            native_files::options::LocalCopyConflictPolicy::Overwrite
-        }
-        CopyConflictPolicy::Skip => {
-            native_files::options::LocalCopyConflictPolicy::Skip
-        }
+        CopyConflictPolicy::Fail => native_files::options::LocalCopyConflictPolicy::Fail,
+        CopyConflictPolicy::Overwrite => native_files::options::LocalCopyConflictPolicy::Overwrite,
+        CopyConflictPolicy::Skip => native_files::options::LocalCopyConflictPolicy::Skip,
     }
 }
 
@@ -419,13 +384,9 @@ fn metadata_preservation(
 ///
 /// The equivalent native atomicity requirement.
 #[inline]
-const fn atomicity(
-    value: AtomicityRequirement,
-) -> native_files::policy::LocalAtomicityRequirement {
+const fn atomicity(value: AtomicityRequirement) -> native_files::policy::LocalAtomicityRequirement {
     match value {
-        AtomicityRequirement::Required => {
-            native_files::policy::LocalAtomicityRequirement::Required
-        }
+        AtomicityRequirement::Required => native_files::policy::LocalAtomicityRequirement::Required,
         AtomicityRequirement::Preferred => {
             native_files::policy::LocalAtomicityRequirement::Preferred
         }
@@ -487,8 +448,9 @@ fn copy_source_options(
     match mode {
         CopyMode::File => defaults.with_entry_source(),
         CopyMode::Tree => defaults.with_tree_source(),
-        CopyMode::Auto => defaults
-            .with_source_mode(native_files::options::LocalCopySourceMode::Auto),
+        CopyMode::Auto => {
+            defaults.with_source_mode(native_files::options::LocalCopySourceMode::Auto)
+        }
     }
 }
 
