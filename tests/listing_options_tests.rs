@@ -13,6 +13,7 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
@@ -150,6 +151,12 @@ fn prefix_does_not_bypass_provider_walker_budget() {
             std::time::Duration::from_secs(60),
         )
         .expect("copy budget"),
+        LocalDeleteResourceLimits::new(
+            8,
+            64,
+            4096,
+            std::time::Duration::from_secs(60),
+        ),
     );
     let fs = LocalFileSystems::rooted(root.path(), policy).expect("rooted");
     for requested in [None, Some(1), Some(100)] {
