@@ -50,6 +50,17 @@ impl LocalFileSystemProvider {
     ///
     /// A provider that resolves absolute `file:` paths against the process
     /// host filesystem.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # #[cfg(feature = "registry")]
+    /// use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
+    /// # #[cfg(feature = "registry")]
+    /// let provider = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+    /// # #[cfg(feature = "registry")]
+    /// let _ = provider;
+    /// ```
     #[inline(always)]
     pub const fn host(policy: LocalResourcePolicy) -> Self {
         Self {
@@ -93,6 +104,22 @@ impl LocalFileSystemProvider {
     /// use distinct IDs and aliases. The supplied descriptor is retained as
     /// provided, including its aliases; this constructor does not add the
     /// default `file` alias.
+    ///
+    /// # Parameters
+    ///
+    /// - `descriptor`: Registration identity and URI aliases to retain.
+    /// - `id`: Stable filesystem identity exposed by resolved instances.
+    /// - `root`: Native directory retained as provider authority.
+    /// - `policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A provider retaining the opened rooted authority and descriptor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root cannot be opened or the provider
+    /// identity cannot be assembled.
     pub fn rooted_with_descriptor(
         descriptor: ProviderDescriptor,
         id: FileSystemId,

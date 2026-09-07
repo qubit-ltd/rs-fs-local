@@ -1,183 +1,21 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Explicit recursive resource policy for local filesystem providers.
-// qubit-style: allow multiple-public-types
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use qubit_fs::error::FsError;
-use qubit_fs::error::FsErrorKind;
-use qubit_fs::error::FsOperation;
-use qubit_fs::error::FsResult;
 use qubit_local_files as native_files;
 
+use crate::LocalCopyResourceLimits;
 use crate::LocalDeleteResourceLimits;
-
-/// Behavior used when a recursive walker must close and later revisit a
-/// directory after reaching its open-handle budget.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum LocalDirectoryReopenPolicy {
-    /// Fail instead of reopening directories.
-    Fail,
-    /// Reopen directories and verify that traversal state remains valid.
-    #[default]
-    Reopen,
-}
-
-/// Resource limits applied to recursive local listings.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LocalListResourceLimits {
-    max_depth: usize,
-    max_entries: usize,
-    max_seen_name_bytes: usize,
-    max_open_directories: usize,
-    deadline: Duration,
-}
-
-impl LocalListResourceLimits {
-    /// Creates complete recursive listing limits.
-    pub fn new(
-        max_depth: usize,
-        max_entries: usize,
-        max_seen_name_bytes: usize,
-        max_open_directories: usize,
-        deadline: Duration,
-    ) -> FsResult<Self> {
-        if max_open_directories == 0 {
-            return Err(invalid_open_directories());
-        }
-        Ok(Self {
-            max_depth,
-            max_entries,
-            max_seen_name_bytes,
-            max_open_directories,
-            deadline,
-        })
-    }
-
-    /// Returns the maximum recursive depth.
-    #[must_use]
-    pub const fn max_depth(self) -> usize {
-        self.max_depth
-    }
-
-    /// Returns the maximum entries yielded by the native walker before
-    /// adapter prefix filtering.
-    #[must_use]
-    pub const fn max_entries(self) -> usize {
-        self.max_entries
-    }
-
-    /// Returns the maximum total bytes retained for seen entry names.
-    #[must_use]
-    pub const fn max_seen_name_bytes(self) -> usize {
-        self.max_seen_name_bytes
-    }
-
-    /// Returns the maximum concurrently open directories.
-    #[must_use]
-    pub const fn max_open_directories(self) -> usize {
-        self.max_open_directories
-    }
-
-    /// Returns the recursive operation deadline.
-    #[must_use]
-    pub const fn deadline(self) -> Duration {
-        self.deadline
-    }
-
-    /// Converts these resource-only limits to neutral native list options.
-    #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(
-        self,
-    ) -> native_files::options::LocalListOptions {
-        native_files::options::LocalListOptions::new()
-            .with_max_depth(self.max_depth)
-            .with_max_entries(self.max_entries)
-            .with_max_seen_name_bytes(self.max_seen_name_bytes)
-            .with_max_open_directories(self.max_open_directories)
-            .with_deadline(self.deadline)
-    }
-}
-
-/// Resource limits applied to recursive local copies.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LocalCopyResourceLimits {
-    max_depth: usize,
-    max_entries: usize,
-    max_bytes: u64,
-    max_open_directories: usize,
-    deadline: Duration,
-}
-
-impl LocalCopyResourceLimits {
-    /// Creates complete recursive copy limits.
-    pub fn new(
-        max_depth: usize,
-        max_entries: usize,
-        max_bytes: u64,
-        max_open_directories: usize,
-        deadline: Duration,
-    ) -> FsResult<Self> {
-        if max_open_directories == 0 {
-            return Err(invalid_open_directories());
-        }
-        Ok(Self {
-            max_depth,
-            max_entries,
-            max_bytes,
-            max_open_directories,
-            deadline,
-        })
-    }
-
-    /// Returns the maximum recursive depth.
-    #[must_use]
-    pub const fn max_depth(self) -> usize {
-        self.max_depth
-    }
-
-    /// Returns the maximum number of traversed entries.
-    #[must_use]
-    pub const fn max_entries(self) -> usize {
-        self.max_entries
-    }
-
-    /// Returns the maximum copied bytes.
-    #[must_use]
-    pub const fn max_bytes(self) -> u64 {
-        self.max_bytes
-    }
-
-    /// Returns the maximum concurrently open directories.
-    #[must_use]
-    pub const fn max_open_directories(self) -> usize {
-        self.max_open_directories
-    }
-
-    /// Returns the recursive operation deadline.
-    #[must_use]
-    pub const fn deadline(self) -> Duration {
-        self.deadline
-    }
-
-    /// Converts these resource-only limits to neutral native copy options.
-    #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(
-        self,
-    ) -> native_files::options::LocalCopyOptions {
-        native_files::options::LocalCopyOptions::new()
-            .with_max_depth(self.max_depth)
-            .with_max_entries(self.max_entries)
-            .with_max_bytes(self.max_bytes)
-            .with_max_open_directories(self.max_open_directories)
-            .with_deadline(self.deadline)
-    }
-}
+use crate::LocalDirectoryReopenPolicy;
+use crate::LocalListResourceLimits;
 
 /// Per-request provider ceilings for recursive local operations.
 ///
@@ -188,38 +26,33 @@ impl LocalCopyResourceLimits {
 /// independently. Temporary-resource cleanup, `Drop`, and native publication
 /// cleanup have separate lifecycle semantics and do not inherit deletion
 /// ceilings. These are not aggregate quotas across concurrent requests.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_local::LocalResourcePolicy;
+/// let policy = LocalResourcePolicy::unbounded();
+/// assert!(policy.list_limits().is_none());
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalResourcePolicy {
+    /// Optional native traversal ceilings for recursive listings.
     list: Option<LocalListResourceLimits>,
+    /// Optional native traversal ceilings for recursive copies.
     copy: Option<LocalCopyResourceLimits>,
     /// Independently selected ceilings for ordinary recursive deletion
     /// requests. Temporary-resource cleanup, `Drop`, and native publication
     /// cleanup use separate lifecycle semantics.
     delete: Option<LocalDeleteResourceLimits>,
+    /// Retry interval used while opening readers and writers.
     open_retry_timeout: Option<Duration>,
+    /// Maximum attempts used when generating temporary names.
     temp_max_attempts: Option<NonZeroUsize>,
+    /// Whether recursive walkers reopen directories after exhausting handles.
     directory_reopen_policy: LocalDirectoryReopenPolicy,
 }
 
 impl LocalResourcePolicy {
-    /// Creates listing and copy ceilings; ordinary deletion remains unbounded
-    /// until explicitly configured with [`Self::with_delete_limits`]. Use
-    /// [`Self::bounded_operations`] to select finite deletion ceilings as well.
-    #[must_use]
-    pub const fn bounded(
-        list: LocalListResourceLimits,
-        copy: LocalCopyResourceLimits,
-    ) -> Self {
-        Self {
-            list: Some(list),
-            copy: Some(copy),
-            delete: None,
-            open_retry_timeout: None,
-            temp_max_attempts: None,
-            directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
-        }
-    }
-
     /// Sets finite per-request ceilings for listing, copying, and deletion.
     ///
     /// This does not enable recursive operation modes. Temporary-resource
@@ -236,17 +69,48 @@ impl LocalResourcePolicy {
     /// # Returns
     ///
     /// A policy retaining all three explicit operation ceilings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use qubit_fs_local::{LocalCopyResourceLimits, LocalDeleteResourceLimits};
+    /// use qubit_fs_local::{LocalListResourceLimits, LocalResourcePolicy};
+    ///
+    /// let list = LocalListResourceLimits::new(8, 1_000, 4_096, 8, Duration::from_secs(30))?;
+    /// let copy = LocalCopyResourceLimits::new(8, 1_000, 1 << 20, 8, Duration::from_secs(30))?;
+    /// let delete = LocalDeleteResourceLimits::new(8, 1_000, 4_096, Duration::from_secs(30));
+    /// let policy = LocalResourcePolicy::bounded(list, copy, delete);
+    /// assert_eq!(policy.list_limits(), Some(list));
+    /// # Ok::<(), qubit_fs::error::FsError>(())
+    /// ```
     #[must_use]
-    pub const fn bounded_operations(
+    #[inline(always)]
+    pub const fn bounded(
         list: LocalListResourceLimits,
         copy: LocalCopyResourceLimits,
         delete: LocalDeleteResourceLimits,
     ) -> Self {
-        Self::bounded(list, copy).with_delete_limits(Some(delete))
+        Self {
+            list: Some(list),
+            copy: Some(copy),
+            delete: Some(delete),
+            open_retry_timeout: None,
+            temp_max_attempts: None,
+            directory_reopen_policy: LocalDirectoryReopenPolicy::Reopen,
+        }
     }
 
     /// Explicitly opts into unbounded recursive resource usage.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use qubit_fs_local::LocalResourcePolicy;
+    /// assert!(LocalResourcePolicy::unbounded().list_limits().is_none());
+    /// ```
     #[must_use]
+    #[inline(always)]
     pub const fn unbounded() -> Self {
         Self {
             list: None,
@@ -260,12 +124,14 @@ impl LocalResourcePolicy {
 
     /// Returns the listing limits, if recursive listing is bounded.
     #[must_use]
+    #[inline(always)]
     pub const fn list_limits(self) -> Option<LocalListResourceLimits> {
         self.list
     }
 
     /// Returns the copy limits, if recursive copying is bounded.
     #[must_use]
+    #[inline(always)]
     pub const fn copy_limits(self) -> Option<LocalCopyResourceLimits> {
         self.copy
     }
@@ -275,6 +141,7 @@ impl LocalResourcePolicy {
     /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
     /// not use these ceilings.
     #[must_use]
+    #[inline(always)]
     pub const fn delete_limits(self) -> Option<LocalDeleteResourceLimits> {
         self.delete
     }
@@ -285,6 +152,7 @@ impl LocalResourcePolicy {
     /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
     /// not use these ceilings.
     #[must_use]
+    #[inline(always)]
     pub const fn with_delete_limits(
         mut self,
         limits: Option<LocalDeleteResourceLimits>,
@@ -305,24 +173,28 @@ impl LocalResourcePolicy {
 
     /// Returns the local open retry timeout used for readers and writers.
     #[must_use]
+    #[inline(always)]
     pub const fn open_retry_timeout(self) -> Option<Duration> {
         self.open_retry_timeout
     }
 
     /// Returns the maximum number of temporary-name attempts.
     #[must_use]
+    #[inline(always)]
     pub const fn temp_max_attempts(self) -> Option<NonZeroUsize> {
         self.temp_max_attempts
     }
 
     /// Returns the directory reopen behavior used by recursive walkers.
     #[must_use]
+    #[inline(always)]
     pub const fn directory_reopen_policy(self) -> LocalDirectoryReopenPolicy {
         self.directory_reopen_policy
     }
 
     /// Sets the local open retry timeout used for readers and writers.
     #[must_use]
+    #[inline(always)]
     pub const fn with_open_retry_timeout(
         mut self,
         timeout: Option<Duration>,
@@ -333,6 +205,7 @@ impl LocalResourcePolicy {
 
     /// Sets the maximum number of temporary-name attempts.
     #[must_use]
+    #[inline(always)]
     pub const fn with_temp_max_attempts(
         mut self,
         max_attempts: Option<NonZeroUsize>,
@@ -343,6 +216,7 @@ impl LocalResourcePolicy {
 
     /// Sets the directory reopen behavior used by recursive walkers.
     #[must_use]
+    #[inline(always)]
     pub const fn with_directory_reopen_policy(
         mut self,
         policy: LocalDirectoryReopenPolicy,
@@ -351,6 +225,7 @@ impl LocalResourcePolicy {
         self
     }
 
+    /// Translates listing ceilings and reopen policy for the native adapter.
     pub(crate) const fn list_options(
         self,
     ) -> native_files::options::LocalListOptions {
@@ -368,6 +243,7 @@ impl LocalResourcePolicy {
         })
     }
 
+    /// Translates copy ceilings for the native adapter.
     pub(crate) const fn copy_options(
         self,
     ) -> native_files::options::LocalCopyOptions {
@@ -376,12 +252,4 @@ impl LocalResourcePolicy {
             None => native_files::options::LocalCopyOptions::new(),
         }
     }
-}
-
-fn invalid_open_directories() -> FsError {
-    FsError::new(
-        FsErrorKind::InvalidOptions,
-        FsOperation::Provider,
-        "max_open_directories must be greater than zero",
-    )
 }

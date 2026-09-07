@@ -27,11 +27,7 @@ use crate::spi::LocalFileSystemSpi;
 static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Factory for concrete host and rooted local filesystem facades.
-pub struct LocalFileSystems {
-    /// Prevents construction outside this crate while retaining a type
-    /// namespace for public factory methods.
-    _private: (),
-}
+pub enum LocalFileSystems {}
 
 impl LocalFileSystems {
     /// Creates the process host filesystem facade.
@@ -39,6 +35,16 @@ impl LocalFileSystems {
     /// # Returns
     ///
     /// A concrete synchronous filesystem using the process host namespace.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+    ///
+    /// let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+    /// assert_eq!(filesystem.properties().info().id().as_str(), "local-host");
+    /// # Ok::<(), qubit_fs::error::FsError>(())
+    /// ```
     ///
     /// # Errors
     ///
@@ -57,6 +63,7 @@ impl LocalFileSystems {
     /// # Parameters
     ///
     /// - `root`: Native directory to retain as filesystem authority.
+    /// - `policy`: Recursive resource and lifecycle policy.
     ///
     /// # Returns
     ///
@@ -96,6 +103,7 @@ impl LocalFileSystems {
     ///
     /// - `id`: Stable identity exposed by the rooted filesystem.
     /// - `root`: Native directory to retain as filesystem authority.
+    /// - `policy`: Recursive resource and lifecycle policy.
     ///
     /// # Returns
     ///
@@ -142,6 +150,16 @@ impl LocalFileSystems {
 /// implicitly resolved against the caller's current working directory, and a
 /// rooted logical path must be parsed separately rather than by passing a
 /// host root prefix here.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_local::host_path_to_logical;
+///
+/// let logical = host_path_to_logical(&std::env::temp_dir())?;
+/// assert!(logical.is_absolute());
+/// # Ok::<(), qubit_fs::error::FsError>(())
+/// ```
 pub fn host_path_to_logical(path: &Path) -> FsResult<LogicalPath> {
     crate::path::local_path_mapper::logical(
         native_files::path::LocalFileSystemScope::Host,

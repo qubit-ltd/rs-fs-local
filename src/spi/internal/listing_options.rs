@@ -79,3 +79,33 @@ impl ListingOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::directory::ListFilter;
+    use qubit_fs::path::Path;
+
+    use super::ListingOptions;
+
+    /// Literal prefixes use raw key text rather than component boundaries.
+    #[test]
+    fn test_literal_prefix_matches_partial_components() {
+        let options = ListingOptions {
+            include_metadata: false,
+            filter: Some(ListFilter::LiteralPrefix("report".to_owned())),
+        };
+
+        assert!(
+            options.matches(
+                &Path::parse("/reports/annual.txt")
+                    .expect("matching relative logical path"),
+            )
+        );
+        assert!(
+            !options.matches(
+                &Path::parse("/archive/report.txt")
+                    .expect("non-matching relative logical path"),
+            )
+        );
+    }
+}

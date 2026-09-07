@@ -5,7 +5,8 @@
 ## 手册目标与读者
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.3 版本：直接创建 host/rooted 门面，以及可选的 registry provider。
+`qubit-fs-local` 0.4.0 版本（包版本 `0.4.0`）：直接创建 host/rooted 门面，以及可选的
+registry provider。
 
 ## Provider 资源上限
 
@@ -13,9 +14,8 @@
 `LocalResourcePolicy` 作为每次请求的强制上限。list/copy 请求预算与 provider 预算
 取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
 
-`LocalResourcePolicy::bounded(list, copy)` 限制这两类操作，递归删除需要独立配置：
-通过 `with_delete_limits(Some(LocalDeleteResourceLimits::new(depth, entries,
-pending_path_bytes, deadline)))` 设置删除上限。删除请求选择递归或忽略缺失时仍保留这些
+`LocalResourcePolicy::bounded(list, copy, delete)` 为三类普通递归操作设置彼此独立的上限。
+删除请求选择递归或忽略缺失时仍保留这些
 上限。请求目录自身计为一个条目、深度为零；待处理路径按原生编码长度计费，不包括分配器
 开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
 删除上限；不会从 list/copy 预算推导隐藏的删除限制。
@@ -40,7 +40,7 @@ use qubit_fs_local::{
     LocalListResourceLimits, LocalResourcePolicy,
 };
 
-let policy = LocalResourcePolicy::bounded_operations(
+let policy = LocalResourcePolicy::bounded(
     LocalListResourceLimits::new(
         32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30),
     )?,
@@ -107,15 +107,24 @@ cargo add qubit-fs-local --features registry
 
 ```rust
 use std::path::Path;
+use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
-use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
 
+let policy = LocalResourcePolicy::bounded(
+    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
+);
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
-    LocalResourcePolicy::unbounded(),
+    policy,
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
@@ -123,8 +132,8 @@ let metadata = fs.stat(&report)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-所有构造函数都需要 `LocalResourcePolicy`；只有明确接受无界递归资源使用时才用 `unbounded()`，
-否则传入完整的 bounded list/copy limits。只有当进程主机命名空间就是预期 authority 时才选择
+所有构造函数都需要 `LocalResourcePolicy`；普通递归工作流应传入完整的 bounded
+list/copy/delete limits，只有明确接受无界递归资源使用时才用 `unbounded()`。只有当进程主机命名空间就是预期 authority 时才选择
 `host(policy)`。当文件系统标识需要由应用提供时使用 `rooted_with_id`；进程内唯一标识足够时
 使用 `rooted`。
 

@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::fs;
@@ -209,5 +211,72 @@ fn test_documentation_dependencies_without_siblings() {
             input["dependencies"][name]["version"]
         );
         assert!(parsed["dependency"].get("path").is_none());
+    }
+}
+
+#[test]
+fn test_current_documentation_versions_and_signatures_follow_manifest() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
+        .expect("read manifest")
+        .parse()
+        .expect("parse manifest");
+    let version = manifest["package"]["version"]
+        .as_str()
+        .expect("package version")
+        .to_owned();
+    let version_marker = format!("`{version}`");
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+    ] {
+        let text = fs::read_to_string(root.join(document))
+            .expect("document should be readable");
+        assert!(
+            text.contains(&version_marker),
+            "{document} must identify the manifest's current major/minor version"
+        );
+        let stale_local_versions = [
+            "qubit-fs-local@0.1",
+            "qubit-fs-local@0.2",
+            "qubit-fs-local@0.3",
+            "qubit-fs-local 0.1",
+            "qubit-fs-local 0.2",
+            "qubit-fs-local 0.3",
+            "qubit-fs-local = \"0.1",
+            "qubit-fs-local = \"0.2",
+            "qubit-fs-local = \"0.3",
+            "`qubit-fs-local` = \"0.1",
+            "`qubit-fs-local` = \"0.2",
+            "`qubit-fs-local` = \"0.3",
+            "`qubit-fs-local` 0.1",
+            "`qubit-fs-local` 0.2",
+            "`qubit-fs-local` 0.3",
+        ];
+        assert!(
+            stale_local_versions
+                .iter()
+                .all(|token| !text.contains(token)),
+            "{document} must describe the 0.4 API"
+        );
+    }
+    for document in ["README.md", "README.zh_CN.md"] {
+        let text = fs::read_to_string(root.join(document))
+            .expect("README should be readable");
+        assert!(
+            text.contains("rooted_with_id(")
+                && text.contains("LocalResourcePolicy")
+                && text.contains("LocalResourcePolicy::bounded(")
+                && text.contains("bounded(list, copy, delete)")
+                && text.contains("rooted_with_id(id, root, policy)"),
+            "{document} must explain the three-argument rooted_with_id API"
+        );
+        assert!(
+            !text.contains("rooted_with_id(id, root)`")
+                && !text.contains("rooted_with_id(id, root)"),
+            "{document} must not retain the old rooted_with_id signature"
+        );
     }
 }

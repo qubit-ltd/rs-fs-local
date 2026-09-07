@@ -312,16 +312,19 @@ pub(crate) fn copy(
     Ok(native)
 }
 
+/// Tightens an optional `usize` ceiling without allowing it to grow.
 #[inline(always)]
 fn minimum_usize(current: Option<usize>, requested: usize) -> usize {
     current.map_or(requested, |value| value.min(requested))
 }
 
+/// Tightens an optional byte ceiling without allowing it to grow.
 #[inline(always)]
 fn minimum_u64(current: Option<u64>, requested: u64) -> u64 {
     current.map_or(requested, |value| value.min(requested))
 }
 
+/// Tightens an optional deadline to the earliest requested duration.
 #[inline(always)]
 fn minimum_duration(
     current: Option<std::time::Duration>,

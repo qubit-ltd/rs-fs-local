@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::num::NonZeroUsize;
@@ -14,6 +16,7 @@ use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalDirectoryReopenPolicy;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalListResourceLimits;
@@ -32,11 +35,13 @@ fn bounded_policy() -> LocalResourcePolicy {
     let copy =
         LocalCopyResourceLimits::new(8, 64, 1024, 4, Duration::from_secs(5))
             .expect("copy policy should be valid");
-    LocalResourcePolicy::bounded(list, copy)
+    let delete =
+        LocalDeleteResourceLimits::new(8, 64, 1024, Duration::from_secs(5));
+    LocalResourcePolicy::bounded(list, copy, delete)
 }
 
 #[test]
-fn caller_list_entry_budget_is_enforced_with_local_policy() {
+fn test_caller_list_entry_budget_is_enforced_with_local_policy() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     std::fs::write(root.path().join("one"), b"1")
         .expect("first fixture should be written");
@@ -62,7 +67,7 @@ fn caller_list_entry_budget_is_enforced_with_local_policy() {
 }
 
 #[test]
-fn caller_copy_byte_budget_is_forwarded_to_native_copy() {
+fn test_caller_copy_byte_budget_is_forwarded_to_native_copy() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     std::fs::write(root.path().join("source"), b"four")
         .expect("source should be written");
@@ -81,7 +86,7 @@ fn caller_copy_byte_budget_is_forwarded_to_native_copy() {
 
 #[cfg(unix)]
 #[test]
-fn required_write_durability_is_forwarded_and_reported() {
+fn test_required_write_durability_is_forwarded_and_reported() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let filesystem =
         LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
@@ -99,7 +104,7 @@ fn required_write_durability_is_forwarded_and_reported() {
 }
 
 #[test]
-fn local_execution_policy_builders_preserve_all_native_controls() {
+fn test_local_execution_policy_builders_preserve_all_native_controls() {
     let timeout = Duration::from_millis(250);
     let attempts = NonZeroUsize::new(32).expect("positive attempt count");
     let policy = LocalResourcePolicy::unbounded()
@@ -172,6 +177,12 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
             .expect("listing limits should be valid"),
             LocalCopyResourceLimits::new(8, 10, 1, 4, Duration::from_secs(60))
                 .expect("copy limits should be valid"),
+            LocalDeleteResourceLimits::new(
+                8,
+                10,
+                4096,
+                Duration::from_secs(60),
+            ),
         );
         let filesystem = LocalFileSystems::rooted(root.path(), policy)
             .expect("filesystem should open");
@@ -200,6 +211,31 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
         assert_eq!(FsErrorKind::ResourceLimitExceeded, failure.error().kind());
         assert!(!root.path().join("target").exists());
     }
+}
+
+/// A request deadline tightens an existing provider deadline while preserving
+/// an otherwise usable listing request.
+#[test]
+fn test_list_request_tightens_provider_deadline() {
+    let root = tempfile::tempdir().expect("fixture should exist");
+    std::fs::write(root.path().join("entry"), b"data")
+        .expect("fixture entry should exist");
+    let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy())
+        .expect("filesystem should open");
+    let mut stream = filesystem
+        .list(
+            &Path::root(),
+            ListOptions::default()
+                .with_deadline(Some(Duration::from_millis(250))),
+        )
+        .expect("listing with a tighter deadline should open");
+
+    assert!(
+        stream
+            .next_entry()
+            .expect("entry should be readable before the deadline")
+            .is_some()
+    );
 }
 
 /// Partial recursive deletion retains portable budget classification and

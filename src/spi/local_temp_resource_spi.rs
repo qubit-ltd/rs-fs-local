@@ -519,6 +519,18 @@ fn persist_failure_state(
     }
 }
 
+/// Maps a portable persistence failure state to its confirmed external effect.
+///
+/// # Parameters
+///
+/// - `state`: Source-ownership and destination-publication state after a failed
+///   persistence attempt.
+///
+/// # Returns
+///
+/// `Unchanged` when no target was published, `Applied` when publication is
+/// confirmed, or `Indeterminate` when publication cannot be determined.
+/// Converts native temporary persistence state into portable effect state.
 #[inline]
 const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
     match state {
@@ -645,4 +657,132 @@ fn directory_cleanup_error(
         .with_provider(provider_id);
     }
     cleanup_error(error, "temporary directory cleanup failed", provider_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::error::FsEffectState;
+    use qubit_fs::error::FsError;
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_fs::spi::TempResourceSpi;
+    use qubit_fs::temp::PersistFailureState;
+    use qubit_local_files::error::LocalFileError;
+    use qubit_local_files::error::LocalFileErrorKind;
+    use qubit_local_files::error::LocalFileOperation;
+
+    use super::LocalTempResourceSpi;
+    use super::file_cleanup_error;
+    use super::logical_persist_error;
+    use super::persist_effect_state;
+    use super::persist_failure_state;
+    use super::persist_path_error;
+    use super::terminal_persist_error;
+
+    /// Persistence wrappers retain the certainty appropriate to when path
+    /// conversion failed.
+    #[test]
+    fn test_path_failure_wrappers_preserve_publication_certainty() {
+        let before_publication = persist_path_error(FsError::new(
+            FsErrorKind::InvalidPath,
+            FsOperation::PersistTemp,
+            "invalid publication target",
+        ));
+        assert_eq!(
+            PersistFailureState::NotPublished,
+            before_publication.state()
+        );
+        assert_eq!(FsErrorKind::InvalidPath, before_publication.error().kind());
+
+        let after_publication = logical_persist_error(FsError::new(
+            FsErrorKind::InvalidPath,
+            FsOperation::PersistTemp,
+            "published path is not representable",
+        ));
+        assert_eq!(
+            PersistFailureState::Indeterminate,
+            after_publication.state()
+        );
+        assert_eq!(FsErrorKind::InvalidPath, after_publication.error().kind());
+    }
+
+    /// Terminal resources reject persistence and cleanup without fabricating
+    /// an external side effect.
+    #[test]
+    fn test_terminal_resources_reject_lifecycle_operations() {
+        let failure = terminal_persist_error();
+        assert_eq!(PersistFailureState::NotPublished, failure.state());
+        assert_eq!(FsErrorKind::InvalidState, failure.error().kind());
+
+        for mut resource in [
+            LocalTempResourceSpi::File {
+                resource: None,
+                rooted: true,
+                provider_id: "terminal-file".to_owned(),
+            },
+            LocalTempResourceSpi::Directory {
+                resource: None,
+                rooted: true,
+                provider_id: "terminal-directory".to_owned(),
+            },
+        ] {
+            let error = resource
+                .cleanup()
+                .expect_err("terminal resource must reject cleanup");
+            assert_eq!(FsErrorKind::InvalidState, error.kind());
+            assert_eq!(FsOperation::CleanupTemp, error.operation());
+            assert_eq!(None, error.effect_state());
+        }
+    }
+
+    /// Native failure states and cleanup failures retain their portable
+    /// classification and provider identity.
+    #[test]
+    fn test_native_failure_helpers_preserve_state_and_provider() {
+        use qubit_local_files::outcome::LocalPersistFailureState as NativeState;
+
+        for (native, expected, effect) in [
+            (
+                NativeState::NotPublished,
+                PersistFailureState::NotPublished,
+                FsEffectState::Unchanged,
+            ),
+            (
+                NativeState::Published,
+                PersistFailureState::PublishedSourceRetained,
+                FsEffectState::Applied,
+            ),
+            (
+                NativeState::Indeterminate,
+                PersistFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
+        ] {
+            let state = persist_failure_state(native);
+            assert_eq!(expected, state);
+            assert_eq!(effect, persist_effect_state(state));
+        }
+
+        assert_eq!(
+            FsEffectState::Unchanged,
+            persist_effect_state(
+                PersistFailureState::NotPublishedSourceReleased
+            )
+        );
+        assert_eq!(
+            FsEffectState::Applied,
+            persist_effect_state(PersistFailureState::PublishedSourceReleased)
+        );
+
+        let error = file_cleanup_error(
+            LocalFileError::new(
+                LocalFileErrorKind::PermissionDenied,
+                LocalFileOperation::Cleanup,
+            ),
+            "local-test-provider",
+        );
+        assert_eq!(FsErrorKind::PermissionDenied, error.kind());
+        assert_eq!(FsOperation::CleanupTemp, error.operation());
+        assert_eq!(Some("local-test-provider"), error.provider());
+    }
 }

@@ -332,6 +332,23 @@ impl HostFixture {
         Ok(native)
     }
 
+    /// Converts any host logical path returned by the provider into a native
+    /// path for read-only contract observation.
+    ///
+    /// Unlike fixture mutation paths, a provider-generated default temporary
+    /// path may legitimately live in the system temporary directory rather
+    /// than below this fixture's private root.
+    fn observation_path(&self, path: &Path) -> FixtureResult<PathBuf> {
+        LocalPaths::host()
+            .from_canonical_components(path.components())
+            .map_err(|error| {
+                FixtureError::with_source(
+                    "host observation path conversion failed",
+                    error,
+                )
+            })
+    }
+
     /// Removes every fixture-created child while retaining the TempDir root.
     fn teardown_entries(&self) -> FixtureResult<()> {
         clear_children(self.root.path())
@@ -381,8 +398,11 @@ impl FileSystemFixture for HostFixture {
             .map_err(|error| FixtureError::with_source("fixture read failed", error))
     }
 
-    fn exists_out_of_band(&self, path: &Path) -> FixtureResult<FixtureSupport<bool>> {
-        let native = self.native_path(path)?;
+    fn exists_out_of_band(
+        &self,
+        path: &Path,
+    ) -> FixtureResult<FixtureSupport<bool>> {
+        let native = self.observation_path(path)?;
         match fs::symlink_metadata(native) {
             Ok(_) => Ok(FixtureSupport::Supported(true)),
             Err(error) if error.kind() == ErrorKind::NotFound => {
