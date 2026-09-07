@@ -256,7 +256,9 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "`qubit-fs-local` 0.3",
         ];
         assert!(
-            stale_local_versions.iter().all(|token| !text.contains(token)),
+            stale_local_versions
+                .iter()
+                .all(|token| !text.contains(token)),
             "{document} must describe the 0.4 API"
         );
     }
