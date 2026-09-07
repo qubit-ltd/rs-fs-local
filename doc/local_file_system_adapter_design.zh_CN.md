@@ -3,6 +3,9 @@
 > 状态：已批准的目标设计，已按最终版 `qubit-fs` 与
 > `qubit-local-files` 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
+>
+> 适用于 `qubit-fs-local` 0.4 · [English design](local_file_system_adapter_design.md) ·
+> [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
 
@@ -379,8 +382,9 @@ Persist failure state 一一映射：
 | `NotPublished` | `NotPublished` |
 | `Indeterminate` | `Indeterminate` |
 
-`ResolvedPersistOptions` 的 overwrite、atomicity 和 metadata preservation 映射到
-`LocalPersistOptions`；native durability 使用 provider 明确声明的默认 requirement。
+`ResolvedPersistOptions` 只有 `overwrite` 和 `creates_parent` 会映射到
+`LocalPersistOptions`；其他持久化要求不在 native persist 选项中伪造，native durability
+使用 provider 明确声明的默认 requirement。
 
 普通 `delete_file`/`delete_directory` 的预算不自动应用于 temporary session 的
 `cleanup`、Drop 或 publication 失败后的 native 清理。cleanup 仍可能执行同步递归工作；
