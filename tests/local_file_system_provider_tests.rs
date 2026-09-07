@@ -19,8 +19,10 @@ use qubit_fs::metadata::NonSensitiveMetadata;
 use qubit_fs::metadata::UserMetadata;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs::path::Path;
+use qubit_fs::spi::FileSystemSpi;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_local::spi::LocalFileSystemSpi;
 use qubit_fs_registry::CredentialRef;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
@@ -35,6 +37,25 @@ use qubit_spi::ProviderSelection;
 use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
 use qubit_spi::error::ProviderFailureKind;
+
+/// Repeated SPI property queries return the same validated provider snapshot.
+#[test]
+fn test_local_spi_returns_a_stable_validated_provider_snapshot() {
+    let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())
+        .expect("local SPI should construct");
+    let first = FileSystemSpi::properties(&spi);
+    let second = FileSystemSpi::properties(&spi);
+
+    assert_eq!(first.info(), second.info());
+    assert_eq!(first.operations(), second.operations());
+    assert_eq!(
+        first.declared_capabilities(),
+        second.declared_capabilities()
+    );
+    assert_eq!(first.limits(), second.limits());
+    assert_eq!(first.path_constraints(), second.path_constraints());
+    assert_eq!(first.symlink_policy(), second.symlink_policy());
+}
 
 /// A registered host provider resolves an absolute `file:` URI.
 #[test]

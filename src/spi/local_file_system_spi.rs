@@ -30,7 +30,6 @@ use qubit_fs::metadata::FileSystemCapability;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::metadata::FileSystemInfo;
 use qubit_fs::metadata::FileSystemLimits;
-use qubit_fs::metadata::FileSystemProperties;
 use qubit_fs::metadata::OpenedFileInfo;
 use qubit_fs::metadata::SymlinkPolicy;
 use qubit_fs::path::Path;
@@ -81,7 +80,7 @@ pub struct LocalFileSystemSpi {
     native: native_files::LocalFileSystem,
     /// Immutable capability support, limits, path rules, and provider
     /// identity.
-    properties: FileSystemProperties,
+    properties: ProviderProperties,
     /// Provider identity attached to every translated failure.
     provider_id: String,
     /// Retry timeout not represented by resolved portable read requests.
@@ -218,22 +217,22 @@ impl LocalFileSystemSpi {
         })
     }
 
-    /// Builds the immutable host filesystem property snapshot.
+    /// Builds the immutable provider property snapshot.
     ///
     /// # Returns
     ///
-    /// Properties for the `local-host` identity and current native protocol
+    /// Properties for the supplied identity and current native protocol
     /// support.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics only if the static filesystem identity, `file` scheme, or
-    /// internally assembled property set violates a `qubit-fs` invariant.
+    /// Returns an invalid-options error if the assembled provider properties
+    /// violate a shared `qubit-fs` invariant.
     fn properties_snapshot(
         id: FileSystemId,
         provider_id: &str,
         native: &native_files::LocalFileSystem,
-    ) -> FsResult<FileSystemProperties> {
+    ) -> FsResult<ProviderProperties> {
         let native_capabilities = native.capabilities();
         let mut capabilities = FileSystemCapabilities::new()
             .with_guaranteed(FileSystemCapability::List)
@@ -273,9 +272,21 @@ impl LocalFileSystemSpi {
             capabilities = capabilities
                 .with_conditional(FileSystemCapability::DurableWrite);
         }
-        FileSystemProperties::new(
+        ProviderProperties::new(
             FileSystemInfo::new(id, provider_id, PathSemantics::Hierarchical)
                 .with_scheme(FILE_SCHEME)?,
+            ProviderOperations::new()
+                .with(ProviderOperation::Stat)
+                .with(ProviderOperation::List)
+                .with(ProviderOperation::OpenReader)
+                .with(ProviderOperation::OpenWriter)
+                .with(ProviderOperation::CreateDirectory)
+                .with(ProviderOperation::DeleteFile)
+                .with(ProviderOperation::DeleteDirectory)
+                .with(ProviderOperation::TryCopy)
+                .with(ProviderOperation::Rename)
+                .with(ProviderOperation::CreateTempFile)
+                .with(ProviderOperation::CreateTempDirectory),
             capabilities,
             // Native path units and canonical escaped text have different
             // lengths. Native validity and size limits remain enforced by
@@ -370,26 +381,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// A snapshot of host identity, capabilities, limits, and path rules.
     #[inline(always)]
     fn properties(&self) -> ProviderProperties {
-        ProviderProperties::new(
-            self.properties.info().clone(),
-            ProviderOperations::new()
-                .with(ProviderOperation::Stat)
-                .with(ProviderOperation::List)
-                .with(ProviderOperation::OpenReader)
-                .with(ProviderOperation::OpenWriter)
-                .with(ProviderOperation::CreateDirectory)
-                .with(ProviderOperation::DeleteFile)
-                .with(ProviderOperation::DeleteDirectory)
-                .with(ProviderOperation::TryCopy)
-                .with(ProviderOperation::Rename)
-                .with(ProviderOperation::CreateTempFile)
-                .with(ProviderOperation::CreateTempDirectory),
-            self.properties.capabilities(),
-            *self.properties.limits(),
-            self.properties.path_constraints().clone(),
-            self.properties.symlink_policy(),
-        )
-        .expect("local provider properties remain valid")
+        self.properties.clone()
     }
 
     /// Reads metadata for a host logical path.
@@ -909,5 +901,31 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 self.provider_id.clone(),
             )),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LocalFileSystemSpi;
+    use qubit_fs::metadata::FileSystemId;
+    use qubit_fs::spi::ProviderProperties;
+
+    /// The local SPI construction path retains a validated provider snapshot.
+    #[test]
+    fn test_properties_snapshot_returns_provider_properties() {
+        let native = qubit_local_files::LocalFileSystem::host()
+            .expect("host native filesystem should construct");
+        let id = FileSystemId::new("local-test")
+            .expect("test filesystem identity should be valid");
+        let snapshot: ProviderProperties = LocalFileSystemSpi::properties_snapshot(
+            id,
+            "local-file",
+            &native,
+        )
+        .expect("provider properties should validate");
+
+        assert!(snapshot.operations().supports(
+            qubit_fs::spi::ProviderOperation::OpenReader
+        ));
     }
 }
