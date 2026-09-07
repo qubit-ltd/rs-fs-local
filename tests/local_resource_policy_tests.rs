@@ -20,9 +20,11 @@ use qubit_fs_local::LocalResourcePolicy;
 fn test_bounded_policy_requires_all_recursive_resource_dimensions() {
     let list = LocalListResourceLimits::new(1, 2, 3, 4, Duration::from_secs(5))
         .expect("nonzero open-directory capacity should be valid");
-    let copy = LocalCopyResourceLimits::new(6, 7, 8, 9, Duration::from_secs(10))
-        .expect("nonzero open-directory capacity should be valid");
-    let delete = LocalDeleteResourceLimits::new(10, 11, 12, Duration::from_secs(13));
+    let copy =
+        LocalCopyResourceLimits::new(6, 7, 8, 9, Duration::from_secs(10))
+            .expect("nonzero open-directory capacity should be valid");
+    let delete =
+        LocalDeleteResourceLimits::new(10, 11, 12, Duration::from_secs(13));
     let policy = LocalResourcePolicy::bounded(list, copy, delete);
     assert_eq!(policy.list_limits(), Some(list));
     assert_eq!(policy.copy_limits(), Some(copy));
@@ -49,7 +51,8 @@ fn test_unbounded_policy_is_an_explicit_empty_budget_selection() {
 }
 
 #[test]
-fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budgets() {
+fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budgets()
+ {
     let timeout = Duration::from_millis(250);
     let attempts = NonZeroUsize::new(32).expect("positive attempt count");
     let policy = black_box(
@@ -58,11 +61,17 @@ fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budge
     )(LocalResourcePolicy::unbounded(), Some(timeout));
     let policy = black_box(
         LocalResourcePolicy::with_temp_max_attempts
-            as fn(LocalResourcePolicy, Option<NonZeroUsize>) -> LocalResourcePolicy,
+            as fn(
+                LocalResourcePolicy,
+                Option<NonZeroUsize>,
+            ) -> LocalResourcePolicy,
     )(policy, Some(attempts));
     let policy = black_box(
         LocalResourcePolicy::with_directory_reopen_policy
-            as fn(LocalResourcePolicy, LocalDirectoryReopenPolicy) -> LocalResourcePolicy,
+            as fn(
+                LocalResourcePolicy,
+                LocalDirectoryReopenPolicy,
+            ) -> LocalResourcePolicy,
     )(policy, LocalDirectoryReopenPolicy::Fail);
 
     assert_eq!(
@@ -84,13 +93,18 @@ fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budge
 /// Deletion ceilings can be explicitly cleared after policy construction.
 #[test]
 fn test_delete_limits_can_be_explicitly_cleared() {
-    let limits = LocalDeleteResourceLimits::new(1, 2, 3, Duration::from_secs(4));
+    let limits =
+        LocalDeleteResourceLimits::new(1, 2, 3, Duration::from_secs(4));
     assert_eq!(1, limits.max_depth());
     assert_eq!(2, limits.max_entries());
     assert_eq!(3, limits.max_pending_path_bytes());
     assert_eq!(Duration::from_secs(4), limits.deadline());
-    let list = LocalListResourceLimits::new(2, 3, 4096, 4, Duration::from_secs(5)).expect("list");
-    let copy = LocalCopyResourceLimits::new(6, 7, 8192, 8, Duration::from_secs(9)).expect("copy");
+    let list =
+        LocalListResourceLimits::new(2, 3, 4096, 4, Duration::from_secs(5))
+            .expect("list");
+    let copy =
+        LocalCopyResourceLimits::new(6, 7, 8192, 8, Duration::from_secs(9))
+            .expect("copy");
     let policy = LocalResourcePolicy::bounded(list, copy, limits);
 
     assert_eq!(Some(list), policy.list_limits());

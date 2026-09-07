@@ -2,8 +2,10 @@
 
 use libfuzzer_sys::fuzz_target;
 use qubit_fs::path::ConnectionUri;
-use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
-use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+use qubit_fs_local::LocalFileSystemProvider;
+use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_registry::FileSystemConfig;
+use qubit_fs_registry::FileSystemRegistry;
 
 fuzz_target!(|input: &[u8]| {
     let input = &input[..input.len().min(4096)];
@@ -34,7 +36,8 @@ fuzz_target!(|input: &[u8]| {
 
     assert_eq!(first.canonical_uri().scheme(), "file");
 
-    let Ok(replayed_uri) = ConnectionUri::parse(first.canonical_uri().as_str()) else {
+    let Ok(replayed_uri) = ConnectionUri::parse(first.canonical_uri().as_str())
+    else {
         panic!("a canonical URI must be parseable");
     };
     let second = registry

@@ -64,8 +64,9 @@ fn test_typed_copy_failure_exposes_unchanged_effect_and_request_context() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let source = Path::parse("/missing").expect("valid source path");
     let target = Path::parse("/target").expect("valid target path");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem should construct");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
 
     let failure = filesystem
         .copy(&source, &target, CopyOptions::file())
@@ -86,8 +87,9 @@ fn test_typed_rename_failure_exposes_unchanged_effect_and_request_context() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let source = Path::parse("/missing").expect("valid source path");
     let target = Path::parse("/target").expect("valid target path");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem should construct");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
 
     let failure = filesystem
         .rename(&source, &target, RenameOptions::default())
@@ -108,15 +110,18 @@ fn test_typed_rename_failure_exposes_unchanged_effect_and_request_context() {
 fn test_writer_conflict_retains_unchanged_effect_and_native_source() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let target = path("/target");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem should construct");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
     let mut writer = filesystem
         .open_writer(
             &target,
-            WriteOptions::default().with_disposition(WriteDisposition::CreateNew),
+            WriteOptions::default()
+                .with_disposition(WriteDisposition::CreateNew),
         )
         .expect("writer should open before the conflict");
-    Output::write_fully(&mut writer, b"staged").expect("writer should accept bytes");
+    Output::write_fully(&mut writer, b"staged")
+        .expect("writer should accept bytes");
     std::fs::write(root.path().join("target"), b"concurrent")
         .expect("concurrent target should be installed");
 
@@ -142,16 +147,22 @@ fn test_partial_delete_mapping_retains_native_failure_path_and_effect() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let native_target = root.path().join("tree");
     std::fs::create_dir(&native_target).expect("tree should exist");
-    std::fs::write(native_target.join("first"), b"first").expect("first entry should exist");
-    std::fs::write(native_target.join("second"), b"second").expect("second entry should exist");
-    let target = host_path_to_logical(&native_target).expect("target should be representable");
+    std::fs::write(native_target.join("first"), b"first")
+        .expect("first entry should exist");
+    std::fs::write(native_target.join("second"), b"second")
+        .expect("second entry should exist");
+    let target = host_path_to_logical(&native_target)
+        .expect("target should be representable");
     let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
         .expect("host filesystem should construct");
     let _fault = install_test_fault("host-delete-directory-entry-second")
         .expect("fault controller should install");
 
     let error = filesystem
-        .delete_directory(&target, DeleteOptions::default().with_recursive(true))
+        .delete_directory(
+            &target,
+            DeleteOptions::default().with_recursive(true),
+        )
         .expect_err("second entry fault should interrupt deletion");
 
     assert_eq!(FsErrorKind::Io, error.kind());

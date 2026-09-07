@@ -35,9 +35,20 @@ fn bounded_list_policy(
             std::time::Duration::from_secs(60),
         )
         .expect("list budget"),
-        LocalCopyResourceLimits::new(8, 64, 4096, 4, std::time::Duration::from_secs(60))
-            .expect("copy budget"),
-        LocalDeleteResourceLimits::new(8, 64, 4096, std::time::Duration::from_secs(60)),
+        LocalCopyResourceLimits::new(
+            8,
+            64,
+            4096,
+            4,
+            std::time::Duration::from_secs(60),
+        )
+        .expect("copy budget"),
+        LocalDeleteResourceLimits::new(
+            8,
+            64,
+            4096,
+            std::time::Duration::from_secs(60),
+        ),
     )
     .with_directory_reopen_policy(reopen_policy)
 }
@@ -47,16 +58,19 @@ fn bounded_list_policy(
 #[test]
 fn test_listing_options_filter_prefix_and_include_metadata() {
     let root = tempfile::tempdir().expect("listing root must be created");
-    let file_system = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem must open");
-    let list_root = Path::parse("/reports").expect("listing path must be valid");
-    let matching_directory = Path::parse("/reports/nested").expect("matching path must be valid");
-    let matching_file =
-        Path::parse("/reports/nested/report.txt").expect("matching file path must be valid");
-    let sibling_directory =
-        Path::parse("/reports/nested-other").expect("sibling path must be valid");
-    let sibling_file =
-        Path::parse("/reports/nested-other/report.txt").expect("sibling file path must be valid");
+    let file_system =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem must open");
+    let list_root =
+        Path::parse("/reports").expect("listing path must be valid");
+    let matching_directory =
+        Path::parse("/reports/nested").expect("matching path must be valid");
+    let matching_file = Path::parse("/reports/nested/report.txt")
+        .expect("matching file path must be valid");
+    let sibling_directory = Path::parse("/reports/nested-other")
+        .expect("sibling path must be valid");
+    let sibling_file = Path::parse("/reports/nested-other/report.txt")
+        .expect("sibling file path must be valid");
 
     for directory in [&list_root, &matching_directory, &sibling_directory] {
         file_system
@@ -106,7 +120,8 @@ fn test_prefix_request_budget_counts_only_matching_entries() {
     std::fs::create_dir(root.path().join("nested")).expect("parent");
     std::fs::write(root.path().join("nested/item"), b"x").expect("child");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
     let mut stream = fs
         .list(
             &Path::root(),
@@ -131,7 +146,8 @@ fn test_prefix_zero_return_budget_allows_no_matches() {
     let root = tempfile::tempdir().expect("root");
     std::fs::write(root.path().join("unmatched"), b"x").expect("fixture");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
     let mut stream = fs
         .list(
             &Path::root(),
@@ -179,7 +195,8 @@ fn test_prefix_return_budget_still_rejects_second_match() {
     std::fs::create_dir(root.path().join("nested")).expect("parent");
     std::fs::write(root.path().join("nested/item"), b"x").expect("child");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
     let mut stream = fs
         .list(
             &Path::root(),
@@ -209,14 +226,16 @@ fn test_prefix_return_budget_still_rejects_second_match() {
 fn test_literal_prefix_is_rejected_with_request_context() {
     let root = tempfile::tempdir().expect("root");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
     let logical_root = Path::root();
 
     let error = fs
         .list(
             &logical_root,
-            ListOptions::default()
-                .with_filter(Some(ListFilter::LiteralPrefix("partial".to_owned()))),
+            ListOptions::default().with_filter(Some(
+                ListFilter::LiteralPrefix("partial".to_owned()),
+            )),
         )
         .expect_err("literal prefix requires flat path semantics");
 
@@ -257,7 +276,8 @@ fn test_midstream_directory_failure_preserves_context() {
     std::fs::create_dir(root.path().join("nested")).expect("directory");
     std::fs::write(root.path().join("nested/item"), b"x").expect("fixture");
     let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
     let logical_root = Path::root();
     let mut stream = fs
         .list(&logical_root, ListOptions::default().with_recursive(true))
@@ -271,7 +291,8 @@ fn test_midstream_directory_failure_preserves_context() {
             .expect("directory entry")
             .path,
     );
-    std::fs::remove_dir_all(root.path().join("nested")).expect("concurrent removal");
+    std::fs::remove_dir_all(root.path().join("nested"))
+        .expect("concurrent removal");
     let error = stream
         .next_entry()
         .expect_err("lazy descent must observe the removed directory");
