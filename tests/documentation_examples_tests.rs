@@ -41,24 +41,15 @@ fn test_readme_and_user_guide_examples_compile() {
     let workspace = tempfile::tempdir().expect("isolated example sources");
     let bin = workspace.path().join("src/bin");
     fs::create_dir_all(&bin).expect("bin directory");
-    let fs_dependency = root.join("../rs-fs");
-    let registry_dependency = root.join("../rs-fs-registry");
-    let spi_dependency = root.join("../rs-spi");
-    let filesystem = if fs_dependency.join("Cargo.toml").is_file() {
-        format!("{{ path = \"{}\" }}", toml_path(&fs_dependency))
-    } else {
-        "\"0.2\"".to_owned()
-    };
-    let registry = if registry_dependency.join("Cargo.toml").is_file() {
-        format!("{{ path = \"{}\" }}", toml_path(&registry_dependency))
-    } else {
-        "\"0.1\"".to_owned()
-    };
-    let spi = if spi_dependency.join("Cargo.toml").is_file() {
-        format!("{{ path = \"{}\" }}", toml_path(&spi_dependency))
-    } else {
-        "\"0.11\"".to_owned()
-    };
+    let package: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
+        .expect("read manifest")
+        .parse()
+        .expect("parse manifest");
+    let filesystem =
+        dependency_spec(root, &package["dependencies"]["qubit-fs"]);
+    let registry =
+        dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
+    let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
     let manifest = format!(
         "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\nqubit-spi = {spi}\n",
         toml_path(root),
@@ -92,8 +83,37 @@ fn test_readme_and_user_guide_examples_compile() {
         }
     }
 
+    let metadata = Command::new(env!("CARGO"))
+        .args(["metadata", "--format-version", "1"])
+        .current_dir(workspace.path())
+        .output()
+        .expect("resolve example dependencies");
+    assert!(
+        metadata.status.success(),
+        "{}",
+        String::from_utf8_lossy(&metadata.stderr)
+    );
+    let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout)
+        .expect("parse dependency graph");
+    for name in [
+        "qubit-fs",
+        "qubit-fs-registry",
+        "qubit-fs-local",
+        "qubit-spi",
+    ] {
+        assert_eq!(
+            graph["packages"]
+                .as_array()
+                .expect("package list")
+                .iter()
+                .filter(|p| p["name"].as_str() == Some(name))
+                .count(),
+            1,
+            "unique package identity for {name}"
+        );
+    }
     let status = Command::new(env!("CARGO"))
-        .args(["check", "--quiet", "--bins"])
+        .args(["check", "--locked", "--quiet", "--bins"])
         .current_dir(workspace.path())
         .env(
             "CARGO_TARGET_DIR",
@@ -102,4 +122,55 @@ fn test_readme_and_user_guide_examples_compile() {
         .status()
         .expect("compile document examples");
     assert!(status.success(), "document examples must compile");
+}
+
+/// Renders a dependency from its actual version declaration, retaining an
+/// available sibling.
+fn dependency_spec(root: &Path, value: &toml::Value) -> String {
+    let mut table = value
+        .as_table()
+        .expect("versioned dependency table")
+        .clone();
+    assert!(
+        table.get("version").and_then(toml::Value::as_str).is_some(),
+        "version is required"
+    );
+    table.remove("optional");
+    if let Some(path) = table.remove("path") {
+        let path = root.join(path.as_str().expect("dependency path"));
+        if path.join("Cargo.toml").is_file() {
+            table.insert(
+                "path".into(),
+                toml::Value::String(
+                    path.to_str().expect("UTF-8 path").to_owned(),
+                ),
+            );
+        }
+    }
+    toml::Value::Table(table).to_string()
+}
+
+/// Missing siblings retain the current declared requirements, rather than
+/// historical constants.
+#[test]
+fn test_documentation_dependencies_without_siblings() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let input: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
+        .expect("read manifest")
+        .parse()
+        .expect("parse manifest");
+    for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
+        let spec = dependency_spec(
+            Path::new("/nonexistent/local-documentation"),
+            &input["dependencies"][name],
+        );
+        let parsed: toml::Value = format!("dependency = {spec}")
+            .parse()
+            .expect("valid generated dependency");
+        assert_eq!(
+            parsed["dependency"]["version"],
+            input["dependencies"][name]["version"]
+        );
+        assert!(parsed["dependency"].get("path").is_none());
+    }
 }

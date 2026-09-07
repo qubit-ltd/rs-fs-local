@@ -60,6 +60,8 @@ default = []
 registry = ["dep:qubit-fs-registry", "dep:qubit-spi"]
 
 [dev-dependencies]
+toml = "0.8"
+serde_json = "1"
 criterion = "0.5"
 tempfile = "3.27"
 qubit-io = "0.16"
