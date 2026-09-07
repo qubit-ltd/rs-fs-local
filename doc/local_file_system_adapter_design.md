@@ -230,7 +230,7 @@ Persist failure states map directly:
 | Native state | `qubit-fs` state |
 | --- | --- |
 | `NotPublished` | `NotPublished` |
-| `PublishedSourceRetained` | `PublishedSourceRetained` |
+| `Published` | `PublishedSourceRetained` |
 | `Indeterminate` | `Indeterminate` |
 
 Only `overwrite` and `creates_parent` map to `LocalPersistOptions`; unsupported

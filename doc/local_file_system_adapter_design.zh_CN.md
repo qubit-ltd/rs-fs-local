@@ -377,7 +377,7 @@ Persist failure state 一一映射：
 | Native state | `qubit-fs` state |
 | --- | --- |
 | `NotPublished` | `NotPublished` |
-| `PublishedSourceRetained` | `PublishedSourceRetained` |
+| `Published` | `PublishedSourceRetained` |
 | `Indeterminate` | `Indeterminate` |
 
 `ResolvedPersistOptions` 只有 `overwrite` 和 `creates_parent` 会映射到
