@@ -230,3 +230,110 @@ fn push_uri_escaped_byte(canonical: &mut String, byte: u8) {
     canonical.push(char::from(HEX[usize::from(byte >> 4)]));
     canonical.push(char::from(HEX[usize::from(byte & 0x0F)]));
 }
+
+#[cfg(test)]
+mod tests {
+    use proptest::char::range;
+    use proptest::collection;
+    use proptest::prop_assert;
+    use proptest::prop_assert_eq;
+    use proptest::prop_oneof;
+    use proptest::proptest;
+    use proptest::sample::select;
+    use proptest::strategy::Just;
+    use proptest::strategy::Strategy;
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::path::Path;
+    use qubit_spi::error::ProviderFailureKind;
+
+    use super::canonical_uri;
+    use super::decode;
+
+    /// Generates safe native path segments with bounded canonical text.
+    fn path_segments() -> impl Strategy<Value = Vec<String>> {
+        let scalar = prop_oneof![
+            range('a', 'z'),
+            range('A', 'Z'),
+            range('0', '9'),
+            Just(' '),
+            Just('%'),
+            select(vec!['é', '中', '🦀']),
+        ];
+        collection::vec(
+            collection::vec(scalar, 1..=32)
+                .prop_map(|scalars| scalars.into_iter().collect()),
+            0..=8,
+        )
+    }
+
+    /// Converts safe native segments into canonical logical path text.
+    fn logical_path(segments: &[String]) -> Path {
+        let components = segments
+            .iter()
+            .map(|segment| segment.replace('%', "%25"))
+            .collect::<Vec<_>>();
+        Path::parse(&format!("/{}", components.join("/")))
+            .expect("generated canonical path must parse")
+    }
+
+    proptest! {
+        #[test]
+        fn test_decode_canonical_uri_round_trips_safe_paths(
+            segments in path_segments(),
+        ) {
+            let path = logical_path(&segments);
+            prop_assert!(path.as_str().len() <= 4096);
+            let uri = canonical_uri(&path)
+                .expect("generated path must have a canonical URI");
+            prop_assert!(uri.path().len() <= 4096);
+
+            prop_assert_eq!(
+                decode(uri.path()).expect("canonical URI path must decode"),
+                path,
+            );
+        }
+
+        #[test]
+        fn test_canonical_uri_normalizes_decoded_safe_paths(
+            segments in path_segments(),
+        ) {
+            let path = logical_path(&segments);
+            prop_assert!(path.as_str().len() <= 4096);
+            let expected = canonical_uri(&path)
+                .expect("generated path must have a canonical URI");
+            prop_assert!(expected.path().len() <= 4096);
+            let decoded = decode(expected.path())
+                .expect("canonical URI path must decode");
+
+            prop_assert_eq!(
+                canonical_uri(&decoded)
+                    .expect("decoded path must have a canonical URI"),
+                expected,
+            );
+        }
+    }
+
+    /// Malformed escapes and encoded native separators fail without panics.
+    #[test]
+    fn test_decode_rejects_malformed_and_unsafe_encoded_components() {
+        #[cfg(not(windows))]
+        let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F"];
+        #[cfg(windows)]
+        let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F", "/%5C"];
+
+        for raw in raw_paths {
+            let failure = decode(raw)
+                .expect_err("malformed or unsafe URI path must be rejected");
+            assert_eq!(
+                ProviderFailureKind::InvalidConfiguration,
+                failure.kind(),
+                "unexpected provider failure kind for {raw}",
+            );
+            assert_eq!(
+                FsErrorKind::InvalidPath,
+                failure.error().kind(),
+                "unexpected filesystem error kind for {raw}",
+            );
+        }
+    }
+}

@@ -173,3 +173,51 @@ fn map_native(
         error,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    use std::ffi::OsString;
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStringExt;
+    #[cfg(unix)]
+    use std::path::PathBuf;
+
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_fs::path::Path;
+    use qubit_local_files::path::LocalFileSystemScope;
+
+    use super::logical;
+    use super::native;
+
+    /// Rooted conversion rejects relative logical paths before native I/O.
+    #[test]
+    fn test_native_rejects_rooted_relative_logical_path() {
+        let path = Path::parse("relative").expect("relative logical path text");
+
+        let error = native(LocalFileSystemScope::Rooted, &path)
+            .expect_err("rooted conversion requires an absolute logical path");
+
+        assert_eq!(FsErrorKind::InvalidPath, error.kind());
+        assert_eq!(FsOperation::ParsePath, error.operation());
+        assert_eq!(None, error.path());
+    }
+
+    /// Host conversion preserves non-UTF-8 Unix filename bytes.
+    #[cfg(unix)]
+    #[test]
+    fn test_logical_preserves_absolute_non_utf8_host_component() {
+        let mut native_path = PathBuf::from(std::path::MAIN_SEPARATOR_STR);
+        native_path.push(OsString::from_vec(vec![b'r', b'a', b'w', 0xff]));
+
+        let logical_path = logical(
+            LocalFileSystemScope::Host,
+            &native_path,
+            FsOperation::ParsePath,
+        )
+        .expect("absolute non-UTF-8 host path must convert");
+
+        assert_eq!("/raw%FF", logical_path.as_str());
+    }
+}

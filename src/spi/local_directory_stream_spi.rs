@@ -140,10 +140,10 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                 entry.path(),
                 FsOperation::List,
             )?;
-            let mut result =
-                DirEntry::new(path, local_outcome_mapper::file_kind(
-                    entry.metadata().kind(),
-                ));
+            let mut result = DirEntry::new(
+                path,
+                local_outcome_mapper::file_kind(entry.metadata().kind()),
+            );
             if options.include_metadata() {
                 result.metadata = Some(local_outcome_mapper::metadata(
                     entry.metadata().clone(),
@@ -175,4 +175,31 @@ fn entry_error(
         "native directory walk failed",
         provider_id,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_local_files::error::LocalFileError;
+    use qubit_local_files::error::LocalFileErrorKind;
+    use qubit_local_files::error::LocalFileOperation;
+
+    use super::entry_error;
+
+    /// Lazy walker errors retain provider identity for facade path enrichment.
+    #[test]
+    fn test_entry_error_retains_provider_without_inventing_path() {
+        let native = LocalFileError::new(
+            LocalFileErrorKind::NotFound,
+            LocalFileOperation::List,
+        );
+
+        let error = entry_error(native, "rooted-listing");
+
+        assert_eq!(FsErrorKind::NotFound, error.kind());
+        assert_eq!(FsOperation::List, error.operation());
+        assert_eq!(None, error.path());
+        assert_eq!(Some("rooted-listing"), error.provider());
+    }
 }
