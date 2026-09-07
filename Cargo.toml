@@ -65,7 +65,7 @@ serde_json = "1"
 criterion = "0.5"
 tempfile = "3.27"
 qubit-io = "0.16"
-qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.4" }
+qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.3" }
 qubit-local-files = { path = "../rs-local-files", version = "0.3", features = ["test-support"] }
 
 [lints.rust]
