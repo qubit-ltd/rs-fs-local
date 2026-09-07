@@ -6,7 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.4 release: direct host/rooted facades and the optional registry provider.
+0.4.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.4.0`).
 
 ## Provider resource ceilings
 

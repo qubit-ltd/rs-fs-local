@@ -4,7 +4,7 @@
 > `qubit-local-files` 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
-> 适用于 `qubit-fs-local` 0.4 · [English design](local_file_system_adapter_design.md) ·
+> 适用于 `qubit-fs-local` 0.4.0（包版本 `0.4.0`）· [English design](local_file_system_adapter_design.md) ·
 > [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
@@ -193,7 +193,7 @@ component/path 的组合。
 路径转换实际集中在 `path::local_path_mapper` 的私有 free functions
 `native` 与 `logical` 中。公共 `host_path_to_logical` 是 host native 路径进入门面的唯一
 推荐入口；它要求绝对 native 路径，并保留非 UTF-8 与百分号编码，不通过 lossy display
-文本。Codec 或路径校验错误由 `LocalFileErrorMapper` 映射为无副作用的
+文本。Codec 或路径校验错误由私有 `path::local_path_mapper` 映射为无副作用的
 `FsError`。
 
 ### 7.2 Host filesystem

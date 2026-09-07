@@ -224,11 +224,8 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
     let version = manifest["package"]["version"]
         .as_str()
         .expect("package version")
-        .split('.')
-        .take(2)
-        .collect::<Vec<_>>()
-        .join(".");
-    let version_marker = version;
+        .to_owned();
+    let version_marker = format!("`{version}`");
     for document in [
         "README.md",
         "README.zh_CN.md",
@@ -247,7 +244,10 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
                 && !text.contains("qubit-fs-local 0.3")
                 && !text.contains("0.1 release")
                 && !text.contains("0.2 release")
-                && !text.contains("0.3 release"),
+                && !text.contains("0.3 release")
+                && !text.contains("@0.3")
+                && !text.contains("= \"0.3")
+                && !text.contains("`0.3`"),
             "{document} must describe the 0.4 API"
         );
     }
@@ -258,7 +258,8 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             text.contains("rooted_with_id(")
                 && text.contains("LocalResourcePolicy")
                 && text.contains("LocalResourcePolicy::bounded(")
-                && text.contains("bounded(list, copy, delete)"),
+                && text.contains("bounded(list, copy, delete)")
+                && text.contains("rooted_with_id(id, root, policy)"),
             "{document} must explain the three-argument rooted_with_id API"
         );
         assert!(
