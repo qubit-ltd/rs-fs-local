@@ -280,11 +280,7 @@ pub(crate) fn copy(
             FsOperation::Copy,
         )?);
     }
-    native = match options.mode() {
-        CopyMode::File => native.with_file_source(),
-        CopyMode::Tree => native.with_tree_source(),
-        CopyMode::Auto => native,
-    };
+    native = copy_source_options(native, options.mode());
     if options.conflict() == CopyConflictPolicy::Overwrite {
         native = native.with_type_conflict(
             native_files::options::LocalCopyTypeConflictPolicy::Replace,
@@ -481,4 +477,53 @@ fn unsupported(operation: FsOperation) -> FsError {
         operation,
         "local adapter cannot express requested option",
     )
+}
+
+/// Applies the resolved request source mode to otherwise configured defaults.
+fn copy_source_options(
+    defaults: native_files::options::LocalCopyOptions,
+    mode: CopyMode,
+) -> native_files::options::LocalCopyOptions {
+    match mode {
+        CopyMode::File => defaults.with_entry_source(),
+        CopyMode::Tree => defaults.with_tree_source(),
+        CopyMode::Auto => defaults
+            .with_source_mode(native_files::options::LocalCopySourceMode::Auto),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::copy::CopyMode;
+    use qubit_local_files::options::LocalCopyOptions;
+    use qubit_local_files::options::LocalCopySourceMode;
+
+    use super::copy_source_options;
+
+    /// A complete facade request must override every native source default.
+    #[test]
+    fn test_resolved_copy_mode_overrides_native_defaults() {
+        for default_mode in [
+            LocalCopySourceMode::Entry,
+            LocalCopySourceMode::Tree,
+            LocalCopySourceMode::Auto,
+        ] {
+            for (request, expected) in [
+                (CopyMode::File, LocalCopySourceMode::Entry),
+                (CopyMode::Tree, LocalCopySourceMode::Tree),
+                (CopyMode::Auto, LocalCopySourceMode::Auto),
+            ] {
+                let defaults = LocalCopyOptions::new()
+                    .with_source_mode(default_mode)
+                    .with_max_bytes(1024);
+                let actual = copy_source_options(defaults, request);
+                assert_eq!(expected, actual.source_mode());
+                assert_eq!(
+                    Some(1024),
+                    actual.max_bytes(),
+                    "mode conversion must preserve independent resource policy"
+                );
+            }
+        }
+    }
 }
