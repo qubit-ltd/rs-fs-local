@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.1 版本：直接创建 host/rooted 门面，以及可选的 registry provider。
+`qubit-fs-local` 0.3 版本：直接创建 host/rooted 门面，以及可选的 registry provider。
 
 ## Provider 资源上限
 
