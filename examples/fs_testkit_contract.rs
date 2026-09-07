@@ -17,7 +17,6 @@ use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_testkit::FileSystemContractSuite;
 use qubit_fs_testkit::FileSystemFixture;
-use qubit_fs_testkit::FixtureCase;
 use qubit_fs_testkit::FixtureError;
 use qubit_fs_testkit::FixtureResult;
 use qubit_fs_testkit::FixtureSupport;
@@ -219,31 +218,6 @@ impl FileSystemFixture for RootedFixture {
         })
     }
 
-    fn case_support(
-        &self,
-        case: FixtureCase,
-    ) -> FixtureResult<FixtureSupport<()>> {
-        let supported = match case {
-            FixtureCase::CopyOverwrite | FixtureCase::CopyTree => true,
-            FixtureCase::Capability(capability) => self
-                .file_system
-                .properties()
-                .capabilities()
-                .supports(capability),
-            FixtureCase::ReadIfMatch
-            | FixtureCase::ReadIfNoneMatch
-            | FixtureCase::WriteIfAbsent
-            | FixtureCase::WriteIfMatch
-            | FixtureCase::DeleteIfMatch => false,
-            _ => false,
-        };
-        Ok(if supported {
-            FixtureSupport::Supported(())
-        } else {
-            FixtureSupport::Unsupported
-        })
-    }
-
     fn seed_file(
         &self,
         relative: &str,
@@ -326,16 +300,14 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn teardown(&self) -> FixtureResult<FixtureSupport<()>> {
-        self.teardown_entries()?;
-        Ok(FixtureSupport::Supported(()))
+    fn teardown(&self) -> FixtureResult<()> {
+        self.teardown_entries()
     }
 }
 
 fn main() {
     let fixture = RootedFixture::new();
-    FileSystemContractSuite::new(&fixture)
-        .assert_all_with_report()
-        .assert_complete();
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    suite.run_all().assert_satisfied();
     println!("filesystem contract suite passed");
 }
