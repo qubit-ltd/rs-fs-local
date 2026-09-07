@@ -14,6 +14,7 @@ use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalDirectoryReopenPolicy;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalListResourceLimits;
@@ -32,7 +33,9 @@ fn bounded_policy() -> LocalResourcePolicy {
     let copy =
         LocalCopyResourceLimits::new(8, 64, 1024, 4, Duration::from_secs(5))
             .expect("copy policy should be valid");
-    LocalResourcePolicy::bounded(list, copy)
+    let delete =
+        LocalDeleteResourceLimits::new(8, 64, 1024, Duration::from_secs(5));
+    LocalResourcePolicy::bounded(list, copy, delete)
 }
 
 #[test]
@@ -172,6 +175,12 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
             .expect("listing limits should be valid"),
             LocalCopyResourceLimits::new(8, 10, 1, 4, Duration::from_secs(60))
                 .expect("copy limits should be valid"),
+            LocalDeleteResourceLimits::new(
+                8,
+                10,
+                4096,
+                Duration::from_secs(60),
+            ),
         );
         let filesystem = LocalFileSystems::rooted(root.path(), policy)
             .expect("filesystem should open");

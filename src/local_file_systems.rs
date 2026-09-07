@@ -27,11 +27,7 @@ use crate::spi::LocalFileSystemSpi;
 static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Factory for concrete host and rooted local filesystem facades.
-pub struct LocalFileSystems {
-    /// Prevents construction outside this crate while retaining a type
-    /// namespace for public factory methods.
-    _private: (),
-}
+pub enum LocalFileSystems {}
 
 impl LocalFileSystems {
     /// Creates the process host filesystem facade.

@@ -18,7 +18,7 @@ use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 
 fn policy_with_zero_delete_entries() -> LocalResourcePolicy {
-    LocalResourcePolicy::bounded_operations(
+    LocalResourcePolicy::bounded(
         LocalListResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60))
             .expect("list"),
         LocalCopyResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60))
