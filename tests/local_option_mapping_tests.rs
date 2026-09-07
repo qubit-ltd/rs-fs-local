@@ -213,6 +213,31 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
     }
 }
 
+/// A request deadline tightens an existing provider deadline while preserving
+/// an otherwise usable listing request.
+#[test]
+fn test_list_request_tightens_provider_deadline() {
+    let root = tempfile::tempdir().expect("fixture should exist");
+    std::fs::write(root.path().join("entry"), b"data")
+        .expect("fixture entry should exist");
+    let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy())
+        .expect("filesystem should open");
+    let mut stream = filesystem
+        .list(
+            &Path::root(),
+            ListOptions::default()
+                .with_deadline(Some(Duration::from_millis(250))),
+        )
+        .expect("listing with a tighter deadline should open");
+
+    assert!(
+        stream
+            .next_entry()
+            .expect("entry should be readable before the deadline")
+            .is_some()
+    );
+}
+
 /// Partial recursive deletion retains portable budget classification and
 /// effects.
 #[test]
