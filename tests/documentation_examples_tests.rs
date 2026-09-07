@@ -205,3 +205,33 @@ fn test_documentation_dependencies_without_siblings() {
         assert!(parsed["dependency"].get("path").is_none());
     }
 }
+
+#[test]
+fn test_current_documentation_versions_and_signatures_follow_manifest() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+    ] {
+        let text = fs::read_to_string(root.join(document)).expect("document should be readable");
+        assert!(
+            !text.contains("qubit-fs-local 0.1")
+                && !text.contains("qubit-fs-local 0.2")
+                && !text.contains("qubit-fs-local 0.3")
+                && !text.contains("0.1 release")
+                && !text.contains("0.2 release")
+                && !text.contains("0.3 release"),
+            "{document} must describe the 0.4 API"
+        );
+    }
+    for document in ["README.md", "README.zh_CN.md"] {
+        let text = fs::read_to_string(root.join(document)).expect("README should be readable");
+        assert!(
+            text.contains("rooted_with_id(")
+                && text.contains("LocalResourcePolicy"),
+            "{document} must explain the three-argument rooted_with_id API"
+        );
+    }
+}
