@@ -18,15 +18,32 @@ use qubit_local_files as native_files;
 /// Resource limits applied to recursive local copies.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalCopyResourceLimits {
+    /// Maximum recursive depth, with the request root at depth zero.
     max_depth: usize,
+    /// Maximum number of entries traversed by one native copy.
     max_entries: usize,
+    /// Maximum bytes copied by one native recursive operation.
     max_bytes: u64,
+    /// Maximum concurrently open directories during traversal.
     max_open_directories: usize,
+    /// Cooperative deadline checked between native operations.
     deadline: Duration,
 }
 
 impl LocalCopyResourceLimits {
     /// Creates complete recursive copy limits.
+    ///
+    /// # Parameters
+    ///
+    /// - `max_depth`: Maximum recursive depth, starting at zero.
+    /// - `max_entries`: Maximum traversed entries.
+    /// - `max_bytes`: Maximum bytes copied.
+    /// - `max_open_directories`: Positive open-directory budget.
+    /// - `deadline`: Cooperative elapsed-time limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-options error when `max_open_directories` is zero.
     ///
     /// # Examples
     ///
@@ -59,30 +76,35 @@ impl LocalCopyResourceLimits {
 
     /// Returns the maximum recursive depth.
     #[must_use]
+    #[inline(always)]
     pub const fn max_depth(self) -> usize {
         self.max_depth
     }
 
     /// Returns the maximum number of traversed entries.
     #[must_use]
+    #[inline(always)]
     pub const fn max_entries(self) -> usize {
         self.max_entries
     }
 
     /// Returns the maximum copied bytes.
     #[must_use]
+    #[inline(always)]
     pub const fn max_bytes(self) -> u64 {
         self.max_bytes
     }
 
     /// Returns the maximum concurrently open directories.
     #[must_use]
+    #[inline(always)]
     pub const fn max_open_directories(self) -> usize {
         self.max_open_directories
     }
 
     /// Returns the recursive operation deadline.
     #[must_use]
+    #[inline(always)]
     pub const fn deadline(self) -> Duration {
         self.deadline
     }

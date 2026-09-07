@@ -18,15 +18,32 @@ use qubit_local_files as native_files;
 /// Resource limits applied to recursive local listings.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalListResourceLimits {
+    /// Maximum recursive depth, with the request root at depth zero.
     max_depth: usize,
+    /// Maximum entries yielded before adapter filtering.
     max_entries: usize,
+    /// Maximum encoded bytes retained for seen entry names.
     max_seen_name_bytes: usize,
+    /// Maximum concurrently open directories during traversal.
     max_open_directories: usize,
+    /// Cooperative deadline checked between native operations.
     deadline: Duration,
 }
 
 impl LocalListResourceLimits {
     /// Creates complete recursive listing limits.
+    ///
+    /// # Parameters
+    ///
+    /// - `max_depth`: Maximum recursive depth, starting at zero.
+    /// - `max_entries`: Maximum native entries before adapter filtering.
+    /// - `max_seen_name_bytes`: Maximum encoded bytes retained for names.
+    /// - `max_open_directories`: Positive open-directory budget.
+    /// - `deadline`: Cooperative elapsed-time limit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-options error when `max_open_directories` is zero.
     ///
     /// # Examples
     ///
@@ -59,6 +76,7 @@ impl LocalListResourceLimits {
 
     /// Returns the maximum recursive depth.
     #[must_use]
+    #[inline(always)]
     pub const fn max_depth(self) -> usize {
         self.max_depth
     }
@@ -66,24 +84,28 @@ impl LocalListResourceLimits {
     /// Returns the maximum entries yielded by the native walker before
     /// adapter prefix filtering.
     #[must_use]
+    #[inline(always)]
     pub const fn max_entries(self) -> usize {
         self.max_entries
     }
 
     /// Returns the maximum total bytes retained for seen entry names.
     #[must_use]
+    #[inline(always)]
     pub const fn max_seen_name_bytes(self) -> usize {
         self.max_seen_name_bytes
     }
 
     /// Returns the maximum concurrently open directories.
     #[must_use]
+    #[inline(always)]
     pub const fn max_open_directories(self) -> usize {
         self.max_open_directories
     }
 
     /// Returns the recursive operation deadline.
     #[must_use]
+    #[inline(always)]
     pub const fn deadline(self) -> Duration {
         self.deadline
     }
