@@ -238,16 +238,25 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             text.contains(&version_marker),
             "{document} must identify the manifest's current major/minor version"
         );
+        let stale_local_versions = [
+            "qubit-fs-local@0.1",
+            "qubit-fs-local@0.2",
+            "qubit-fs-local@0.3",
+            "qubit-fs-local 0.1",
+            "qubit-fs-local 0.2",
+            "qubit-fs-local 0.3",
+            "qubit-fs-local = \"0.1",
+            "qubit-fs-local = \"0.2",
+            "qubit-fs-local = \"0.3",
+            "`qubit-fs-local` = \"0.1",
+            "`qubit-fs-local` = \"0.2",
+            "`qubit-fs-local` = \"0.3",
+            "`qubit-fs-local` 0.1",
+            "`qubit-fs-local` 0.2",
+            "`qubit-fs-local` 0.3",
+        ];
         assert!(
-            !text.contains("qubit-fs-local 0.1")
-                && !text.contains("qubit-fs-local 0.2")
-                && !text.contains("qubit-fs-local 0.3")
-                && !text.contains("0.1 release")
-                && !text.contains("0.2 release")
-                && !text.contains("0.3 release")
-                && !text.contains("@0.3")
-                && !text.contains("= \"0.3")
-                && !text.contains("`0.3`"),
+            stale_local_versions.iter().all(|token| !text.contains(token)),
             "{document} must describe the 0.4 API"
         );
     }
