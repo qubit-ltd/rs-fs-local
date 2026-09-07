@@ -278,9 +278,9 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn teardown(&self) -> FixtureResult<FixtureSupport<()>> {
+    fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
-        Ok(FixtureSupport::Supported(()))
+        Ok(())
     }
 }
 
@@ -433,9 +433,9 @@ impl FileSystemFixture for HostFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn teardown(&self) -> FixtureResult<FixtureSupport<()>> {
+    fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
-        Ok(FixtureSupport::Supported(()))
+        Ok(())
     }
 }
 
@@ -608,8 +608,8 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
 #[test]
 fn test_rooted_list_contract_teardown_preserves_fixture_root() {
     let fixture = RootedFixture::new();
-    let suite = FileSystemContractSuite::new(&fixture);
-    suite.assert_contract(FileSystemContract::List);
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    suite.run_contract(FileSystemContract::List).assert_satisfied();
 
     let fixture_root = fixture.root.path().join("fixture");
     assert!(fixture_root.is_dir(), "fixture namespace root was removed");
@@ -636,8 +636,8 @@ fn test_rooted_list_contract_teardown_preserves_fixture_root() {
 #[test]
 fn test_host_list_contract_teardown_clears_fixture_root() {
     let fixture = HostFixture::new();
-    let suite = FileSystemContractSuite::new(&fixture);
-    suite.assert_contract(FileSystemContract::List);
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    suite.run_contract(FileSystemContract::List).assert_satisfied();
 
     assert_eq!(
         fs::read_dir(fixture.root.path())
