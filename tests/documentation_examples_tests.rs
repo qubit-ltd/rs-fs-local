@@ -137,8 +137,18 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
     );
     table.remove("optional");
     if let Some(path) = table.remove("path") {
-        let path = root.join(path.as_str().expect("dependency path"));
+        let declared_path = Path::new(path.as_str().expect("dependency path"));
+        let path = if let Some(sibling_root) = std::env::var_os("QUBIT_FS_SIBLING_ROOT") {
+            sibling_root.join(
+                declared_path
+                    .file_name()
+                    .expect("dependency path must name a sibling crate"),
+            )
+        } else {
+            root.join(declared_path)
+        };
         if path.join("Cargo.toml").is_file() {
+            let path = path.canonicalize().expect("dependency path must resolve");
             table.insert(
                 "path".into(),
                 toml::Value::String(
