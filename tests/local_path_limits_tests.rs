@@ -6,15 +6,18 @@
 // =============================================================================
 
 use qubit_fs::directory::ListOptions;
+use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemLimit;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+#[cfg(unix)]
+use qubit_fs_local::host_path_to_logical;
 
 /// Escaped canonical components may be longer than their native spelling.
 #[test]
-fn rooted_paths_accept_expanded_percent_components() {
+fn test_rooted_paths_accept_expanded_percent_components() {
     let root = tempfile::tempdir().expect("fixture root");
     let native_name = "%".repeat(100);
     std::fs::write(root.path().join(&native_name), b"before")
@@ -55,7 +58,7 @@ fn rooted_paths_accept_expanded_percent_components() {
 
 /// Native byte limits are not limits on canonical logical UTF-8 text.
 #[test]
-fn local_properties_do_not_claim_native_limits_are_text_limits() {
+fn test_local_properties_do_not_claim_native_limits_are_text_limits() {
     let root = tempfile::tempdir().expect("fixture root");
     let host =
         LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
@@ -77,7 +80,7 @@ fn local_properties_do_not_claim_native_limits_are_text_limits() {
 /// Unix raw filenames remain addressable after canonical percent encoding.
 #[cfg(unix)]
 #[test]
-fn rooted_paths_preserve_long_non_utf8_components() {
+fn test_rooted_paths_preserve_long_non_utf8_components() {
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
 
@@ -109,10 +112,35 @@ fn rooted_paths_preserve_long_non_utf8_components() {
     assert!(stream.next_entry().expect("end").is_none());
 }
 
+/// Absolute host paths preserve non-UTF-8 Unix components losslessly.
+#[cfg(unix)]
+#[test]
+fn test_absolute_host_paths_preserve_non_utf8_components() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let directory = tempfile::tempdir().expect("fixture root");
+    let name = OsString::from_vec(vec![b'r', b'a', b'w', 0xff]);
+    let native = directory.path().join(name);
+    std::fs::write(&native, b"host").expect("native host fixture");
+    let logical = host_path_to_logical(&native)
+        .expect("absolute host path must convert without lossy text");
+    let fs =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
+
+    assert!(logical.as_str().ends_with("/raw%FF"));
+    assert_eq!(
+        b"host",
+        fs.read_all(&logical, Default::default(), 8)
+            .expect("converted host path must remain addressable")
+            .as_slice(),
+    );
+}
+
 /// A long escaped logical path can still target a native path under its OS cap.
 #[cfg(target_os = "linux")]
 #[test]
-fn rooted_paths_accept_expanded_total_path_text() {
+fn test_rooted_paths_accept_expanded_total_path_text() {
     let root = tempfile::tempdir().expect("fixture root");
     let mut native = root.path().to_path_buf();
     let mut components = Vec::new();
@@ -140,7 +168,7 @@ fn rooted_paths_accept_expanded_total_path_text() {
 
 /// Unknown text limits still leave malformed and native-invalid paths rejected.
 #[test]
-fn unknown_text_limits_do_not_accept_invalid_native_components() {
+fn test_unknown_text_limits_do_not_accept_invalid_native_components() {
     let root = tempfile::tempdir().expect("fixture root");
     let fs =
         LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
@@ -155,5 +183,69 @@ fn unknown_text_limits_do_not_accept_invalid_native_components() {
         std::fs::read_dir(root.path())
             .expect("unchanged root")
             .count()
+    );
+}
+
+/// Relative logical paths fail validation before a rooted target is created.
+#[test]
+fn test_rooted_relative_logical_path_fails_before_io() {
+    let root = tempfile::tempdir().expect("fixture root");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
+    let relative = Path::parse("relative-target").expect("relative path text");
+
+    let error = fs
+        .write_all(&relative, b"payload", WriteOptions::default())
+        .expect_err("rooted filesystem requires absolute logical paths");
+
+    assert_eq!(FsErrorKind::InvalidPath, error.error().kind());
+    assert!(!root.path().join("relative-target").exists());
+}
+
+/// Encoded dot components fail conversion before filesystem mutation.
+#[test]
+fn test_rooted_dot_components_fail_before_io() {
+    let root = tempfile::tempdir().expect("fixture root");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
+
+    for text in ["/%2E/target", "/%2E%2E/target"] {
+        let path = Path::parse(text).expect("escaped dot path text");
+        let error = fs
+            .write_all(&path, b"payload", WriteOptions::default())
+            .expect_err("dot traversal components must be rejected");
+        assert_eq!(
+            FsErrorKind::InvalidPath,
+            error.error().kind(),
+            "path: {text}",
+        );
+        assert_eq!(Some(&path), error.error().path(), "path: {text}");
+    }
+    assert!(!root.path().join("target").exists());
+}
+
+/// Encoded NUL fails conversion before filesystem mutation.
+#[test]
+fn test_rooted_nul_component_fails_before_io() {
+    let root = tempfile::tempdir().expect("fixture root");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted");
+    let path = Path::parse("/invalid%00target").expect("escaped NUL text");
+
+    let error = fs
+        .write_all(&path, b"payload", WriteOptions::default())
+        .expect_err("NUL component must be rejected");
+
+    assert_eq!(FsErrorKind::InvalidPath, error.error().kind());
+    assert_eq!(Some(&path), error.error().path());
+    assert!(!root.path().join("invalid\0target").exists());
+    assert_eq!(
+        0,
+        std::fs::read_dir(root.path())
+            .expect("unchanged root")
+            .count(),
     );
 }
