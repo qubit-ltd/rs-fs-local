@@ -537,6 +537,35 @@ fn test_temp_directory_cleanup_failure_rejects_replacement_path() {
         .expect("replacement entry must remain");
 }
 
+/// A missing native temporary file is reported through the file-specific
+/// cleanup mapping and remains eligible for retry.
+#[test]
+fn test_temp_file_cleanup_failure_retains_resource_for_retry() {
+    let root = tempfile::tempdir().expect("test root must be created");
+    let id = FileSystemId::new("temp-file-cleanup-retry-root")
+        .expect("test identity must be valid");
+    let file_system = LocalFileSystems::rooted_with_id(
+        id,
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("rooted filesystem must be created");
+    let mut temporary = file_system
+        .create_temp_file(TempFileOptions::default())
+        .expect("temporary file must be created");
+    let path = temporary.path().clone();
+
+    file_system
+        .delete_file(&path, DeleteOptions::default())
+        .expect("temporary file fixture must be removed");
+    let error = temporary
+        .cleanup()
+        .expect_err("missing temporary file must make cleanup fail");
+
+    assert_eq!(FsErrorKind::NotFound, error.kind());
+    assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
+}
+
 /// Keeping a temporary file preserves it and makes later lifecycle commands
 /// invalid.
 #[test]
