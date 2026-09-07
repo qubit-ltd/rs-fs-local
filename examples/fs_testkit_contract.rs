@@ -240,15 +240,15 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn teardown(&self) -> FixtureResult<FixtureSupport<()>> {
+    fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
-        Ok(FixtureSupport::Supported(()))
+        Ok(())
     }
 }
 
 fn main() {
     let fixture = RootedFixture::new();
-    let suite = FileSystemContractSuite::new(&fixture);
-    suite.assert_all();
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    suite.run_all().assert_satisfied();
     println!("filesystem contract suite passed");
 }
