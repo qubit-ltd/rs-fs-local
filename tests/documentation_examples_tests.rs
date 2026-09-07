@@ -138,18 +138,11 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
     );
     table.remove("optional");
     if let Some(path) = table.remove("path") {
+        if !root.join("Cargo.toml").is_file() {
+            return toml::Value::Table(table).to_string();
+        }
         let declared_path = Path::new(path.as_str().expect("dependency path"));
-        let path = if let Some(sibling_root) =
-            std::env::var_os("QUBIT_FS_SIBLING_ROOT")
-        {
-            PathBuf::from(sibling_root).join(
-                declared_path
-                    .file_name()
-                    .expect("dependency path must name a sibling crate"),
-            )
-        } else {
-            root.join(declared_path)
-        };
+        let path = resolve_dependency_path(root, declared_path);
         if path.join("Cargo.toml").is_file() {
             let path =
                 path.canonicalize().expect("dependency path must resolve");
@@ -162,6 +155,36 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
         }
     }
     toml::Value::Table(table).to_string()
+}
+
+/// Resolves a dependency against the isolated sibling view when Cargo has
+/// temporarily rewritten its manifest path to an absolute checkout path.
+fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
+    let Some(sibling_root) = std::env::var_os("QUBIT_FS_SIBLING_ROOT") else {
+        return root.join(declared_path);
+    };
+    let sibling_root = PathBuf::from(sibling_root);
+    let direct = sibling_root.join(
+        declared_path
+            .file_name()
+            .expect("dependency path must name a sibling crate"),
+    );
+    if direct.join("Cargo.toml").is_file() {
+        return direct;
+    }
+    let package = fs::read_to_string(declared_path.join("Cargo.toml"))
+        .ok()
+        .and_then(|source| source.parse::<toml::Value>().ok())
+        .and_then(|value| value["package"]["name"].as_str().map(str::to_owned));
+    if let Some(package) = package {
+        if let Some(suffix) = package.strip_prefix("qubit-") {
+            let mapped = sibling_root.join(format!("rs-{suffix}"));
+            if mapped.join("Cargo.toml").is_file() {
+                return mapped;
+            }
+        }
+    }
+    root.join(declared_path)
 }
 
 /// Missing siblings retain the current declared requirements, rather than
