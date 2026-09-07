@@ -18,6 +18,7 @@ use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyStats;
 use qubit_fs::directory::CreateDirectoryOutcome;
 use qubit_fs::directory::DeleteOutcome;
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -516,8 +517,13 @@ impl FileSystemSpi for LocalFileSystemSpi {
         &self,
         request: OpenWriterRequest<'_>,
     ) -> FsResult<OpenedWriter> {
-        let path = self.native_path(request.path())?;
-        let mut options = local_options_mapper::write(request.options())?;
+        let path = self.native_path(request.path()).map_err(|error| {
+            error.with_effect_state(FsEffectState::Unchanged)
+        })?;
+        let mut options = local_options_mapper::write(request.options())
+            .map_err(|error| {
+                error.with_effect_state(FsEffectState::Unchanged)
+            })?;
         if let Some(timeout) = self.open_retry_timeout {
             options = options.with_open_retry_timeout(timeout);
         }
