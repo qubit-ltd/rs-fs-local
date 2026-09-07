@@ -225,10 +225,18 @@ LocalTempFile / LocalTempDirectory → temp session adapter
 
 The public resource remains bound to its originating `FileSystem`. Rooted
 persist, cleanup, and child operations retain the original root authority.
-Persist `NotPublished` and `Indeterminate` map directly. Only `overwrite` and
-`creates_parent` map to `LocalPersistOptions`; unsupported atomicity or metadata
-requirements are not fabricated. Explicit cleanup reports errors, `Drop` is
-best effort, and unknown source/target state is `Indeterminate`.
+Persist failure states map directly:
+
+| Native state | `qubit-fs` state |
+| --- | --- |
+| `NotPublished` | `NotPublished` |
+| `PublishedSourceRetained` | `PublishedSourceRetained` |
+| `Indeterminate` | `Indeterminate` |
+
+Only `overwrite` and `creates_parent` map to `LocalPersistOptions`; unsupported
+atomicity or metadata requirements are not fabricated. Explicit cleanup reports
+errors, `Drop` is best effort, and unknown source/target state is
+`Indeterminate`.
 
 ## 11. Async boundary
 
@@ -301,7 +309,9 @@ scope. Shared mapper/session logic stays in focused modules.
 1. **Mapping tests:** fake native outcomes/errors prove request, metadata,
    outcome, and failure-state mappings.
 2. **Adapter integration tests:** host/rooted construction and identity,
-   registry resolution, conversion-before-I/O, zero-side-effect copy rejection,
+   immutable properties snapshots (provider, identity, capabilities, limits,
+   and path constraints), registry resolution, conversion-before-I/O,
+   zero-side-effect copy rejection,
    native-copy no-fallback, typed copy/rename states, writer/temp terminal
    states, and rooted temporary authority.
 3. **Provider contract tests:** the public facade runs the applicable
