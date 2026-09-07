@@ -28,7 +28,6 @@ use qubit_fs_local::host_path_to_logical;
 use qubit_fs_testkit::FileSystemContract;
 use qubit_fs_testkit::FileSystemContractSuite;
 use qubit_fs_testkit::FileSystemFixture;
-use qubit_fs_testkit::FixtureCase;
 use qubit_fs_testkit::FixtureError;
 use qubit_fs_testkit::FixtureResult;
 use qubit_fs_testkit::FixtureSupport;
@@ -303,31 +302,6 @@ impl FileSystemFixture for RootedFixture {
             })
     }
 
-    fn case_support(
-        &self,
-        case: FixtureCase,
-    ) -> FixtureResult<FixtureSupport<()>> {
-        let supported = match case {
-            FixtureCase::CopyOverwrite | FixtureCase::CopyTree => true,
-            FixtureCase::Capability(capability) => self
-                .file_system
-                .properties()
-                .capabilities()
-                .supports(capability),
-            FixtureCase::ReadIfMatch
-            | FixtureCase::ReadIfNoneMatch
-            | FixtureCase::WriteIfAbsent
-            | FixtureCase::WriteIfMatch
-            | FixtureCase::DeleteIfMatch => false,
-            _ => false,
-        };
-        Ok(if supported {
-            FixtureSupport::Supported(())
-        } else {
-            FixtureSupport::Unsupported
-        })
-    }
-
     fn exists_out_of_band(
         &self,
         path: &Path,
@@ -366,9 +340,8 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn teardown(&self) -> FixtureResult<FixtureSupport<()>> {
-        self.teardown_entries()?;
-        Ok(FixtureSupport::Supported(()))
+    fn teardown(&self) -> FixtureResult<()> {
+        self.teardown_entries()
     }
 }
 
@@ -490,31 +463,6 @@ impl FileSystemFixture for HostFixture {
             })
     }
 
-    fn case_support(
-        &self,
-        case: FixtureCase,
-    ) -> FixtureResult<FixtureSupport<()>> {
-        let supported = match case {
-            FixtureCase::CopyOverwrite | FixtureCase::CopyTree => true,
-            FixtureCase::Capability(capability) => self
-                .file_system
-                .properties()
-                .capabilities()
-                .supports(capability),
-            FixtureCase::ReadIfMatch
-            | FixtureCase::ReadIfNoneMatch
-            | FixtureCase::WriteIfAbsent
-            | FixtureCase::WriteIfMatch
-            | FixtureCase::DeleteIfMatch => false,
-            _ => false,
-        };
-        Ok(if supported {
-            FixtureSupport::Supported(())
-        } else {
-            FixtureSupport::Unsupported
-        })
-    }
-
     fn exists_out_of_band(
         &self,
         path: &Path,
@@ -553,9 +501,8 @@ impl FileSystemFixture for HostFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn teardown(&self) -> FixtureResult<FixtureSupport<()>> {
-        self.teardown_entries()?;
-        Ok(FixtureSupport::Supported(()))
+    fn teardown(&self) -> FixtureResult<()> {
+        self.teardown_entries()
     }
 }
 
@@ -563,13 +510,11 @@ impl FileSystemFixture for HostFixture {
 register_file_system_contract_tests! {
     module: host_contracts,
     fixture: super::HostFixture::new,
-    require_complete: true,
 }
 
 register_file_system_contract_tests! {
     module: rooted_contracts,
     fixture: super::RootedFixture::new,
-    require_complete: true,
 }
 
 /// Rooted listings preserve the namespace of a non-root request path.
@@ -734,9 +679,10 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
 #[test]
 fn test_rooted_list_contract_teardown_preserves_fixture_root() {
     let fixture = RootedFixture::new();
-    let report = FileSystemContractSuite::new(&fixture)
-        .assert_contract_with_report(FileSystemContract::List);
-    report.assert_complete();
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    suite
+        .run_contract(FileSystemContract::List)
+        .assert_satisfied();
 
     let fixture_root = fixture.root.path().join("fixture");
     assert!(fixture_root.is_dir(), "fixture namespace root was removed");
@@ -763,9 +709,10 @@ fn test_rooted_list_contract_teardown_preserves_fixture_root() {
 #[test]
 fn test_host_list_contract_teardown_clears_fixture_root() {
     let fixture = HostFixture::new();
-    let report = FileSystemContractSuite::new(&fixture)
-        .assert_contract_with_report(FileSystemContract::List);
-    report.assert_complete();
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    suite
+        .run_contract(FileSystemContract::List)
+        .assert_satisfied();
 
     assert_eq!(
         fs::read_dir(fixture.root.path())
@@ -836,4 +783,59 @@ fn test_host_teardown_rejects_symlinked_root() {
     fs::remove_file(&original_root).expect("root symlink must be removed");
     fs::rename(&moved_root, &original_root)
         .expect("fixture root must be restored");
+}
+
+/// Teardown also removes staging paths that were never registered by a suite.
+#[test]
+fn test_rooted_teardown_reclaims_partial_setup_and_is_idempotent() {
+    let fixture = RootedFixture::new();
+    let staging = fixture.root.path().join("unregistered-staging");
+    fs::create_dir_all(staging.join("nested"))
+        .expect("partial staging directory");
+    fs::write(staging.join("nested/data"), b"partial")
+        .expect("partial staging bytes");
+    assert!(matches!(
+        fixture
+            .seed_file("partial-setup", b"seeded")
+            .expect("independent seed"),
+        FixtureSupport::Supported(_)
+    ));
+    fixture.teardown().expect("first teardown");
+    fixture.teardown().expect("idempotent teardown");
+    assert!(!staging.exists());
+    assert!(fixture.root.path().join("fixture").is_dir());
+    assert_eq!(
+        fs::read_dir(fixture.root.path().join("fixture"))
+            .expect("namespace remains")
+            .count(),
+        0
+    );
+}
+
+/// Host teardown retains only the isolated root after a partially prepared run.
+#[cfg(unix)]
+#[test]
+fn test_host_teardown_reclaims_partial_setup_and_is_idempotent() {
+    let fixture = HostFixture::new();
+    let staging = fixture.root.path().join("unregistered-staging");
+    fs::create_dir_all(staging.join("nested"))
+        .expect("partial staging directory");
+    fs::write(staging.join("nested/data"), b"partial")
+        .expect("partial staging bytes");
+    assert!(matches!(
+        fixture
+            .seed_file("partial-setup", b"seeded")
+            .expect("independent seed"),
+        FixtureSupport::Supported(_)
+    ));
+    fixture.teardown().expect("first teardown");
+    fixture.teardown().expect("idempotent teardown");
+    assert!(!staging.exists());
+    assert!(fixture.root.path().is_dir());
+    assert_eq!(
+        fs::read_dir(fixture.root.path())
+            .expect("root remains")
+            .count(),
+        0
+    );
 }
