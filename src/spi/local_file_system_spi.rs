@@ -131,6 +131,16 @@ impl LocalFileSystemSpi {
 
     /// Opens a Rooted filesystem with the default local provider identity.
     ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable filesystem identity exposed by the SPI.
+    /// - `root`: Native directory retained as filesystem authority.
+    /// - `resource_policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A rooted local SPI retaining the opened native authority.
+    ///
     /// # Errors
     ///
     /// Returns a provider error when the native authority or portable
@@ -149,6 +159,17 @@ impl LocalFileSystemSpi {
     }
 
     /// Opens a Rooted filesystem with an explicit provider identity.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable filesystem identity exposed by the SPI.
+    /// - `provider_id`: Provider identifier attached to failures.
+    /// - `root`: Native directory retained as filesystem authority.
+    /// - `resource_policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A rooted local SPI retaining the opened native authority.
     ///
     /// # Errors
     ///
