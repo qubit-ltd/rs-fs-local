@@ -377,6 +377,7 @@ Persist failure state 一一映射：
 | Native state | `qubit-fs` state |
 | --- | --- |
 | `NotPublished` | `NotPublished` |
+| `PublishedSourceRetained` | `PublishedSourceRetained` |
 | `Indeterminate` | `Indeterminate` |
 
 `ResolvedPersistOptions` 只有 `overwrite` 和 `creates_parent` 会映射到
@@ -492,7 +493,12 @@ durability 的 `cfg(unix)` / `cfg(windows)` 分支。
 ```text
 src/
 ├── constants.rs
+├── local_copy_resource_limits.rs
+├── local_delete_resource_limits.rs
+├── local_directory_reopen_policy.rs
 ├── local_file_systems.rs
+├── local_list_resource_limits.rs
+├── local_resource_policy.rs
 ├── spi/
 │   ├── local_file_system_spi.rs
 │   ├── local_options_mapper.rs
@@ -524,7 +530,8 @@ src/
 2. Adapter integration tests
 
    验证 host/rooted factory 返回 `FileSystem`，opened/temp handle 保留正确
-   filesystem identity，registry 返回 concrete resolution。
+   filesystem identity，properties 快照包含正确的 provider、identity、capability、limit
+   和 path constraint，registry 返回 concrete resolution。
 
    另外覆盖全部输入路径转换发生在 I/O 前、不可表达 copy 的零副作用终止失败、native copy
    failure 不 fallback、copy/rename typed state 与 partial stats 无损映射，以及
@@ -535,4 +542,5 @@ src/
    使用 `qubit-fs-testkit::FileSystemContractSuite` 通过公开门面运行完整适用契约。
 
 平台安全算法不在本 crate 重复测试；它们由 `qubit-local-files` 测试。本 crate 只验证
-没有因转换丢失其语义。
+没有因转换丢失其语义。`fuzz/fuzz_targets/registry_uri_resolution.rs` 将输入限制为
+4096 字节，在不修改文件系统的条件下验证 URI resolution。
