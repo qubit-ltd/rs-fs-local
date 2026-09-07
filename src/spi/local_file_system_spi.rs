@@ -96,6 +96,16 @@ impl LocalFileSystemSpi {
     ///
     /// A host SPI with capability support derived from the native backend.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use qubit_fs_local::spi::LocalFileSystemSpi;
+    /// use qubit_fs_local::LocalResourcePolicy;
+    ///
+    /// let _spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())?;
+    /// # Ok::<(), qubit_fs::error::FsError>(())
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns a provider error when portable properties cannot be assembled.
@@ -121,6 +131,16 @@ impl LocalFileSystemSpi {
 
     /// Opens a Rooted filesystem with the default local provider identity.
     ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable filesystem identity exposed by the SPI.
+    /// - `root`: Native directory retained as filesystem authority.
+    /// - `resource_policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A rooted local SPI retaining the opened native authority.
+    ///
     /// # Errors
     ///
     /// Returns a provider error when the native authority or portable
@@ -139,6 +159,17 @@ impl LocalFileSystemSpi {
     }
 
     /// Opens a Rooted filesystem with an explicit provider identity.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable filesystem identity exposed by the SPI.
+    /// - `provider_id`: Provider identifier attached to failures.
+    /// - `root`: Native directory retained as filesystem authority.
+    /// - `resource_policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A rooted local SPI retaining the opened native authority.
     ///
     /// # Errors
     ///
@@ -906,26 +937,28 @@ impl FileSystemSpi for LocalFileSystemSpi {
 
 #[cfg(test)]
 mod tests {
-    use super::LocalFileSystemSpi;
     use qubit_fs::metadata::FileSystemId;
+    use qubit_fs::spi::ProviderOperation;
     use qubit_fs::spi::ProviderProperties;
+    use qubit_local_files::LocalFileSystem;
+
+    use super::LocalFileSystemSpi;
 
     /// The local SPI construction path retains a validated provider snapshot.
     #[test]
     fn test_properties_snapshot_returns_provider_properties() {
-        let native = qubit_local_files::LocalFileSystem::host()
+        let native = LocalFileSystem::host()
             .expect("host native filesystem should construct");
         let id = FileSystemId::new("local-test")
             .expect("test filesystem identity should be valid");
-        let snapshot: ProviderProperties = LocalFileSystemSpi::properties_snapshot(
-            id,
-            "local-file",
-            &native,
-        )
-        .expect("provider properties should validate");
+        let snapshot: ProviderProperties =
+            LocalFileSystemSpi::properties_snapshot(id, "local-file", &native)
+                .expect("provider properties should validate");
 
-        assert!(snapshot.operations().supports(
-            qubit_fs::spi::ProviderOperation::OpenReader
-        ));
+        assert!(
+            snapshot
+                .operations()
+                .supports(ProviderOperation::OpenReader)
+        );
     }
 }

@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::hint::black_box;
@@ -9,20 +11,24 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use qubit_fs_local::LocalCopyResourceLimits;
+use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalDirectoryReopenPolicy;
 use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 
 #[test]
-fn bounded_policy_requires_all_recursive_resource_dimensions() {
+fn test_bounded_policy_requires_all_recursive_resource_dimensions() {
     let list = LocalListResourceLimits::new(1, 2, 3, 4, Duration::from_secs(5))
         .expect("nonzero open-directory capacity should be valid");
     let copy =
         LocalCopyResourceLimits::new(6, 7, 8, 9, Duration::from_secs(10))
             .expect("nonzero open-directory capacity should be valid");
-    let policy = LocalResourcePolicy::bounded(list, copy);
+    let delete =
+        LocalDeleteResourceLimits::new(10, 11, 12, Duration::from_secs(13));
+    let policy = LocalResourcePolicy::bounded(list, copy, delete);
     assert_eq!(policy.list_limits(), Some(list));
     assert_eq!(policy.copy_limits(), Some(copy));
+    assert_eq!(policy.delete_limits(), Some(delete));
     assert_eq!(list.max_depth(), 1);
     assert_eq!(list.max_entries(), 2);
     assert_eq!(list.max_seen_name_bytes(), 3);
@@ -38,15 +44,15 @@ fn bounded_policy_requires_all_recursive_resource_dimensions() {
 }
 
 #[test]
-fn unbounded_policy_is_an_explicit_empty_budget_selection() {
+fn test_unbounded_policy_is_an_explicit_empty_budget_selection() {
     let policy = LocalResourcePolicy::unbounded();
     assert_eq!(policy.list_limits(), None);
     assert_eq!(policy.copy_limits(), None);
 }
 
 #[test]
-fn local_execution_controls_are_explicit_and_independent_of_recursion_budgets()
-{
+fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budgets()
+ {
     let timeout = Duration::from_millis(250);
     let attempts = NonZeroUsize::new(32).expect("positive attempt count");
     let policy = black_box(
@@ -84,51 +90,31 @@ fn local_execution_controls_are_explicit_and_independent_of_recursion_budgets()
     assert_eq!(None, policy.copy_limits());
 }
 
-/// Deletion ceilings are explicit and independent of listing/copy defaults.
+/// Deletion ceilings can be explicitly cleared after policy construction.
 #[test]
-fn test_delete_resource_limits_are_explicit() {
-    use qubit_fs_local::LocalDeleteResourceLimits;
+fn test_delete_limits_can_be_explicitly_cleared() {
     let limits =
         LocalDeleteResourceLimits::new(1, 2, 3, Duration::from_secs(4));
     assert_eq!(1, limits.max_depth());
     assert_eq!(2, limits.max_entries());
     assert_eq!(3, limits.max_pending_path_bytes());
     assert_eq!(Duration::from_secs(4), limits.deadline());
-    let policy = LocalResourcePolicy::unbounded();
-    assert_eq!(None, policy.delete_limits());
-    let policy = policy.with_delete_limits(Some(limits));
-    assert_eq!(Some(limits), policy.delete_limits());
-    assert_eq!(None, policy.list_limits());
-    assert_eq!(None, policy.copy_limits());
-    assert_eq!(None, policy.with_delete_limits(None).delete_limits());
-}
-
-#[test]
-fn bounded_operations_requires_all_three_operation_budgets() {
-    use qubit_fs_local::LocalDeleteResourceLimits;
-
     let list =
         LocalListResourceLimits::new(2, 3, 4096, 4, Duration::from_secs(5))
             .expect("list");
     let copy =
         LocalCopyResourceLimits::new(6, 7, 8192, 8, Duration::from_secs(9))
             .expect("copy");
-    let delete =
-        LocalDeleteResourceLimits::new(10, 11, 16384, Duration::from_secs(12));
-    let policy = LocalResourcePolicy::bounded_operations(list, copy, delete);
+    let policy = LocalResourcePolicy::bounded(list, copy, limits);
 
     assert_eq!(Some(list), policy.list_limits());
     assert_eq!(Some(copy), policy.copy_limits());
-    assert_eq!(Some(delete), policy.delete_limits());
+    assert_eq!(Some(limits), policy.delete_limits());
     assert_eq!(None, policy.open_retry_timeout());
     assert_eq!(None, policy.temp_max_attempts());
     assert_eq!(
         LocalDirectoryReopenPolicy::Reopen,
         policy.directory_reopen_policy()
-    );
-    assert_eq!(
-        None,
-        LocalResourcePolicy::bounded(list, copy).delete_limits()
     );
     assert_eq!(None, policy.with_delete_limits(None).delete_limits());
 }

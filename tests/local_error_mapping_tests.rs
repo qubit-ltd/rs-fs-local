@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::error::Error;
@@ -14,6 +16,8 @@ use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::path::Path;
+use qubit_fs::rename::RenameFailureState;
+use qubit_fs::rename::RenameOptions;
 use qubit_fs::write::WriteDisposition;
 use qubit_fs::write::WriteFailureState;
 use qubit_fs::write::WriteOptions;
@@ -26,7 +30,7 @@ use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::test_support::install_test_fault;
 
 #[test]
-fn publication_incomplete_retains_partial_effect_and_native_source() {
+fn test_publication_incomplete_retains_partial_effect_and_native_source() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let target = host_path_to_logical(&root.path().join("first/second"))
         .expect("target should be representable");
@@ -56,7 +60,7 @@ fn publication_incomplete_retains_partial_effect_and_native_source() {
 }
 
 #[test]
-fn typed_copy_failure_exposes_unchanged_effect_and_request_context() {
+fn test_typed_copy_failure_exposes_unchanged_effect_and_request_context() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let source = Path::parse("/missing").expect("valid source path");
     let target = Path::parse("/target").expect("valid target path");
@@ -79,7 +83,31 @@ fn typed_copy_failure_exposes_unchanged_effect_and_request_context() {
 }
 
 #[test]
-fn writer_conflict_retains_unchanged_effect_and_native_source() {
+fn test_typed_rename_failure_exposes_unchanged_effect_and_request_context() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    let source = Path::parse("/missing").expect("valid source path");
+    let target = Path::parse("/target").expect("valid target path");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted filesystem should construct");
+
+    let failure = filesystem
+        .rename(&source, &target, RenameOptions::default())
+        .expect_err("missing source should fail");
+
+    assert_eq!(RenameFailureState::Unchanged, failure.state());
+    assert_eq!(
+        Some(FsEffectState::Unchanged),
+        failure.error().effect_state()
+    );
+    assert_eq!(Some(&source), failure.error().path());
+    assert_eq!(Some(&target), failure.error().target());
+    assert_eq!(Some("local-file"), failure.error().provider());
+    assert!(failure.error().source().is_some());
+}
+
+#[test]
+fn test_writer_conflict_retains_unchanged_effect_and_native_source() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let target = path("/target");
     let filesystem =
@@ -115,7 +143,7 @@ fn writer_conflict_retains_unchanged_effect_and_native_source() {
 }
 
 #[test]
-fn partial_delete_mapping_retains_native_failure_path_and_effect() {
+fn test_partial_delete_mapping_retains_native_failure_path_and_effect() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let native_target = root.path().join("tree");
     std::fs::create_dir(&native_target).expect("tree should exist");

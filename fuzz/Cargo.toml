@@ -1,0 +1,22 @@
+[package]
+name = "qubit-fs-local-fuzz"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+qubit-fs-local = { path = "..", features = ["registry"] }
+qubit-fs = { path = "../../rs-fs", version = "0.4" }
+qubit-fs-registry = { path = "../../rs-fs-registry", version = "0.3" }
+
+[[bin]]
+name = "registry_uri_resolution"
+path = "fuzz_targets/registry_uri_resolution.rs"
+test = false
+doc = false
+bench = false

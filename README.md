@@ -12,6 +12,8 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
+This README documents `qubit-fs-local` 0.4.0 (package version `0.4.0`).
+
 ## Installation
 
 ```bash
@@ -34,27 +36,38 @@ absolute logical paths inside that authority:
 
 ```rust
 use std::path::Path;
+use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
-use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
 
+let policy = LocalResourcePolicy::bounded(
+    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
+);
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
-    LocalResourcePolicy::unbounded(),
+    policy,
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Every constructor requires an explicit `LocalResourcePolicy`: use `unbounded()`
-only when the application deliberately accepts unbounded recursive work, or
-pass `bounded(...)` with all listing and copy budgets. `LocalFileSystems::host(policy)` opens the process host namespace. `rooted(root, policy)`
-generates a process-local identity, while `rooted_with_id(id, root)` preserves
-the caller-provided identity. The latter is the appropriate choice when that
-identity must be stable outside the process.
+Every constructor requires an explicit `LocalResourcePolicy`. Prefer
+`bounded(list, copy, delete)` with all three operation budgets. Use `unbounded()`
+only when the application deliberately accepts unbounded recursive work.
+`LocalFileSystems::host(policy)` opens the process host namespace. `rooted(root, policy)`
+generates a process-local identity, while
+`rooted_with_id(id, root, policy)` preserves the caller-provided identity and
+applies the same explicit policy. The latter is the appropriate choice when
+that identity must be stable outside the process.
 
 When a native host path comes from an API such as `std::env::current_dir`,
 convert it with `host_path_to_logical` before passing it to the facade. This
@@ -63,10 +76,19 @@ for a path that is already a rooted logical path; the two representations have
 different authorities.
 
 ```rust
+use std::time::Duration;
 use qubit_fs::read::ReadOptions;
-use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
+use qubit_fs_local::{
+    host_path_to_logical, LocalCopyResourceLimits, LocalDeleteResourceLimits,
+    LocalFileSystems, LocalListResourceLimits, LocalResourcePolicy,
+};
 
-let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+let policy = LocalResourcePolicy::bounded(
+    LocalListResourceLimits::new(16, 1_000, 1 << 20, 16, Duration::from_secs(10))?,
+    LocalCopyResourceLimits::new(16, 1_000, 16 << 20, 16, Duration::from_secs(10))?,
+    LocalDeleteResourceLimits::new(16, 1_000, 1 << 20, Duration::from_secs(10)),
+);
+let file_system = LocalFileSystems::host(policy)?;
 let native = std::env::current_dir()?.join("Cargo.toml");
 let path = host_path_to_logical(&native)?;
 let prefix = file_system.read_prefix(&path, ReadOptions::default(), 4096)?;
@@ -74,10 +96,11 @@ assert!(prefix.len() <= 4096);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`bounded_operations(list, copy, delete)` sets explicit per-request ceilings
-for the three ordinary operation categories. The compatible
-`bounded(list, copy)` entry point limits only listing and copying; deletion
-requires separate configuration. A provider listing entry ceiling counts
+`bounded(list, copy, delete)` sets explicit per-request ceilings
+for the three ordinary operation categories.
+The three limit families are independent: listing and copy use their own
+depth/entry/byte/open-directory/deadline values, while deletion uses depth,
+entry, pending-path-byte, and deadline values. A provider listing entry ceiling counts
 entries yielded by the native walker before prefix filtering, while a request
 entry limit counts entries returned after filtering. Temporary-resource
 cleanup, Drop, and native publication cleanup do not inherit ordinary deletion
@@ -116,6 +139,8 @@ filesystem facade.
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
+- [Adapter design](doc/local_file_system_adapter_design.md)
+- [中文设计文档](doc/local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
 - [中文 README](README.zh_CN.md)
 

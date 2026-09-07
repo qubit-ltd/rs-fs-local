@@ -15,7 +15,6 @@ use qubit_fs::error::FsError;
 use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
 use qubit_fs::metadata::DirEntry;
-use qubit_fs::metadata::FileKind;
 use qubit_fs::spi::DirectoryStreamSpi;
 use qubit_fs::spi::ResolvedListOptions;
 use qubit_local_files as native_files;
@@ -141,8 +140,10 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                 entry.path(),
                 FsOperation::List,
             )?;
-            let mut result =
-                DirEntry::new(path, output_kind(entry.metadata().kind()));
+            let mut result = DirEntry::new(
+                path,
+                local_outcome_mapper::file_kind(entry.metadata().kind()),
+            );
             if options.include_metadata() {
                 result.metadata = Some(local_outcome_mapper::metadata(
                     entry.metadata().clone(),
@@ -176,36 +177,29 @@ fn entry_error(
     )
 }
 
-/// Converts a native file kind to its facade representation.
-///
-/// # Parameters
-///
-/// - `kind`: Native file kind observed by the directory walker.
-///
-/// # Returns
-///
-/// The equivalent facade kind; platform-specific kinds use a `local-*`
-/// `Other` name.
-fn output_kind(kind: native_files::outcome::LocalFileKind) -> FileKind {
-    match kind {
-        native_files::outcome::LocalFileKind::File => FileKind::File,
-        native_files::outcome::LocalFileKind::Directory => FileKind::Directory,
-        native_files::outcome::LocalFileKind::Symlink => FileKind::Symlink,
-        native_files::outcome::LocalFileKind::Fifo => {
-            FileKind::Other("local-fifo".to_owned())
-        }
-        native_files::outcome::LocalFileKind::Socket => {
-            FileKind::Other("local-socket".to_owned())
-        }
-        native_files::outcome::LocalFileKind::BlockDevice => {
-            FileKind::Other("local-block-device".to_owned())
-        }
-        native_files::outcome::LocalFileKind::CharDevice => {
-            FileKind::Other("local-char-device".to_owned())
-        }
-        native_files::outcome::LocalFileKind::Other => {
-            FileKind::Other("local".to_owned())
-        }
-        _ => FileKind::Other("local".to_owned()),
+#[cfg(test)]
+mod tests {
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_local_files::error::LocalFileError;
+    use qubit_local_files::error::LocalFileErrorKind;
+    use qubit_local_files::error::LocalFileOperation;
+
+    use super::entry_error;
+
+    /// Lazy walker errors retain provider identity for facade path enrichment.
+    #[test]
+    fn test_entry_error_retains_provider_without_inventing_path() {
+        let native = LocalFileError::new(
+            LocalFileErrorKind::NotFound,
+            LocalFileOperation::List,
+        );
+
+        let error = entry_error(native, "rooted-listing");
+
+        assert_eq!(FsErrorKind::NotFound, error.kind());
+        assert_eq!(FsOperation::List, error.operation());
+        assert_eq!(None, error.path());
+        assert_eq!(Some("rooted-listing"), error.provider());
     }
 }

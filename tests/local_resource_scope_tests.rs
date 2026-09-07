@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
 use std::time::Duration;
@@ -18,7 +20,7 @@ use qubit_fs_local::LocalListResourceLimits;
 use qubit_fs_local::LocalResourcePolicy;
 
 fn policy_with_zero_delete_entries() -> LocalResourcePolicy {
-    LocalResourcePolicy::bounded_operations(
+    LocalResourcePolicy::bounded(
         LocalListResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60))
             .expect("list"),
         LocalCopyResourceLimits::new(8, 64, 4096, 4, Duration::from_secs(60))
@@ -28,7 +30,7 @@ fn policy_with_zero_delete_entries() -> LocalResourcePolicy {
 }
 
 #[test]
-fn ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
+fn test_ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
     let root = tempfile::tempdir().expect("root");
     let fs = LocalFileSystems::rooted(
         root.path(),
@@ -62,7 +64,7 @@ fn ordinary_delete_is_bounded_but_temp_cleanup_is_independent() {
 }
 
 #[test]
-fn temp_drop_keeps_existing_best_effort_cleanup_scope() {
+fn test_temp_drop_keeps_existing_best_effort_cleanup_scope() {
     let root = tempfile::tempdir().expect("root");
     let fs = LocalFileSystems::rooted(
         root.path(),

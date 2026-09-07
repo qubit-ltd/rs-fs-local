@@ -6,7 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.1 release: direct host/rooted facades and the optional registry provider.
+0.4.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.4.0`).
 
 ## Provider resource ceilings
 
@@ -15,10 +16,8 @@ adapter treats `LocalResourcePolicy` as per-request ceilings: list/copy request
 limits are intersected with provider limits, and omitting a request limit cannot
 remove a provider limit. These are not aggregate quotas across concurrent requests.
 
-`LocalResourcePolicy::bounded(list, copy)` bounds those two operations; recursive
-deletion remains independently configurable. Add
-`with_delete_limits(Some(LocalDeleteResourceLimits::new(depth, entries,
-pending_path_bytes, deadline)))` to bound deletion. Deletion requests preserve
+`LocalResourcePolicy::bounded(list, copy, delete)` sets independent ceilings for
+the three ordinary recursive operation families. Deletion requests preserve
 these ceilings while selecting recursion and missing-entry behavior. The requested
 directory counts as one entry at depth zero; pending-path bytes measure encoded
 native lengths, excluding allocator overhead. Deadlines are cooperative.
@@ -46,7 +45,7 @@ use qubit_fs_local::{
     LocalListResourceLimits, LocalResourcePolicy,
 };
 
-let policy = LocalResourcePolicy::bounded_operations(
+let policy = LocalResourcePolicy::bounded(
     LocalListResourceLimits::new(
         32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30),
     )?,
@@ -123,15 +122,24 @@ cargo add qubit-fs-local --features registry
 
 ```rust
 use std::path::Path;
+use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
-use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
 
+let policy = LocalResourcePolicy::bounded(
+    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
+);
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
-    LocalResourcePolicy::unbounded(),
+    policy,
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
@@ -139,9 +147,9 @@ let metadata = fs.stat(&report)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Every constructor requires `LocalResourcePolicy`; use `unbounded()` only after
-explicitly accepting unbounded recursive resource use, or pass complete bounded
-list and copy limits. Choose `host(policy)` only when the intended authority is the process host
+Every constructor requires `LocalResourcePolicy`; pass complete bounded list,
+copy, and delete limits for ordinary recursive workflows. Use `unbounded()` only
+after explicitly accepting unbounded recursive resource use. Choose `host(policy)` only when the intended authority is the process host
 namespace. Use `rooted_with_id` when the filesystem identity must be supplied
 by the application; use `rooted` when a distinct process-local identity is
 sufficient.

@@ -242,6 +242,18 @@ impl FileWriterSpi for LocalFileWriterSpi {
     }
 }
 
+/// Maps a portable writer failure state to the strongest confirmed external
+/// effect of the failed commit.
+///
+/// # Parameters
+///
+/// - `state`: Publication and retry state reported for the failed commit.
+///
+/// # Returns
+///
+/// `Unchanged` before publication, `Applied` after confirmed publication, or
+/// `Indeterminate` when the native writer cannot determine the outcome.
+/// Converts native writer publication state into portable effect state.
 #[inline]
 const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
     match state {

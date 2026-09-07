@@ -151,6 +151,7 @@ fn attach_native_effect(
     }
 }
 
+/// Maps native lifecycle effects into portable request effects.
 #[inline]
 fn native_effect_state(
     error: &native_files::LocalFileError,
@@ -346,16 +347,25 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io::ErrorKind as IoErrorKind;
 
+    use qubit_fs::copy::CopyFailureState;
     use qubit_fs::error::FsEffectState;
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_fs::path::Path;
+    use qubit_fs::rename::RenameFailureState;
     use qubit_local_files::error::LocalFileError;
     use qubit_local_files::error::LocalFileErrorKind;
     use qubit_local_files::error::LocalFileOperation;
 
-    use super::*;
+    use super::copy_effect_state;
+    use super::map;
+    use super::native_effect_state;
+    use super::rename_effect_state;
 
     #[test]
-    fn maps_every_native_error_category_without_losing_its_source() {
+    fn test_maps_every_native_error_category_without_losing_its_source() {
         let path = Path::parse("/source").expect("valid test path");
         let target = Path::parse("/target").expect("valid test target");
         for (native, expected, effect) in [
@@ -455,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_publication_cause_separately_from_effect() {
+    fn test_maps_publication_cause_separately_from_effect() {
         let path = Path::parse("/source").expect("valid test path");
         let native = LocalFileError::new(
             LocalFileErrorKind::PublicationIncomplete,
@@ -469,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_native_cause_precedes_a_coarser_io_source() {
+    fn test_explicit_native_cause_precedes_a_coarser_io_source() {
         let path = Path::parse("/source").expect("valid test path");
         let native = LocalFileError::new(
             LocalFileErrorKind::TypeConflict,
@@ -480,5 +490,103 @@ mod tests {
 
         assert_eq!(FsErrorKind::Conflict, error.kind());
         assert_eq!(None, error.effect_state());
+    }
+
+    #[test]
+    fn test_maps_io_error_categories_to_portable_kinds() {
+        let path = Path::parse("/source").expect("valid test path");
+        let target = Path::parse("/target").expect("valid test target");
+        for (io_kind, expected) in [
+            (IoErrorKind::PermissionDenied, FsErrorKind::PermissionDenied),
+            (IoErrorKind::NotFound, FsErrorKind::NotFound),
+            (IoErrorKind::AlreadyExists, FsErrorKind::AlreadyExists),
+            (IoErrorKind::InvalidInput, FsErrorKind::InvalidPath),
+            (IoErrorKind::InvalidData, FsErrorKind::DataCorruption),
+            (IoErrorKind::TimedOut, FsErrorKind::Timeout),
+            (IoErrorKind::WriteZero, FsErrorKind::Io),
+            (IoErrorKind::UnexpectedEof, FsErrorKind::Io),
+            (IoErrorKind::Unsupported, FsErrorKind::UnsupportedOperation),
+            (IoErrorKind::Other, FsErrorKind::Io),
+        ] {
+            let native = LocalFileError::from_io(
+                LocalFileOperation::Metadata,
+                None,
+                None,
+                std::io::Error::from(io_kind),
+            );
+            let error = map(
+                native,
+                FsOperation::Copy,
+                &path,
+                Some(&target),
+                "local-file",
+            );
+            assert_eq!(
+                expected,
+                error.kind(),
+                "unexpected mapping for {io_kind:?}"
+            );
+            assert_eq!(FsOperation::Copy, error.operation());
+            assert_eq!(Some(&path), error.path());
+            assert_eq!(Some(&target), error.target());
+            assert_eq!(Some("local-file"), error.provider());
+            assert!(
+                error
+                    .source()
+                    .and_then(|source| source.downcast_ref::<LocalFileError>())
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
+    fn test_maps_typed_copy_and_rename_failure_states() {
+        for (state, expected) in [
+            (CopyFailureState::Unchanged, FsEffectState::Unchanged),
+            (
+                CopyFailureState::PartiallyPublished,
+                FsEffectState::PartiallyApplied,
+            ),
+            (CopyFailureState::Published, FsEffectState::Applied),
+            (
+                CopyFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
+        ] {
+            assert_eq!(expected, copy_effect_state(state));
+        }
+        for (state, expected) in [
+            (RenameFailureState::Unchanged, FsEffectState::Unchanged),
+            (RenameFailureState::Renamed, FsEffectState::Applied),
+            (
+                RenameFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
+        ] {
+            assert_eq!(expected, rename_effect_state(state));
+        }
+    }
+
+    #[test]
+    fn test_maps_native_effect_states_without_changing_their_meaning() {
+        for (kind, expected) in [
+            (
+                LocalFileErrorKind::PublicationIncomplete,
+                FsEffectState::PartiallyApplied,
+            ),
+            (
+                LocalFileErrorKind::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
+        ] {
+            let native =
+                LocalFileError::new(kind, LocalFileOperation::Metadata);
+            assert_eq!(Some(expected), native_effect_state(&native));
+        }
+        let unchanged = LocalFileError::new(
+            LocalFileErrorKind::PermissionDenied,
+            LocalFileOperation::Metadata,
+        );
+        assert_eq!(None, native_effect_state(&unchanged));
     }
 }

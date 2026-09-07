@@ -3,6 +3,9 @@
 > 状态：已批准的目标设计，已按最终版 `qubit-fs` 与
 > `qubit-local-files` 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
+>
+> 适用于 `qubit-fs-local` 0.4.0（包版本 `0.4.0`）· [English design](local_file_system_adapter_design.md) ·
+> [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
 
@@ -61,12 +64,10 @@ Host 与 rooted 不对应两套 SPI 类型。`LocalFileSystemSpi` 内部持有�
 
 ## 4. 普通调用入口
 
-应用通过仅作为类型命名空间的 `LocalFileSystems` 关联方法创建门面：
+应用通过仅作为类型命名空间的空枚举 `LocalFileSystems` 的关联方法创建门面：
 
 ```rust
-pub struct LocalFileSystems {
-    _private: (),
-}
+pub enum LocalFileSystems {}
 
 impl LocalFileSystems {
     pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem>;
@@ -132,11 +133,10 @@ SPI 类型可以公开，便于 provider 开发与测试，但不在 crate 根�
 
 ## 6. Properties
 
-Local SPI 的 `properties()` 返回稳定、无 I/O 的 `FileSystemProperties`，包括：
+Local SPI 的 `properties()` 返回稳定、无 I/O 的 `ProviderProperties`，包括：
 
-- configured `FileSystemId`；
-- provider id；
-- `PathSemantics::Hierarchical`；
+- `ProviderProperties::new` 中的 `FileSystemInfo`（configured `FileSystemId`、provider id
+  和 `PathSemantics::Hierarchical`）；
 - host-wide 或 rooted authority 描述；
 - 从 native capability 映射出的 `FileSystemCapabilities`；
 - 从平台和配置映射出的 `FileSystemLimits`；
@@ -193,7 +193,7 @@ component/path 的组合。
 路径转换实际集中在 `path::local_path_mapper` 的私有 free functions
 `native` 与 `logical` 中。公共 `host_path_to_logical` 是 host native 路径进入门面的唯一
 推荐入口；它要求绝对 native 路径，并保留非 UTF-8 与百分号编码，不通过 lossy display
-文本。Codec 或路径校验错误由 `LocalFileErrorMapper` 映射为无副作用的
+文本。Codec 或路径校验错误由私有 `path::local_path_mapper` 映射为无副作用的
 `FsError`。
 
 ### 7.2 Host filesystem
@@ -377,10 +377,12 @@ Persist failure state 一一映射：
 | Native state | `qubit-fs` state |
 | --- | --- |
 | `NotPublished` | `NotPublished` |
+| `PublishedSourceRetained` | `PublishedSourceRetained` |
 | `Indeterminate` | `Indeterminate` |
 
-`ResolvedPersistOptions` 的 overwrite、atomicity 和 metadata preservation 映射到
-`LocalPersistOptions`；native durability 使用 provider 明确声明的默认 requirement。
+`ResolvedPersistOptions` 只有 `overwrite` 和 `creates_parent` 会映射到
+`LocalPersistOptions`；其他持久化要求不在 native persist 选项中伪造，native durability
+使用 provider 明确声明的默认 requirement。
 
 普通 `delete_file`/`delete_directory` 的预算不自动应用于 temporary session 的
 `cleanup`、Drop 或 publication 失败后的 native 清理。cleanup 仍可能执行同步递归工作；
@@ -405,8 +407,9 @@ nonblocking/async 本地原语之前：
 ## 12. Error 映射
 
 错误映射集中在 `spi/error_mapper.rs` 的私有 free functions 中，不把 mapper 暴露为应用 API。
-`map`、`map_without_path` 和 `map_copy_failure` 都补齐 canonical provider、逻辑路径和
-target context；host 与 rooted SPI 共享这组映射函数。
+`map` 与 `map_without_path` 补齐 canonical provider、逻辑路径和 target context；copy
+failure 通过独立的 typed `LocalCopyFailure` 映射路径保留完整状态。host 与 rooted SPI
+共享这组映射函数。
 
 映射规则：
 
@@ -490,7 +493,12 @@ durability 的 `cfg(unix)` / `cfg(windows)` 分支。
 ```text
 src/
 ├── constants.rs
+├── local_copy_resource_limits.rs
+├── local_delete_resource_limits.rs
+├── local_directory_reopen_policy.rs
 ├── local_file_systems.rs
+├── local_list_resource_limits.rs
+├── local_resource_policy.rs
 ├── spi/
 │   ├── local_file_system_spi.rs
 │   ├── local_options_mapper.rs
@@ -522,7 +530,8 @@ src/
 2. Adapter integration tests
 
    验证 host/rooted factory 返回 `FileSystem`，opened/temp handle 保留正确
-   filesystem identity，registry 返回 concrete resolution。
+   filesystem identity，properties 快照包含正确的 provider、identity、capability、limit
+   和 path constraint，registry 返回 concrete resolution。
 
    另外覆盖全部输入路径转换发生在 I/O 前、不可表达 copy 的零副作用终止失败、native copy
    failure 不 fallback、copy/rename typed state 与 partial stats 无损映射，以及
@@ -533,4 +542,5 @@ src/
    使用 `qubit-fs-testkit::FileSystemContractSuite` 通过公开门面运行完整适用契约。
 
 平台安全算法不在本 crate 重复测试；它们由 `qubit-local-files` 测试。本 crate 只验证
-没有因转换丢失其语义。
+没有因转换丢失其语义。`fuzz/fuzz_targets/registry_uri_resolution.rs` 将输入限制为
+4096 字节，在不修改文件系统的条件下验证 URI resolution。

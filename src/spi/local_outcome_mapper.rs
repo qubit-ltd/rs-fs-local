@@ -23,20 +23,20 @@ use qubit_fs::rename::RenameFailureState;
 use qubit_fs::rename::RenameOutcome;
 use qubit_local_files as native_files;
 
-/// Converts a native metadata snapshot to portable facade metadata.
+/// Converts a native file kind to its facade representation.
 ///
 /// # Parameters
 ///
-/// - `value`: Native metadata snapshot returned by local I/O.
+/// - `kind`: Native file kind observed by the local filesystem adapter.
 ///
 /// # Returns
 ///
-/// Portable kind, length, and timestamp fields supported by the native
-/// snapshot.
-pub(crate) fn metadata(
-    value: native_files::outcome::LocalFileMetadata,
-) -> FileMetadata {
-    let kind = match value.kind() {
+/// The equivalent facade kind; platform-specific kinds use a `local-*`
+/// `Other` name.
+pub(crate) fn file_kind(
+    kind: native_files::outcome::LocalFileKind,
+) -> FileKind {
+    match kind {
         native_files::outcome::LocalFileKind::File => FileKind::File,
         native_files::outcome::LocalFileKind::Directory => FileKind::Directory,
         native_files::outcome::LocalFileKind::Symlink => FileKind::Symlink,
@@ -56,8 +56,23 @@ pub(crate) fn metadata(
             FileKind::Other("local".to_owned())
         }
         _ => FileKind::Other("local".to_owned()),
-    };
-    FileMetadata::new(kind)
+    }
+}
+
+/// Converts a native metadata snapshot to portable facade metadata.
+///
+/// # Parameters
+///
+/// - `value`: Native metadata snapshot returned by local I/O.
+///
+/// # Returns
+///
+/// Portable kind, length, and timestamp fields supported by the native
+/// snapshot.
+pub(crate) fn metadata(
+    value: native_files::outcome::LocalFileMetadata,
+) -> FileMetadata {
+    FileMetadata::new(file_kind(value.kind()))
         .with_len(Some(value.len()))
         .with_accessed_at(value.accessed_at())
         .with_modified_at(value.modified_at())
@@ -192,6 +207,42 @@ pub(crate) fn rename_failure_state(
         }
         native_files::outcome::LocalRenameFailureState::Indeterminate => {
             RenameFailureState::Indeterminate
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use qubit_fs::metadata::FileKind;
+    use qubit_local_files::outcome::LocalFileKind;
+
+    use super::file_kind;
+
+    #[test]
+    fn test_file_kind_maps_every_native_kind() {
+        for (native, expected) in [
+            (LocalFileKind::File, FileKind::File),
+            (LocalFileKind::Directory, FileKind::Directory),
+            (LocalFileKind::Symlink, FileKind::Symlink),
+            (
+                LocalFileKind::Fifo,
+                FileKind::Other("local-fifo".to_owned()),
+            ),
+            (
+                LocalFileKind::Socket,
+                FileKind::Other("local-socket".to_owned()),
+            ),
+            (
+                LocalFileKind::BlockDevice,
+                FileKind::Other("local-block-device".to_owned()),
+            ),
+            (
+                LocalFileKind::CharDevice,
+                FileKind::Other("local-char-device".to_owned()),
+            ),
+            (LocalFileKind::Other, FileKind::Other("local".to_owned())),
+        ] {
+            assert_eq!(expected, file_kind(native));
         }
     }
 }
