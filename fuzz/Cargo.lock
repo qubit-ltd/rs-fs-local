@@ -180,12 +180,12 @@ dependencies = [
  "fluent-uri",
  "qubit-budget",
  "qubit-io",
- "qubit-redact 0.7.0",
+ "qubit-redact 0.8.0",
 ]
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "qubit-fs",
  "qubit-fs-registry",
@@ -206,10 +206,10 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-registry"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "qubit-fs",
- "qubit-redact 0.7.0",
+ "qubit-redact 0.8.0",
  "qubit-spi",
 ]
 
@@ -229,14 +229,14 @@ dependencies = [
  "getrandom",
  "libc",
  "qubit-budget",
- "qubit-redact 0.7.0 (git+https://github.com/qubit-ltd/rs-redact?branch=dev-starfish)",
+ "qubit-redact 0.8.0 (git+https://github.com/qubit-ltd/rs-redact?branch=dev-starfish)",
  "rustix",
  "windows-sys",
 ]
 
 [[package]]
 name = "qubit-redact"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
@@ -244,15 +244,15 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.7.0"
-source = "git+https://github.com/qubit-ltd/rs-redact?branch=dev-starfish#41adde89b8b2b842bbb3e6c7a1d786a1818f2cc4"
+version = "0.8.0"
+source = "git+https://github.com/qubit-ltd/rs-redact?branch=dev-starfish#f052d517ce55ef84db21201dfb979c143b63eac7"
 dependencies = [
  "qubit-budget",
 ]
 
 [[package]]
 name = "qubit-spi"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "parking_lot",
  "qubit-collections",
