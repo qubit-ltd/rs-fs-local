@@ -7,6 +7,7 @@
 // =============================================================================
 
 use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemLimit;
 use qubit_fs::path::Path;
@@ -39,7 +40,9 @@ fn test_rooted_paths_accept_expanded_percent_components() {
             .expect("observe native target")
             .as_slice()
     );
-    let mut stream = fs.list(&Path::root(), ListOptions::default()).expect("open list");
+    let mut stream = fs
+        .list(&ListScope::Path((Path::root()).clone()), ListOptions::default())
+        .expect("open list");
     assert_eq!(path, stream.next_entry().expect("valid entry").expect("entry").path);
     assert!(stream.next_entry().expect("end of list").is_none());
 }
@@ -77,7 +80,9 @@ fn test_rooted_paths_preserve_long_non_utf8_components() {
             .expect("read raw name")
             .as_slice()
     );
-    let mut stream = fs.list(&Path::root(), ListOptions::default()).expect("list");
+    let mut stream = fs
+        .list(&ListScope::Path((Path::root()).clone()), ListOptions::default())
+        .expect("list");
     assert_eq!(path, stream.next_entry().expect("valid raw entry").expect("entry").path);
     assert!(stream.next_entry().expect("end").is_none());
 }

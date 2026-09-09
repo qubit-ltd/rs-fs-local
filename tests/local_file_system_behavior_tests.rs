@@ -16,6 +16,7 @@ use qubit_fs::copy::ServerSidePreference;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::DeleteOptions;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::Checksum;
@@ -209,7 +210,7 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
 
     let mut without_following_stream = file_system
         .list(
-            &logical_root,
+            &ListScope::Path((logical_root).clone()),
             ListOptions::default()
                 .with_recursive(true)
                 .with_symlink_policy(SymlinkPolicy::Reject),
@@ -230,7 +231,7 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
 
     let mut with_following_stream = file_system
         .list(
-            &logical_root,
+            &ListScope::Path((logical_root).clone()),
             ListOptions::default()
                 .with_recursive(true)
                 .with_symlink_policy(SymlinkPolicy::FollowWithinFileSystem),
@@ -510,7 +511,7 @@ fn test_rooted_operations_map_missing_entries() {
     assert_eq!(
         FsErrorKind::NotFound,
         file_system
-            .list(&missing, ListOptions::default())
+            .list(&ListScope::Path((missing).clone()), ListOptions::default())
             .expect_err("missing listing must fail")
             .kind()
     );
@@ -635,7 +636,7 @@ fn test_host_operations_map_missing_native_entries() {
         .expect_err("missing reader must fail");
     assert_eq!(FsErrorKind::NotFound, reader.kind());
     let listing = file_system
-        .list(&missing, ListOptions::default())
+        .list(&ListScope::Path((missing).clone()), ListOptions::default())
         .expect_err("missing directory listing must fail");
     assert_eq!(FsErrorKind::NotFound, listing.kind());
     let deletion = file_system

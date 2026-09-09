@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
@@ -45,7 +46,10 @@ fn test_caller_list_entry_budget_is_enforced_with_local_policy() {
     let filesystem =
         LocalFileSystems::rooted(root.path(), bounded_policy()).expect("rooted filesystem should construct");
     let mut stream = filesystem
-        .list(&Path::root(), ListOptions::default().with_max_entries(Some(1)))
+        .list(
+            &ListScope::Path((Path::root()).clone()),
+            ListOptions::default().with_max_entries(Some(1)),
+        )
         .expect("listing should open");
 
     stream
@@ -157,7 +161,10 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
         );
         let filesystem = LocalFileSystems::rooted(root.path(), policy).expect("filesystem should open");
         let mut stream = filesystem
-            .list(&Path::root(), ListOptions::default().with_max_entries(requested))
+            .list(
+                &ListScope::Path((Path::root()).clone()),
+                ListOptions::default().with_max_entries(requested),
+            )
             .expect("stream should open");
         assert!(stream.next_entry().expect("first entry fits").is_some());
         assert_eq!(
@@ -188,7 +195,7 @@ fn test_list_request_tightens_provider_deadline() {
     let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy()).expect("filesystem should open");
     let mut stream = filesystem
         .list(
-            &Path::root(),
+            &ListScope::Path((Path::root()).clone()),
             ListOptions::default().with_deadline(Some(Duration::from_millis(250))),
         )
         .expect("listing with a tighter deadline should open");

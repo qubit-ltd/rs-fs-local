@@ -10,6 +10,7 @@
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::ListFilter;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
@@ -67,7 +68,7 @@ fn test_listing_options_filter_prefix_and_include_metadata() {
 
     let mut stream = file_system
         .list(
-            &list_root,
+            &ListScope::Path((list_root).clone()),
             ListOptions::default()
                 .with_prefix(Some("nested".to_owned()))
                 .with_include_metadata(true),
@@ -98,7 +99,7 @@ fn test_prefix_request_budget_counts_only_matching_entries() {
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let mut stream = fs
         .list(
-            &Path::root(),
+            &ListScope::Path((Path::root()).clone()),
             ListOptions::default()
                 .with_prefix(Some("nested/item".to_owned()))
                 .with_max_entries(Some(1)),
@@ -122,7 +123,7 @@ fn test_prefix_zero_return_budget_allows_no_matches() {
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let mut stream = fs
         .list(
-            &Path::root(),
+            &ListScope::Path((Path::root()).clone()),
             ListOptions::default()
                 .with_prefix(Some("missing".to_owned()))
                 .with_max_entries(Some(0)),
@@ -141,7 +142,7 @@ fn test_prefix_does_not_bypass_provider_walker_budget() {
     for requested in [None, Some(1), Some(100)] {
         let mut stream = fs
             .list(
-                &Path::root(),
+                &ListScope::Path((Path::root()).clone()),
                 ListOptions::default()
                     .with_prefix(Some("nested/item".to_owned()))
                     .with_max_entries(requested),
@@ -162,7 +163,7 @@ fn test_prefix_return_budget_still_rejects_second_match() {
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let mut stream = fs
         .list(
-            &Path::root(),
+            &ListScope::Path((Path::root()).clone()),
             ListOptions::default()
                 .with_prefix(Some("nested".to_owned()))
                 .with_max_entries(Some(1)),
@@ -187,7 +188,7 @@ fn test_literal_prefix_is_rejected_with_request_context() {
 
     let error = fs
         .list(
-            &logical_root,
+            &ListScope::Path((logical_root).clone()),
             ListOptions::default().with_filter(Some(ListFilter::LiteralPrefix("partial".to_owned()))),
         )
         .expect_err("literal prefix requires flat path semantics");
@@ -211,7 +212,7 @@ fn test_unmatched_prefix_exhausts_without_return_budget_error() {
     .expect("rooted");
     let mut stream = fs
         .list(
-            &Path::root(),
+            &ListScope::Path((Path::root()).clone()),
             ListOptions::default()
                 .with_prefix(Some("missing".to_owned()))
                 .with_max_entries(Some(0)),
@@ -231,7 +232,10 @@ fn test_midstream_directory_failure_preserves_context() {
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let logical_root = Path::root();
     let mut stream = fs
-        .list(&logical_root, ListOptions::default().with_recursive(true))
+        .list(
+            &ListScope::Path((logical_root).clone()),
+            ListOptions::default().with_recursive(true),
+        )
         .expect("list");
 
     assert_eq!(
@@ -263,7 +267,10 @@ fn test_fail_reopen_policy_preserves_context() {
         .expect("rooted");
     let logical_root = Path::root();
     let mut stream = fs
-        .list(&logical_root, ListOptions::default().with_recursive(true))
+        .list(
+            &ListScope::Path((logical_root).clone()),
+            ListOptions::default().with_recursive(true),
+        )
         .expect("list");
 
     assert_eq!(
