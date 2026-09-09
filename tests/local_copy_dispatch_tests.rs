@@ -19,13 +19,10 @@ use qubit_fs_local::LocalResourcePolicy;
 #[test]
 fn test_local_unrepresentable_copy_fails_before_target_creation() {
     let root = tempfile::tempdir().expect("root should exist");
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted filesystem should construct");
-    let source =
-        Path::parse("/missing-source").expect("source path should parse");
-    let target =
-        Path::parse("/new-parent/target").expect("target path should parse");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
+    let source = Path::parse("/missing-source").expect("source path should parse");
+    let target = Path::parse("/new-parent/target").expect("target path should parse");
     let failure = filesystem
         .copy(
             &source,
@@ -47,11 +44,9 @@ fn test_local_unrepresentable_copy_fails_before_target_creation() {
 #[test]
 fn test_local_expressible_copy_is_native_without_facade_fallback() {
     let root = tempfile::tempdir().expect("root should exist");
-    std::fs::write(root.path().join("source"), b"payload")
-        .expect("source fixture should be written");
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted filesystem should construct");
+    std::fs::write(root.path().join("source"), b"payload").expect("source fixture should be written");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
     let source = Path::parse("/source").expect("source path should parse");
     let target = Path::parse("/target").expect("target path should parse");
     let outcome = filesystem

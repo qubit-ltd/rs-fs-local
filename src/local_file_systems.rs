@@ -78,19 +78,14 @@ impl LocalFileSystems {
     ///
     /// Panics only if the decimal process identifier and monotonic counter
     /// unexpectedly fail the static filesystem-identity syntax.
-    pub fn rooted(
-        root: &Path,
-        policy: LocalResourcePolicy,
-    ) -> FsResult<FileSystem> {
+    pub fn rooted(root: &Path, policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         let id = {
             let value = format!(
                 "local-rooted-{}-{}",
                 std::process::id(),
                 ROOTED_COUNTER.fetch_add(1, Ordering::Relaxed)
             );
-            FileSystemId::new(&value).expect(
-                "process id and monotonic counter form a valid filesystem id",
-            )
+            FileSystemId::new(&value).expect("process id and monotonic counter form a valid filesystem id")
         };
         Self::rooted_with_id(id, root, policy)
     }
@@ -114,11 +109,7 @@ impl LocalFileSystems {
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id`.
     #[inline(always)]
-    pub fn rooted_with_id(
-        id: FileSystemId,
-        root: &Path,
-        policy: LocalResourcePolicy,
-    ) -> FsResult<FileSystem> {
+    pub fn rooted_with_id(id: FileSystemId, root: &Path, policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root, policy)?)
     }
 

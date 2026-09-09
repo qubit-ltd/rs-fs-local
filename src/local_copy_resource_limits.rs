@@ -121,9 +121,7 @@ impl LocalCopyResourceLimits {
 
     /// Converts these resource-only limits to neutral native copy options.
     #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(
-        self,
-    ) -> native_files::options::LocalCopyOptions {
+    pub(crate) const fn native_options(self) -> native_files::options::LocalCopyOptions {
         native_files::options::LocalCopyOptions::new()
             .with_max_depth(self.max_depth)
             .with_max_entries(self.max_entries)

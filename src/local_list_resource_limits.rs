@@ -122,9 +122,7 @@ impl LocalListResourceLimits {
 
     /// Converts these resource-only limits to neutral native list options.
     #[cfg_attr(debug_assertions, inline(never))]
-    pub(crate) const fn native_options(
-        self,
-    ) -> native_files::options::LocalListOptions {
+    pub(crate) const fn native_options(self) -> native_files::options::LocalListOptions {
         native_files::options::LocalListOptions::new()
             .with_max_depth(self.max_depth)
             .with_max_entries(self.max_entries)

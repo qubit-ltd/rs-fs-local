@@ -153,18 +153,13 @@ impl LocalResourcePolicy {
     /// not use these ceilings.
     #[must_use]
     #[inline(always)]
-    pub const fn with_delete_limits(
-        mut self,
-        limits: Option<LocalDeleteResourceLimits>,
-    ) -> Self {
+    pub const fn with_delete_limits(mut self, limits: Option<LocalDeleteResourceLimits>) -> Self {
         self.delete = limits;
         self
     }
 
     /// Converts deletion ceilings without enabling recursive deletion itself.
-    pub(crate) const fn delete_options(
-        self,
-    ) -> native_files::options::LocalDeleteOptions {
+    pub(crate) const fn delete_options(self) -> native_files::options::LocalDeleteOptions {
         match self.delete {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalDeleteOptions::new(),
@@ -195,10 +190,7 @@ impl LocalResourcePolicy {
     /// Sets the local open retry timeout used for readers and writers.
     #[must_use]
     #[inline(always)]
-    pub const fn with_open_retry_timeout(
-        mut self,
-        timeout: Option<Duration>,
-    ) -> Self {
+    pub const fn with_open_retry_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.open_retry_timeout = timeout;
         self
     }
@@ -206,10 +198,7 @@ impl LocalResourcePolicy {
     /// Sets the maximum number of temporary-name attempts.
     #[must_use]
     #[inline(always)]
-    pub const fn with_temp_max_attempts(
-        mut self,
-        max_attempts: Option<NonZeroUsize>,
-    ) -> Self {
+    pub const fn with_temp_max_attempts(mut self, max_attempts: Option<NonZeroUsize>) -> Self {
         self.temp_max_attempts = max_attempts;
         self
     }
@@ -217,36 +206,25 @@ impl LocalResourcePolicy {
     /// Sets the directory reopen behavior used by recursive walkers.
     #[must_use]
     #[inline(always)]
-    pub const fn with_directory_reopen_policy(
-        mut self,
-        policy: LocalDirectoryReopenPolicy,
-    ) -> Self {
+    pub const fn with_directory_reopen_policy(mut self, policy: LocalDirectoryReopenPolicy) -> Self {
         self.directory_reopen_policy = policy;
         self
     }
 
     /// Translates listing ceilings and reopen policy for the native adapter.
-    pub(crate) const fn list_options(
-        self,
-    ) -> native_files::options::LocalListOptions {
+    pub(crate) const fn list_options(self) -> native_files::options::LocalListOptions {
         let options = match self.list {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalListOptions::new(),
         };
         options.with_reopen_policy(match self.directory_reopen_policy {
-            LocalDirectoryReopenPolicy::Fail => {
-                native_files::options::LocalDirectoryReopenPolicy::Fail
-            }
-            LocalDirectoryReopenPolicy::Reopen => {
-                native_files::options::LocalDirectoryReopenPolicy::Reopen
-            }
+            LocalDirectoryReopenPolicy::Fail => native_files::options::LocalDirectoryReopenPolicy::Fail,
+            LocalDirectoryReopenPolicy::Reopen => native_files::options::LocalDirectoryReopenPolicy::Reopen,
         })
     }
 
     /// Translates copy ceilings for the native adapter.
-    pub(crate) const fn copy_options(
-        self,
-    ) -> native_files::options::LocalCopyOptions {
+    pub(crate) const fn copy_options(self) -> native_files::options::LocalCopyOptions {
         match self.copy {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalCopyOptions::new(),

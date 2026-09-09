@@ -26,9 +26,7 @@ fuzz_target!(|input: &[u8]| {
 
     let registry = FileSystemRegistry::default();
     if registry
-        .register(LocalFileSystemProvider::host(
-            LocalResourcePolicy::unbounded(),
-        ))
+        .register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))
         .is_err()
     {
         return;
@@ -44,8 +42,7 @@ fuzz_target!(|input: &[u8]| {
 
     assert_eq!(first.canonical_uri().scheme(), "file");
 
-    let Ok(replayed_uri) = ConnectionUri::parse(first.canonical_uri().as_str())
-    else {
+    let Ok(replayed_uri) = ConnectionUri::parse(first.canonical_uri().as_str()) else {
         panic!("a canonical URI must be parseable");
     };
     let second = registry

@@ -85,11 +85,7 @@ impl LocalDirectoryStreamSpi {
         options: &ResolvedListOptions,
         provider_id: &str,
     ) -> Self {
-        Self::Rooted(
-            walker,
-            ListingOptions::new(options),
-            provider_id.to_owned(),
-        )
+        Self::Rooted(walker, ListingOptions::new(options), provider_id.to_owned())
     }
 }
 
@@ -124,30 +120,19 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let Some(entry) = entry else {
                 return Ok(None);
             };
-            let entry =
-                entry.map_err(|error| entry_error(error, provider_id))?;
+            let entry = entry.map_err(|error| entry_error(error, provider_id))?;
             let logical_relative = local_path_mapper::logical(
                 native_files::path::LocalFileSystemScope::Rooted,
-                &PathBuf::from(std::path::MAIN_SEPARATOR_STR)
-                    .join(entry.relative_path()),
+                &PathBuf::from(std::path::MAIN_SEPARATOR_STR).join(entry.relative_path()),
                 FsOperation::List,
             )?;
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = local_path_mapper::logical(
-                scope,
-                entry.path(),
-                FsOperation::List,
-            )?;
-            let mut result = DirEntry::new(
-                path,
-                local_outcome_mapper::file_kind(entry.metadata().kind()),
-            );
+            let path = local_path_mapper::logical(scope, entry.path(), FsOperation::List)?;
+            let mut result = DirEntry::new(path, local_outcome_mapper::file_kind(entry.metadata().kind()));
             if options.include_metadata() {
-                result.metadata = Some(local_outcome_mapper::metadata(
-                    entry.metadata().clone(),
-                ));
+                result.metadata = Some(local_outcome_mapper::metadata(entry.metadata().clone()));
             }
             return Ok(Some(result));
         }
@@ -165,16 +150,8 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 ///
 /// A facade listing error with local provider context.
 #[inline(always)]
-fn entry_error(
-    error: native_files::LocalFileError,
-    provider_id: &str,
-) -> FsError {
-    error_mapper::map_without_path(
-        error,
-        FsOperation::List,
-        "native directory walk failed",
-        provider_id,
-    )
+fn entry_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
+    error_mapper::map_without_path(error, FsOperation::List, "native directory walk failed", provider_id)
 }
 
 #[cfg(test)]
@@ -190,10 +167,7 @@ mod tests {
     /// Lazy walker errors retain provider identity for facade path enrichment.
     #[test]
     fn test_entry_error_retains_provider_without_inventing_path() {
-        let native = LocalFileError::new(
-            LocalFileErrorKind::NotFound,
-            LocalFileOperation::List,
-        );
+        let native = LocalFileError::new(LocalFileErrorKind::NotFound, LocalFileOperation::List);
 
         let error = entry_error(native, "rooted-listing");
 
