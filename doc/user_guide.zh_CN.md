@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.5.0 版本（包版本 `0.5.0`）：直接创建 host/rooted 门面，以及可选的
+`qubit-fs-local` 0.6.0 版本（包版本 `0.6.0`）：直接创建 host/rooted 门面，以及可选的
 registry provider。
 
 ## Provider 资源上限
@@ -13,6 +13,13 @@ registry provider。
 原生 `LocalFileSystem` 默认 Options 是可被替换的便利配置；本适配层将
 `LocalResourcePolicy` 作为每次请求的强制上限。list/copy 请求预算与 provider 预算
 取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
+
+适配层先从完整请求构造操作行为，再调用原生 `tighten_resource_limits` 收紧预算。
+provider 上限不会开启递归、忽略缺失目标、创建父目录或改变覆盖策略。writer 显式使用
+原生 `PreserveExisting`，可移植 API 不增加原生元数据策略开关。临时资源发布把
+命名空间绝对目标传给 `persist_with`。门面仍遵循 `qubit_fs::Path` 的逻辑规范化契约；
+原生 Host 对 `link/..` 的保留不改变逻辑路径语法，也不会恢复已由可移植层折叠的组件。
+需要原生点组件遍历时，直接使用 `qubit-local-files`。
 
 `LocalResourcePolicy::bounded(list, copy, delete)` 为三类普通递归操作设置彼此独立的上限。
 删除请求选择递归或忽略缺失时仍保留这些

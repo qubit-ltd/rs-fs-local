@@ -11,7 +11,11 @@
 主机文件系统，或将一个原生目录保留为 rooted 文件系统 authority，同时不希望在应用代码中
 处理 URI 解析和原生路径转换时，可使用本 crate。
 
-本文档适用于 `qubit-fs-local` 0.5.0（包版本 `0.5.0`）。
+本文档适用于 `qubit-fs-local` 0.6.0（包版本 `0.6.0`）。
+
+本版本使用 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不覆盖请求行为；
+writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
+详见[用户指南](doc/user_guide.zh_CN.md)。
 
 ## 安装
 
