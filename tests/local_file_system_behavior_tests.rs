@@ -20,9 +20,12 @@ use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::Checksum;
 use qubit_fs::metadata::ChecksumAlgorithm;
+#[cfg(unix)]
 use qubit_fs::metadata::DurabilityRequirement;
+#[cfg(unix)]
 use qubit_fs::metadata::FileKind;
 use qubit_fs::metadata::PublicationMethod;
+#[cfg(unix)]
 use qubit_fs::metadata::SymlinkPolicy;
 use qubit_fs::metadata::UserMetadata;
 use qubit_fs::path::Path;

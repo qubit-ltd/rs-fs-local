@@ -170,6 +170,7 @@ mod tests {
     use qubit_fs::path::Path;
     use qubit_local_files::path::LocalFileSystemScope;
 
+    #[cfg(unix)]
     use super::logical;
     use super::native;
 

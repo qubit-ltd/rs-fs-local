@@ -12,8 +12,10 @@ use std::time::Duration;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::ListOptions;
 use qubit_fs::error::FsErrorKind;
+#[cfg(unix)]
 use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
+#[cfg(unix)]
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalCopyResourceLimits;
 use qubit_fs_local::LocalDeleteResourceLimits;
