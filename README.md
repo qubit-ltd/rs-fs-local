@@ -12,7 +12,7 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
-This README documents `qubit-fs-local` 0.6.0 (package version `0.6.0`).
+This README documents `qubit-fs-local` 0.7.0 (package version `0.7.0`).
 
 This version uses `qubit-local-files` 0.4. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
@@ -148,6 +148,13 @@ filesystem facade.
 - [中文设计文档](doc/local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
 - [中文 README](README.zh_CN.md)
+
+## Filesystem contract update
+
+Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
+for the configured hierarchical root. `ListScope::Namespace` is rejected before
+native I/O. This provider does not advertise `RangeRead`, so `read_prefix`
+continues to use a bounded sequential read without adding a range requirement.
 
 ## Testing
 

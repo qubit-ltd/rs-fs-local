@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.6.0 版本（包版本 `0.6.0`）：直接创建 host/rooted 门面，以及可选的
+`qubit-fs-local` 0.7.0 版本（包版本 `0.7.0`）：直接创建 host/rooted 门面，以及可选的
 registry provider。
 
 ## Provider 资源上限
@@ -262,3 +262,9 @@ native `PublicationIncomplete` 会映射为 `FsEffectState::PartiallyApplied`，
 - [README](../README.zh_CN.md)
 - [English user guide](user_guide.md)
 - [API 文档](https://docs.rs/qubit-fs-local)
+
+## 文件系统契约更新
+
+列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
+`ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
+本地 provider 未声明 `RangeRead`，因此 `read_prefix` 继续有界顺序读取，不自动增加范围要求。

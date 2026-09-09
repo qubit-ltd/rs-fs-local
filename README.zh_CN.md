@@ -11,7 +11,7 @@
 主机文件系统，或将一个原生目录保留为 rooted 文件系统 authority，同时不希望在应用代码中
 处理 URI 解析和原生路径转换时，可使用本 crate。
 
-本文档适用于 `qubit-fs-local` 0.6.0（包版本 `0.6.0`）。
+本文档适用于 `qubit-fs-local` 0.7.0（包版本 `0.7.0`）。
 
 本版本使用 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不覆盖请求行为；
 writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
@@ -128,6 +128,12 @@ cleanup、Drop 和原生发布清理不继承普通删除预算；这些配置�
 - [中文适配器设计](doc/local_file_system_adapter_design.zh_CN.md)
 - [API 文档](https://docs.rs/qubit-fs-local)
 - [English README](README.md)
+
+## 文件系统契约更新
+
+列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
+`ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
+本地 provider 未声明 `RangeRead`，因此 `read_prefix` 继续有界顺序读取，不自动增加范围要求。
 
 ## 测试
 
