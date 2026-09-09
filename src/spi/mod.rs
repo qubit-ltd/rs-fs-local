@@ -14,6 +14,7 @@ mod local_file_system_spi;
 mod local_file_writer_spi;
 mod local_options_mapper;
 mod local_outcome_mapper;
+mod local_temp_path_projection;
 mod local_temp_resource_spi;
 
 pub use local_file_system_spi::LocalFileSystemSpi;

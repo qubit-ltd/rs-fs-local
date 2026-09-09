@@ -29,6 +29,7 @@ use qubit_fs::temp::PersistOptions;
 use qubit_fs::temp::PersistOutcome;
 use qubit_local_files as native_files;
 
+use super::local_temp_path_projection::LocalTempPathProjection;
 use crate::path::local_path_mapper;
 use crate::spi::error_mapper;
 
@@ -44,6 +45,8 @@ pub(crate) enum LocalTempResourceSpi {
         rooted: bool,
         /// Provider identity attached to lifecycle failures.
         provider_id: String,
+        /// Requested parent spelling, independent of native cleanup authority.
+        projection: Option<LocalTempPathProjection>,
     },
     /// Owns a native temporary directory until it reaches a terminal lifecycle
     /// state.
@@ -54,6 +57,8 @@ pub(crate) enum LocalTempResourceSpi {
         rooted: bool,
         /// Provider identity attached to lifecycle failures.
         provider_id: String,
+        /// Requested parent spelling, independent of native cleanup authority.
+        projection: Option<LocalTempPathProjection>,
     },
 }
 impl LocalTempResourceSpi {
@@ -63,16 +68,24 @@ impl LocalTempResourceSpi {
     ///
     /// - `value`: Native temporary file owned by the adapter.
     /// - `rooted`: Whether the native path belongs to a rooted authority.
+    /// - `provider_id`: Provider identity attached to lifecycle failures.
+    /// - `projection`: Optional requested-parent spelling for generated paths.
     ///
     /// # Returns
     ///
     /// An active temporary-file lifecycle adapter.
     #[inline(always)]
-    pub(crate) fn file(value: native_files::LocalTempFile, rooted: bool, provider_id: String) -> Self {
+    pub(crate) fn file(
+        value: native_files::LocalTempFile,
+        rooted: bool,
+        provider_id: String,
+        projection: Option<LocalTempPathProjection>,
+    ) -> Self {
         Self::File {
             resource: Some(value),
             rooted,
             provider_id,
+            projection,
         }
     }
 
@@ -82,16 +95,24 @@ impl LocalTempResourceSpi {
     ///
     /// - `value`: Native temporary directory owned by the adapter.
     /// - `rooted`: Whether the native path belongs to a rooted authority.
+    /// - `provider_id`: Provider identity attached to lifecycle failures.
+    /// - `projection`: Optional requested-parent spelling for generated paths.
     ///
     /// # Returns
     ///
     /// An active temporary-directory lifecycle adapter.
     #[inline(always)]
-    pub(crate) fn directory(value: native_files::LocalTempDirectory, rooted: bool, provider_id: String) -> Self {
+    pub(crate) fn directory(
+        value: native_files::LocalTempDirectory,
+        rooted: bool,
+        provider_id: String,
+        projection: Option<LocalTempPathProjection>,
+    ) -> Self {
         Self::Directory {
             resource: Some(value),
             rooted,
             provider_id,
+            projection,
         }
     }
 
@@ -141,10 +162,10 @@ impl TempResourceSpi for LocalTempResourceSpi {
     ///
     /// Returns `InvalidState` when the resource is terminal, `InvalidPath`
     /// when the target cannot be mapped, a mapped I/O failure with native
-    /// recovery state when publication fails, or an indeterminate failure when
-    /// the published native path cannot be converted back to logical form.
+    /// recovery state when publication fails. Successful publication retains
+    /// the requested logical target without another path conversion.
     fn persist(&mut self, request: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
-        let (target, rooted) = self.target(request.target())?;
+        let (target, _) = self.target(request.target())?;
         let provider_id = match self {
             Self::File { provider_id, .. } | Self::Directory { provider_id, .. } => provider_id.to_owned(),
         };
@@ -155,7 +176,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
                 persist_directory(slot, &target, request.target(), options, &provider_id)
             }
         }?;
-        map_persist_outcome(result, rooted, FsOperation::PersistTemp)
+        Ok(map_persist_outcome(result, request.target().clone()))
     }
     /// Publishes the native resource to its generated sibling target.
     ///
@@ -180,7 +201,24 @@ impl TempResourceSpi for LocalTempResourceSpi {
             Self::File { resource, .. } => keep_file(resource, &provider_id),
             Self::Directory { resource, .. } => keep_directory(resource, &provider_id),
         }?;
-        map_persist_outcome(result, rooted, FsOperation::KeepTemp)
+        let projection = match self {
+            Self::File { projection, .. } | Self::Directory { projection, .. } => projection.as_ref(),
+        };
+        let projected = projection
+            .map(|projection| projection.project(result.path(), FsOperation::KeepTemp))
+            .transpose()
+            .map_err(logical_persist_error)?;
+        let logical = local_path_mapper::logical(
+            if rooted {
+                native_files::path::LocalFileSystemScope::Rooted
+            } else {
+                native_files::path::LocalFileSystemScope::Host
+            },
+            projected.as_deref().unwrap_or(result.path()),
+            FsOperation::KeepTemp,
+        )
+        .map_err(logical_persist_error)?;
+        Ok(map_persist_outcome(result, logical))
     }
     /// Removes the owned native resource through its creating authority.
     ///
@@ -255,32 +293,13 @@ fn persist_options(options: &PersistOptions) -> native_files::options::LocalPers
 /// # Parameters
 ///
 /// - `result`: Completed native persistence outcome.
-/// - `rooted`: Whether the published native path is authority-relative.
+/// - `logical`: Caller-visible target in the portable namespace.
 ///
 /// # Returns
 ///
 /// The published logical path and achieved publication guarantees.
-///
-/// # Errors
-///
-/// Returns an indeterminate persistence failure when the published native path
-/// cannot be converted back to canonical logical form.
-fn map_persist_outcome(
-    result: native_files::outcome::LocalPersistOutcome,
-    rooted: bool,
-    operation: FsOperation,
-) -> Result<PersistOutcome, SpiPersistFailure> {
-    let logical = local_path_mapper::logical(
-        if rooted {
-            native_files::path::LocalFileSystemScope::Rooted
-        } else {
-            native_files::path::LocalFileSystemScope::Host
-        },
-        result.path(),
-        operation,
-    )
-    .map_err(logical_persist_error)?;
-    Ok(PersistOutcome::new(
+fn map_persist_outcome(result: native_files::outcome::LocalPersistOutcome, logical: LogicalPath) -> PersistOutcome {
+    PersistOutcome::new(
         logical,
         if result.atomic() {
             AchievedAtomicity::Atomic
@@ -298,7 +317,7 @@ fn map_persist_outcome(
             PersistCleanupState::ResidualTemporaryContainer
         }
         _ => PersistCleanupState::ResidualTemporaryContainer,
-    }))
+    })
 }
 
 /// Persists a retained native temporary file and restores it after failure.
@@ -626,11 +645,13 @@ mod tests {
                 resource: None,
                 rooted: true,
                 provider_id: "terminal-file".to_owned(),
+                projection: None,
             },
             LocalTempResourceSpi::Directory {
                 resource: None,
                 rooted: true,
                 provider_id: "terminal-directory".to_owned(),
+                projection: None,
             },
         ] {
             let error = resource.cleanup().expect_err("terminal resource must reject cleanup");
