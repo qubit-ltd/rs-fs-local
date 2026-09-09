@@ -9,6 +9,7 @@
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::path::absolute;
 use std::process::Command;
 
 fn rust_blocks(markdown: &str) -> Vec<String> {
@@ -123,7 +124,7 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
         let declared_path = Path::new(path.as_str().expect("dependency path"));
         let path = resolve_dependency_path(root, declared_path);
         if path.join("Cargo.toml").is_file() {
-            let path = path.canonicalize().expect("dependency path must resolve");
+            let path = absolute(path).expect("dependency path must be absolute");
             table.insert(
                 "path".into(),
                 toml::Value::String(path.to_str().expect("UTF-8 path").to_owned()),
@@ -131,6 +132,39 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
         }
     }
     toml::Value::Table(table).to_string()
+}
+
+/// Cargo must see the same symlink spelling in direct and transitive
+/// dependencies.
+#[cfg(unix)]
+#[test]
+fn test_dependency_spec_preserves_sibling_symlink_identity() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = tempfile::tempdir().expect("isolated sibling fixture");
+    let root = workspace.path().join("consumer");
+    let target = workspace.path().join("source");
+    let alias = root.join("linked-dependency");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = 'consumer'\nversion = '0.1.0'\n",
+    )
+    .unwrap();
+    fs::write(
+        target.join("Cargo.toml"),
+        "[package]\nname = 'dependency'\nversion = '0.1.0'\n",
+    )
+    .unwrap();
+    symlink(&target, &alias).unwrap();
+    let input: toml::Value = "dependency = { version = '0.1', path = 'linked-dependency' }"
+        .parse()
+        .unwrap();
+    let spec = dependency_spec(&root, &input["dependency"]);
+    let output: toml::Value = format!("dependency = {spec}").parse().unwrap();
+    assert_eq!(output["dependency"]["path"].as_str(), alias.to_str());
+    assert_ne!(alias, alias.canonicalize().unwrap());
 }
 
 /// Resolves a dependency against the isolated sibling view when Cargo has
