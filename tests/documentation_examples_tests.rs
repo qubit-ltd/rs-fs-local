@@ -48,17 +48,14 @@ fn test_readme_and_user_guide_examples_compile() {
         .expect("read manifest")
         .parse()
         .expect("parse manifest");
-    let filesystem =
-        dependency_spec(root, &package["dependencies"]["qubit-fs"]);
-    let registry =
-        dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
+    let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
+    let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
     let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
     let manifest = format!(
         "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\nqubit-spi = {spi}\n",
         toml_path(root),
     );
-    fs::write(workspace.path().join("Cargo.toml"), manifest)
-        .expect("manifest should be written");
+    fs::write(workspace.path().join("Cargo.toml"), manifest).expect("manifest should be written");
 
     for (document_index, document) in [
         "README.md",
@@ -69,20 +66,12 @@ fn test_readme_and_user_guide_examples_compile() {
     .iter()
     .enumerate()
     {
-        let blocks = rust_blocks(
-            &fs::read_to_string(root.join(document))
-                .expect("document should be readable"),
-        );
+        let blocks = rust_blocks(&fs::read_to_string(root.join(document)).expect("document should be readable"));
         assert!(!blocks.is_empty(), "{document} must have Rust examples");
         for (block_index, block) in blocks.iter().enumerate() {
-            let code = format!(
-                "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n"
-            );
-            fs::write(
-                bin.join(format!("doc_{document_index}_{block_index}.rs")),
-                code,
-            )
-            .expect("example source should be written");
+            let code = format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n");
+            fs::write(bin.join(format!("doc_{document_index}_{block_index}.rs")), code)
+                .expect("example source should be written");
         }
     }
 
@@ -96,14 +85,8 @@ fn test_readme_and_user_guide_examples_compile() {
         "{}",
         String::from_utf8_lossy(&metadata.stderr)
     );
-    let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout)
-        .expect("parse dependency graph");
-    for name in [
-        "qubit-fs",
-        "qubit-fs-registry",
-        "qubit-fs-local",
-        "qubit-spi",
-    ] {
+    let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
+    for name in ["qubit-fs", "qubit-fs-registry", "qubit-fs-local", "qubit-spi"] {
         assert_eq!(
             graph["packages"]
                 .as_array()
@@ -118,10 +101,7 @@ fn test_readme_and_user_guide_examples_compile() {
     let status = Command::new(env!("CARGO"))
         .args(["check", "--locked", "--quiet", "--bins"])
         .current_dir(workspace.path())
-        .env(
-            "CARGO_TARGET_DIR",
-            root.join("target/documentation-examples"),
-        )
+        .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
         .status()
         .expect("compile document examples");
     assert!(status.success(), "document examples must compile");
@@ -130,10 +110,7 @@ fn test_readme_and_user_guide_examples_compile() {
 /// Renders a dependency from its actual version declaration, retaining an
 /// available sibling.
 fn dependency_spec(root: &Path, value: &toml::Value) -> String {
-    let mut table = value
-        .as_table()
-        .expect("versioned dependency table")
-        .clone();
+    let mut table = value.as_table().expect("versioned dependency table").clone();
     assert!(
         table.get("version").and_then(toml::Value::as_str).is_some(),
         "version is required"
@@ -146,13 +123,10 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
         let declared_path = Path::new(path.as_str().expect("dependency path"));
         let path = resolve_dependency_path(root, declared_path);
         if path.join("Cargo.toml").is_file() {
-            let path =
-                path.canonicalize().expect("dependency path must resolve");
+            let path = path.canonicalize().expect("dependency path must resolve");
             table.insert(
                 "path".into(),
-                toml::Value::String(
-                    path.to_str().expect("UTF-8 path").to_owned(),
-                ),
+                toml::Value::String(path.to_str().expect("UTF-8 path").to_owned()),
             );
         }
     }
@@ -206,10 +180,7 @@ fn test_documentation_dependencies_without_siblings() {
         let parsed: toml::Value = format!("dependency = {spec}")
             .parse()
             .expect("valid generated dependency");
-        assert_eq!(
-            parsed["dependency"]["version"],
-            input["dependencies"][name]["version"]
-        );
+        assert_eq!(parsed["dependency"]["version"], input["dependencies"][name]["version"]);
         assert!(parsed["dependency"].get("path").is_none());
     }
 }
@@ -232,8 +203,7 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         "doc/user_guide.md",
         "doc/user_guide.zh_CN.md",
     ] {
-        let text = fs::read_to_string(root.join(document))
-            .expect("document should be readable");
+        let text = fs::read_to_string(root.join(document)).expect("document should be readable");
         assert!(
             text.contains(&version_marker),
             "{document} must identify the manifest's current major/minor version"
@@ -256,15 +226,12 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "`qubit-fs-local` 0.3",
         ];
         assert!(
-            stale_local_versions
-                .iter()
-                .all(|token| !text.contains(token)),
+            stale_local_versions.iter().all(|token| !text.contains(token)),
             "{document} must describe the 0.4 API"
         );
     }
     for document in ["README.md", "README.zh_CN.md"] {
-        let text = fs::read_to_string(root.join(document))
-            .expect("README should be readable");
+        let text = fs::read_to_string(root.join(document)).expect("README should be readable");
         assert!(
             text.contains("rooted_with_id(")
                 && text.contains("LocalResourcePolicy")
@@ -274,8 +241,7 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "{document} must explain the three-argument rooted_with_id API"
         );
         assert!(
-            !text.contains("rooted_with_id(id, root)`")
-                && !text.contains("rooted_with_id(id, root)"),
+            !text.contains("rooted_with_id(id, root)`") && !text.contains("rooted_with_id(id, root)"),
             "{document} must not retain the old rooted_with_id signature"
         );
     }

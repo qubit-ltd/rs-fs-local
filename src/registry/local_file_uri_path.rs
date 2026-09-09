@@ -40,15 +40,12 @@ pub(super) fn decode(raw: &str) -> Result<Path, ProviderFailure<FsError>> {
         }
         canonical.push_str(&decode_component(component)?);
     }
-    Path::parse(&canonical)
-        .map_err(|_| invalid_path("local file URI path is invalid"))
+    Path::parse(&canonical).map_err(|_| invalid_path("local file URI path is invalid"))
 }
 
 /// Re-encodes a canonical logical path as the unique absolute `file:` URI
 /// spelling used by registry resolutions.
-pub(super) fn canonical_uri(
-    path: &Path,
-) -> Result<Uri, ProviderFailure<FsError>> {
+pub(super) fn canonical_uri(path: &Path) -> Result<Uri, ProviderFailure<FsError>> {
     let text = path.as_str();
     let mut encoded = String::with_capacity(text.len());
     let mut index = 0;
@@ -77,9 +74,7 @@ pub(super) fn canonical_uri(
         }
         index += scalar.len_utf8();
     }
-    Uri::parse(&format!("file://{encoded}")).map_err(|_| {
-        invalid_path("local file URI path cannot be canonicalized")
-    })
+    Uri::parse(&format!("file://{encoded}")).map_err(|_| invalid_path("local file URI path cannot be canonicalized"))
 }
 
 /// Returns whether a scalar can appear unescaped in a URI path segment.
@@ -87,21 +82,7 @@ fn is_uri_pchar(scalar: char) -> bool {
     scalar.is_ascii_alphanumeric()
         || matches!(
             scalar,
-            '-' | '.'
-                | '_'
-                | '~'
-                | '!'
-                | '$'
-                | '&'
-                | '\''
-                | '('
-                | ')'
-                | '*'
-                | '+'
-                | ','
-                | ';'
-                | ':'
-                | '@'
+            '-' | '.' | '_' | '~' | '!' | '$' | '&' | '\'' | '(' | ')' | '*' | '+' | ',' | ';' | ':' | '@'
         )
 }
 
@@ -119,23 +100,17 @@ fn is_uri_pchar(scalar: char) -> bool {
 ///
 /// Returns an invalid-path failure for malformed percent escapes, NUL bytes,
 /// or bytes decoding to a native path separator.
-fn decode_component(
-    component: &str,
-) -> Result<String, ProviderFailure<FsError>> {
+fn decode_component(component: &str) -> Result<String, ProviderFailure<FsError>> {
     let canonical = canonicalize_uri_bytes(&decode_uri_bytes(component)?);
     let bytes = canonical.as_bytes();
     if bytes.contains(&b'/') || cfg!(windows) && bytes.contains(&b'\\') {
-        return Err(invalid_path(
-            "local file URI path must not encode a path separator",
-        ));
+        return Err(invalid_path("local file URI path must not encode a path separator"));
     }
     Ok(canonical)
 }
 
 /// Strictly percent-decodes a URI component without treating `+` as a space.
-fn decode_uri_bytes(
-    component: &str,
-) -> Result<Vec<u8>, ProviderFailure<FsError>> {
+fn decode_uri_bytes(component: &str) -> Result<Vec<u8>, ProviderFailure<FsError>> {
     let bytes = component.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -149,20 +124,12 @@ fn decode_uri_bytes(
             .get(index + 1)
             .copied()
             .and_then(hex_value)
-            .ok_or_else(|| {
-                invalid_path(
-                    "local file URI path contains an invalid encoded component",
-                )
-            })?;
+            .ok_or_else(|| invalid_path("local file URI path contains an invalid encoded component"))?;
         let low = bytes
             .get(index + 2)
             .copied()
             .and_then(hex_value)
-            .ok_or_else(|| {
-                invalid_path(
-                    "local file URI path contains an invalid encoded component",
-                )
-            })?;
+            .ok_or_else(|| invalid_path("local file URI path contains an invalid encoded component"))?;
         decoded.push((high << 4) | low);
         index += 3;
     }
@@ -196,8 +163,7 @@ fn canonicalize_uri_bytes(bytes: &[u8]) -> String {
             }
             Err(error) => {
                 let valid_end = error.valid_up_to();
-                let valid = std::str::from_utf8(&remaining[..valid_end])
-                    .expect("valid UTF-8 prefix must decode");
+                let valid = std::str::from_utf8(&remaining[..valid_end]).expect("valid UTF-8 prefix must decode");
                 push_uri_scalars(&mut canonical, valid);
                 let invalid_len = error.error_len().unwrap_or(1);
                 for byte in &remaining[valid_end..valid_end + invalid_len] {
@@ -260,8 +226,7 @@ mod tests {
             select(vec!['é', '中', '🦀']),
         ];
         collection::vec(
-            collection::vec(scalar, 1..=32)
-                .prop_map(|scalars| scalars.into_iter().collect()),
+            collection::vec(scalar, 1..=32).prop_map(|scalars| scalars.into_iter().collect()),
             0..=8,
         )
     }
@@ -272,8 +237,7 @@ mod tests {
             .iter()
             .map(|segment| segment.replace('%', "%25"))
             .collect::<Vec<_>>();
-        Path::parse(&format!("/{}", components.join("/")))
-            .expect("generated canonical path must parse")
+        Path::parse(&format!("/{}", components.join("/"))).expect("generated canonical path must parse")
     }
 
     proptest! {
@@ -322,8 +286,7 @@ mod tests {
         let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F", "/%5C"];
 
         for raw in raw_paths {
-            let failure = decode(raw)
-                .expect_err("malformed or unsafe URI path must be rejected");
+            let failure = decode(raw).expect_err("malformed or unsafe URI path must be rejected");
             assert_eq!(
                 ProviderFailureKind::InvalidConfiguration,
                 failure.kind(),

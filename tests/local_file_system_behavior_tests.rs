@@ -44,9 +44,8 @@ use qubit_io::Output;
 /// Creates a rooted adapter whose native root is removed with the fixture.
 fn rooted_file_system() -> (tempfile::TempDir, FileSystem) {
     let root = tempfile::tempdir().expect("test root must be created");
-    let file_system =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted local filesystem must be opened");
+    let file_system = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted local filesystem must be opened");
     (root, file_system)
 }
 
@@ -64,8 +63,7 @@ fn test_rooted_append_abort_reports_published_destination() {
             WriteOptions::default().with_disposition(WriteDisposition::Append),
         )
         .expect("append writer must open");
-    Output::write_fully(&mut writer, b"-published")
-        .expect("append writer must accept bytes");
+    Output::write_fully(&mut writer, b"-published").expect("append writer must accept bytes");
 
     let outcome = writer.abort().expect("append abort must flush");
 
@@ -82,8 +80,7 @@ fn test_rooted_writer_commit_rejects_repeated_terminal_operations() {
     let mut writer = file_system
         .open_writer(&target, WriteOptions::default())
         .expect("writer must open");
-    Output::write_fully(&mut writer, b"committed")
-        .expect("writer must accept payload");
+    Output::write_fully(&mut writer, b"committed").expect("writer must accept payload");
 
     writer.commit().expect("initial commit must succeed");
 
@@ -93,9 +90,7 @@ fn test_rooted_writer_commit_rejects_repeated_terminal_operations() {
     assert_eq!(FsErrorKind::InvalidState, commit_failure.error().kind());
     assert_eq!(WriteFailureState::Published, commit_failure.state());
     assert_eq!(None, commit_failure.error().effect_state());
-    let abort_error = writer
-        .abort()
-        .expect_err("committed writer must reject abort");
+    let abort_error = writer.abort().expect_err("committed writer must reject abort");
     assert_eq!(FsErrorKind::InvalidState, abort_error.kind());
     assert_eq!(None, abort_error.effect_state());
     assert_eq!(
@@ -115,23 +110,18 @@ fn test_rooted_writer_abort_rejects_repeated_terminal_operations() {
     let mut writer = file_system
         .open_writer(&target, WriteOptions::default())
         .expect("writer must open");
-    Output::write_fully(&mut writer, b"discarded")
-        .expect("writer must accept payload");
+    Output::write_fully(&mut writer, b"discarded").expect("writer must accept payload");
 
     assert_eq!(
         WriteAbortOutcome::NotPublished,
         writer.abort().expect("initial abort must succeed"),
     );
 
-    let commit_failure = writer
-        .commit()
-        .expect_err("aborted writer must reject commit");
+    let commit_failure = writer.commit().expect_err("aborted writer must reject commit");
     assert_eq!(FsErrorKind::InvalidState, commit_failure.error().kind());
     assert_eq!(WriteFailureState::NotPublished, commit_failure.state());
     assert_eq!(None, commit_failure.error().effect_state());
-    let abort_error = writer
-        .abort()
-        .expect_err("aborted writer must reject another abort");
+    let abort_error = writer.abort().expect_err("aborted writer must reject another abort");
     assert_eq!(FsErrorKind::InvalidState, abort_error.kind());
     assert_eq!(None, abort_error.effect_state());
     assert_eq!(
@@ -149,31 +139,23 @@ fn test_rooted_writer_abort_rejects_repeated_terminal_operations() {
 fn test_host_commit_conflict_preserves_not_published_state() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
     let target = root.path().join("target");
-    let logical = host_path_to_logical(&target)
-        .expect("host target path must be logical");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem must open");
+    let logical = host_path_to_logical(&target).expect("host target path must be logical");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
     let mut writer = file_system
         .open_writer(
             &logical,
-            WriteOptions::default()
-                .with_disposition(WriteDisposition::CreateNew),
+            WriteOptions::default().with_disposition(WriteDisposition::CreateNew),
         )
         .expect("create-new writer must open before the conflict");
-    Output::write_fully(&mut writer, b"staged")
-        .expect("writer must accept staged bytes");
-    std::fs::write(&target, b"concurrent")
-        .expect("concurrent destination must be installed");
+    Output::write_fully(&mut writer, b"staged").expect("writer must accept staged bytes");
+    std::fs::write(&target, b"concurrent").expect("concurrent destination must be installed");
 
     let failure = writer
         .commit()
         .expect_err("concurrent destination must fail create-new commit");
 
     assert_eq!(FsErrorKind::AlreadyExists, failure.error().kind());
-    assert_eq!(
-        Some(FsEffectState::Unchanged),
-        failure.error().effect_state(),
-    );
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state(),);
     assert_eq!(WriteFailureState::NotPublished, failure.state(),);
     assert_eq!(WriterState::NotPublished, writer.state());
     assert_eq!(
@@ -188,15 +170,12 @@ fn test_host_commit_conflict_preserves_not_published_state() {
 fn test_host_abort_failure_retains_writer_for_retry() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
     let target = root.path().join("target");
-    let logical = host_path_to_logical(&target)
-        .expect("host target path must be logical");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem must open");
+    let logical = host_path_to_logical(&target).expect("host target path must be logical");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
     let mut writer = file_system
         .open_writer(
             &logical,
-            WriteOptions::default()
-                .with_disposition(WriteDisposition::CreateNew),
+            WriteOptions::default().with_disposition(WriteDisposition::CreateNew),
         )
         .expect("create-new writer must open");
     let staging = std::fs::read_dir(root.path())
@@ -204,8 +183,7 @@ fn test_host_abort_failure_retains_writer_for_retry() {
         .map(|entry| entry.expect("staging entry must be readable").path())
         .find(|path| path != &target)
         .expect("writer must create one staging entry");
-    std::fs::remove_file(staging)
-        .expect("external actor must remove the staging entry");
+    std::fs::remove_file(staging).expect("external actor must remove the staging entry");
 
     for _ in 0..2 {
         let error = writer
@@ -224,14 +202,10 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
 
     let root = tempfile::tempdir().expect("listing root must be created");
     let outside = tempfile::tempdir().expect("listing target must be created");
-    std::fs::write(outside.path().join("child"), b"payload")
-        .expect("listing child must be written");
-    symlink(outside.path(), root.path().join("link"))
-        .expect("listing symlink must be created");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem must open");
-    let logical_root = host_path_to_logical(root.path())
-        .expect("listing root must be logical");
+    std::fs::write(outside.path().join("child"), b"payload").expect("listing child must be written");
+    symlink(outside.path(), root.path().join("link")).expect("listing symlink must be created");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
+    let logical_root = host_path_to_logical(root.path()).expect("listing root must be logical");
 
     let mut without_following_stream = file_system
         .list(
@@ -284,23 +258,18 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
 
     let root = tempfile::tempdir().expect("copy root must be created");
     let outside = tempfile::tempdir().expect("copy target must be created");
-    std::fs::write(outside.path().join("child"), b"payload")
-        .expect("copy child must be written");
+    std::fs::write(outside.path().join("child"), b"payload").expect("copy child must be written");
     let source = root.path().join("source");
     std::fs::create_dir(&source).expect("copy source must be created");
-    symlink(outside.path(), source.join("link"))
-        .expect("copy symlink must be created");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem must open");
-    let source =
-        host_path_to_logical(&source).expect("copy source must be logical");
+    symlink(outside.path(), source.join("link")).expect("copy symlink must be created");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
+    let source = host_path_to_logical(&source).expect("copy source must be logical");
 
     let no_follow_target = root.path().join("no-follow");
     file_system
         .copy(
             &source,
-            &host_path_to_logical(&no_follow_target)
-                .expect("copy target must be logical"),
+            &host_path_to_logical(&no_follow_target).expect("copy target must be logical"),
             CopyOptions::tree().with_symlink_policy(SymlinkPolicy::Reject),
         )
         .expect("non-following tree copy must succeed");
@@ -315,15 +284,12 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
     file_system
         .copy(
             &source,
-            &host_path_to_logical(&follow_target)
-                .expect("copy target must be logical"),
-            CopyOptions::tree()
-                .with_symlink_policy(SymlinkPolicy::FollowWithinFileSystem),
+            &host_path_to_logical(&follow_target).expect("copy target must be logical"),
+            CopyOptions::tree().with_symlink_policy(SymlinkPolicy::FollowWithinFileSystem),
         )
         .expect("following tree copy must succeed");
     assert_eq!(
-        std::fs::read(follow_target.join("link/child"))
-            .expect("followed copy child must be present"),
+        std::fs::read(follow_target.join("link/child")).expect("followed copy child must be present"),
         b"payload",
     );
 }
@@ -335,8 +301,7 @@ fn test_rooted_writer_commit_reports_atomic_rename_publication() {
     let mut writer = file_system
         .open_writer(&path("/published"), WriteOptions::default())
         .expect("writer must open");
-    Output::write_fully(&mut writer, b"payload")
-        .expect("writer must accept payload");
+    Output::write_fully(&mut writer, b"payload").expect("writer must accept payload");
 
     let outcome = writer.commit().expect("writer commit must succeed");
 
@@ -352,17 +317,13 @@ fn test_host_rename_supports_durable_operation() {
     let source = root.path().join("source");
     let target = root.path().join("target");
     std::fs::write(&source, b"payload").expect("rename source must be written");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem must open");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
 
     let outcome = file_system
         .rename(
-            &host_path_to_logical(&source)
-                .expect("source path must be logical"),
-            &host_path_to_logical(&target)
-                .expect("target path must be logical"),
-            RenameOptions::default()
-                .with_durability(DurabilityRequirement::Required),
+            &host_path_to_logical(&source).expect("source path must be logical"),
+            &host_path_to_logical(&target).expect("target path must be logical"),
+            RenameOptions::default().with_durability(DurabilityRequirement::Required),
         )
         .expect("advertised durable rename must succeed");
 
@@ -375,19 +336,12 @@ fn test_host_rename_supports_durable_operation() {
 #[cfg(unix)]
 #[test]
 fn test_host_stat_preserves_character_device_kind() {
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem must open");
-    let path = host_path_to_logical(std::path::Path::new("/dev/null"))
-        .expect("null-device path must be logical");
+    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
+    let path = host_path_to_logical(std::path::Path::new("/dev/null")).expect("null-device path must be logical");
 
-    let metadata = file_system
-        .stat(&path)
-        .expect("null-device metadata must be readable");
+    let metadata = file_system.stat(&path).expect("null-device metadata must be readable");
 
-    assert_eq!(
-        &FileKind::Other("local-char-device".to_owned()),
-        metadata.kind(),
-    );
+    assert_eq!(&FileKind::Other("local-char-device".to_owned()), metadata.kind(),);
 }
 
 /// Native I/O categories survive translation when a path component is not a
@@ -395,23 +349,16 @@ fn test_host_stat_preserves_character_device_kind() {
 #[test]
 fn test_stat_maps_not_a_directory_io_kind() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let component = root.path().join("component");
-    std::fs::write(&component, b"payload")
-        .expect("file fixture must be written");
+    std::fs::write(&component, b"payload").expect("file fixture must be written");
     file_system
-        .stat(
-            &host_path_to_logical(&component)
-                .expect("component path must be logical"),
-        )
+        .stat(&host_path_to_logical(&component).expect("component path must be logical"))
         .expect("file fixture metadata must be readable");
 
     let error = file_system
-        .stat(
-            &host_path_to_logical(&component.join("child"))
-                .expect("child path must be logical"),
-        )
+        .stat(&host_path_to_logical(&component.join("child")).expect("child path must be logical"))
         .expect_err("a child below a regular file must fail");
     assert_eq!(error.kind(), FsErrorKind::NotDirectory);
 }
@@ -446,8 +393,7 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
         .copy(
             &path("/missing-source"),
             &path("/target"),
-            CopyOptions::file()
-                .with_preserve_metadata(MetadataPreservePolicy::UserMetadata),
+            CopyOptions::file().with_preserve_metadata(MetadataPreservePolicy::UserMetadata),
         )
         .expect_err("user metadata preservation must be rejected");
     assert_eq!(FsErrorKind::RequirementNotMet, copy.error().kind());
@@ -456,18 +402,14 @@ fn test_rooted_operations_reject_unrepresentable_option_metadata() {
         .write_all(
             &path("/typed-write"),
             b"payload",
-            WriteOptions::default()
-                .with_content_type(Some("text/plain".to_owned())),
+            WriteOptions::default().with_content_type(Some("text/plain".to_owned())),
         )
         .expect_err("content type must be rejected");
     assert_eq!(FsErrorKind::RequirementNotMet, content_type.error().kind());
 
     for options in [
         WriteOptions::default().with_precondition(WritePrecondition::IfAbsent),
-        WriteOptions::default().with_checksum(Some(Checksum::new(
-            ChecksumAlgorithm::Sha256,
-            "00",
-        ))),
+        WriteOptions::default().with_checksum(Some(Checksum::new(ChecksumAlgorithm::Sha256, "00"))),
     ] {
         let error = file_system
             .write_all(&path("/conditional-write"), b"payload", options)
@@ -542,8 +484,7 @@ fn test_rooted_copy_reports_portable_metadata_preservation() {
         .copy(
             &source,
             &target,
-            CopyOptions::file()
-                .with_preserve_metadata(MetadataPreservePolicy::Portable),
+            CopyOptions::file().with_preserve_metadata(MetadataPreservePolicy::Portable),
         )
         .expect("portable metadata copy must satisfy the facade contract");
 
@@ -557,10 +498,7 @@ fn test_rooted_operations_map_missing_entries() {
     let missing = path("/missing");
     assert_eq!(
         FsErrorKind::NotFound,
-        file_system
-            .stat(&missing)
-            .expect_err("missing stat must fail")
-            .kind()
+        file_system.stat(&missing).expect_err("missing stat must fail").kind()
     );
     assert_eq!(
         FsErrorKind::NotFound,
@@ -614,17 +552,12 @@ fn test_rooted_operations_map_missing_entries() {
         .expect_err("a file cannot become a directory");
     assert_eq!(FsErrorKind::Conflict, create_directory.kind());
     let temporary_file = file_system
-        .create_temp_file(
-            TempFileOptions::default().with_parent(Some(regular_file.clone())),
-        )
+        .create_temp_file(TempFileOptions::default().with_parent(Some(regular_file.clone())))
         .expect_err("temporary file with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
     assert_eq!(Some(&regular_file), temporary_file.path());
     let temporary_directory = file_system
-        .create_temp_directory(
-            TempDirectoryOptions::default()
-                .with_parent(Some(regular_file.clone())),
-        )
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(regular_file.clone())))
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
     assert_eq!(Some(&regular_file), temporary_directory.path());
@@ -635,17 +568,12 @@ fn test_rooted_operations_map_missing_entries() {
 fn test_rooted_delete_directory_rejects_regular_file() {
     let root = tempfile::tempdir().expect("rooted fixture root must exist");
     let file = root.path().join("regular-file");
-    std::fs::write(&file, b"must survive")
-        .expect("regular fixture file must be written");
-    let file_system =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted local filesystem must be opened");
+    std::fs::write(&file, b"must survive").expect("regular fixture file must be written");
+    let file_system = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted local filesystem must be opened");
 
     let error = file_system
-        .delete_directory(
-            &path("/regular-file"),
-            DeleteOptions::default().with_recursive(true),
-        )
+        .delete_directory(&path("/regular-file"), DeleteOptions::default().with_recursive(true))
         .expect_err("a regular file is not a directory");
 
     assert_eq!(FsErrorKind::NotDirectory, error.kind());
@@ -658,10 +586,9 @@ fn test_rooted_delete_directory_rejects_regular_file() {
 /// Relative logical paths are rejected before native filesystem operations.
 #[test]
 fn test_relative_paths_are_rejected_by_facade_operations() {
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host local filesystem must be opened");
-    let relative = Path::parse("relative")
-        .expect("relative logical path must be syntactically valid");
+    let file_system =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
+    let relative = Path::parse("relative").expect("relative logical path must be syntactically valid");
     assert_eq!(
         FsErrorKind::InvalidPath,
         file_system
@@ -697,13 +624,11 @@ fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
 #[test]
 fn test_host_operations_map_missing_native_entries() {
     let root = tempfile::tempdir().expect("host fixture root must be created");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let missing = host_path(&root, "missing");
 
-    let stat = file_system
-        .stat(&missing)
-        .expect_err("missing stat must fail");
+    let stat = file_system.stat(&missing).expect_err("missing stat must fail");
     assert_eq!(FsErrorKind::NotFound, stat.kind());
     let reader = file_system
         .open_reader(&missing, Default::default())
@@ -740,29 +665,20 @@ fn test_host_operations_map_missing_native_entries() {
     assert_eq!(FsErrorKind::NotFound, writer.kind());
 
     let regular_file = root.path().join("regular-file");
-    std::fs::write(&regular_file, b"file")
-        .expect("regular fixture file must be written");
+    std::fs::write(&regular_file, b"file").expect("regular fixture file must be written");
     let create_directory = file_system
-        .create_directory(
-            &host_path(&root, "regular-file"),
-            CreateDirectoryOptions::default(),
-        )
+        .create_directory(&host_path(&root, "regular-file"), CreateDirectoryOptions::default())
         .expect_err("a file cannot be created as a directory");
     assert_eq!(FsErrorKind::Conflict, create_directory.kind());
 
     let file_parent = host_path(&root, "regular-file");
     let temporary_file = file_system
-        .create_temp_file(
-            TempFileOptions::default().with_parent(Some(file_parent.clone())),
-        )
+        .create_temp_file(TempFileOptions::default().with_parent(Some(file_parent.clone())))
         .expect_err("temporary file with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
     assert_eq!(Some(&file_parent), temporary_file.path());
     let temporary_directory = file_system
-        .create_temp_directory(
-            TempDirectoryOptions::default()
-                .with_parent(Some(file_parent.clone())),
-        )
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(file_parent.clone())))
         .expect_err("temporary directory with a file parent must fail");
     assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
     assert_eq!(Some(&file_parent), temporary_directory.path());
@@ -775,10 +691,9 @@ fn test_host_operations_map_missing_native_entries() {
 fn test_host_delete_directory_rejects_regular_file() {
     let root = tempfile::tempdir().expect("host fixture root must exist");
     let file = root.path().join("regular-file");
-    std::fs::write(&file, b"must survive")
-        .expect("regular fixture file must be written");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host local filesystem must be opened");
+    std::fs::write(&file, b"must survive").expect("regular fixture file must be written");
+    let file_system =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
 
     let error = file_system
         .delete_directory(
@@ -801,8 +716,8 @@ fn test_host_metadata_maps_symbolic_link_kind() {
     use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().expect("host fixture root must exist");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let referent = root.path().join("referent");
     let link = root.path().join("link");
     std::fs::write(&referent, b"payload").expect("referent should be written");
@@ -821,8 +736,8 @@ fn test_host_metadata_maps_unix_socket_kind() {
     use std::os::unix::net::UnixListener;
 
     let root = tempfile::tempdir().expect("host fixture root must exist");
-    let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host local filesystem must be opened");
+    let file_system =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let socket = root.path().join("socket");
     let _listener = match UnixListener::bind(&socket) {
         Ok(listener) => listener,

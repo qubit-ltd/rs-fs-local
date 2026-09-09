@@ -52,10 +52,7 @@ impl LocalFileWriterSpi {
     ///
     /// An active facade writer session.
     #[inline(always)]
-    pub(crate) fn new(
-        writer: native_files::LocalFileWriter,
-        provider_id: String,
-    ) -> Self {
+    pub(crate) fn new(writer: native_files::LocalFileWriter, provider_id: String) -> Self {
         Self {
             writer: Some(writer),
             terminal_abort_outcome: None,
@@ -111,12 +108,7 @@ impl Output for LocalFileWriterSpi {
     /// The caller must ensure that `index..index + count` is a valid range
     /// within `input`, as required by [`Output::write_unchecked`].
     #[inline(always)]
-    unsafe fn write_unchecked(
-        &mut self,
-        input: &[u8],
-        index: usize,
-        count: usize,
-    ) -> IoResult<usize> {
+    unsafe fn write_unchecked(&mut self, input: &[u8], index: usize, count: usize) -> IoResult<usize> {
         Write::write(self.writer_mut()?, &input[index..index + count])
     }
 
@@ -171,9 +163,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         native_files::outcome::LocalWritePublicationMethod::AtomicRename => {
                             PublicationMethod::AtomicRename
                         }
-                        native_files::outcome::LocalWritePublicationMethod::DirectAppend => {
-                            PublicationMethod::Direct
-                        }
+                        native_files::outcome::LocalWritePublicationMethod::DirectAppend => PublicationMethod::Direct,
                         _ => {
                             if outcome.atomic() {
                                 PublicationMethod::AtomicRename
@@ -183,8 +173,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                         }
                     },
                 );
-                result =
-                    result.with_bytes_written(outcome.bytes_written() as u64);
+                result = result.with_bytes_written(outcome.bytes_written() as u64);
                 result = result.with_durable(outcome.durable());
                 Ok(result)
             }
@@ -193,8 +182,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
                 self.writer = retained;
                 let state = write_failure_state(state, self.writer.is_some());
                 if self.writer.is_none() {
-                    self.terminal_abort_outcome =
-                        Some(abort_outcome_from_failure(state));
+                    self.terminal_abort_outcome = Some(abort_outcome_from_failure(state));
                 }
                 Err(SpiWriteFailure::new(
                     error_mapper::map_without_path(
@@ -257,8 +245,7 @@ impl FileWriterSpi for LocalFileWriterSpi {
 #[inline]
 const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
     match state {
-        WriteFailureState::RetryableNotPublished
-        | WriteFailureState::NotPublished => FsEffectState::Unchanged,
+        WriteFailureState::RetryableNotPublished | WriteFailureState::NotPublished => FsEffectState::Unchanged,
         WriteFailureState::Published => FsEffectState::Applied,
         WriteFailureState::Indeterminate => FsEffectState::Indeterminate,
     }
@@ -268,8 +255,7 @@ const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
 #[inline]
 fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
     match state {
-        WriteFailureState::RetryableNotPublished
-        | WriteFailureState::NotPublished => WriteAbortOutcome::NotPublished,
+        WriteFailureState::RetryableNotPublished | WriteFailureState::NotPublished => WriteAbortOutcome::NotPublished,
         WriteFailureState::Published => WriteAbortOutcome::Published,
         WriteFailureState::Indeterminate => WriteAbortOutcome::Indeterminate,
     }
@@ -277,20 +263,11 @@ fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
 
 /// Converts native abort publication certainty to the portable outcome.
 #[inline]
-fn abort_outcome(
-    state: Option<native_files::outcome::LocalWriteFailureState>,
-) -> WriteAbortOutcome {
+fn abort_outcome(state: Option<native_files::outcome::LocalWriteFailureState>) -> WriteAbortOutcome {
     match state {
-        None
-        | Some(native_files::outcome::LocalWriteFailureState::NotPublished) => {
-            WriteAbortOutcome::NotPublished
-        }
-        Some(native_files::outcome::LocalWriteFailureState::Published) => {
-            WriteAbortOutcome::Published
-        }
-        Some(native_files::outcome::LocalWriteFailureState::Indeterminate) => {
-            WriteAbortOutcome::Indeterminate
-        }
+        None | Some(native_files::outcome::LocalWriteFailureState::NotPublished) => WriteAbortOutcome::NotPublished,
+        Some(native_files::outcome::LocalWriteFailureState::Published) => WriteAbortOutcome::Published,
+        Some(native_files::outcome::LocalWriteFailureState::Indeterminate) => WriteAbortOutcome::Indeterminate,
     }
 }
 
@@ -305,25 +282,14 @@ fn abort_outcome(
 ///
 /// The most precise portable writer failure state supported by both values.
 #[inline]
-fn write_failure_state(
-    state: native_files::outcome::LocalWriteFailureState,
-    retained: bool,
-) -> WriteFailureState {
+fn write_failure_state(state: native_files::outcome::LocalWriteFailureState, retained: bool) -> WriteFailureState {
     match state {
-        native_files::outcome::LocalWriteFailureState::NotPublished
-            if retained =>
-        {
+        native_files::outcome::LocalWriteFailureState::NotPublished if retained => {
             WriteFailureState::RetryableNotPublished
         }
-        native_files::outcome::LocalWriteFailureState::NotPublished => {
-            WriteFailureState::NotPublished
-        }
-        native_files::outcome::LocalWriteFailureState::Published => {
-            WriteFailureState::Published
-        }
-        native_files::outcome::LocalWriteFailureState::Indeterminate => {
-            WriteFailureState::Indeterminate
-        }
+        native_files::outcome::LocalWriteFailureState::NotPublished => WriteFailureState::NotPublished,
+        native_files::outcome::LocalWriteFailureState::Published => WriteFailureState::Published,
+        native_files::outcome::LocalWriteFailureState::Indeterminate => WriteFailureState::Indeterminate,
     }
 }
 
@@ -337,10 +303,7 @@ fn write_failure_state(
 ///
 /// A facade abort error with local provider context.
 #[inline(always)]
-fn abort_error(
-    error: native_files::LocalFileError,
-    provider_id: &str,
-) -> FsError {
+fn abort_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     error_mapper::map_without_path(
         error,
         FsOperation::AbortWriter,
