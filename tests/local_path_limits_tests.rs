@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 
+#[cfg(unix)]
+use qubit_fs::FileSystem;
 use qubit_fs::directory::ListOptions;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemLimit;
@@ -68,9 +70,12 @@ fn test_rooted_paths_preserve_long_non_utf8_components() {
 
     let root = tempfile::tempdir().expect("fixture root");
     let name = OsString::from_vec(vec![0xff; 100]);
-    std::fs::write(root.path().join(name), b"raw").expect("native bytes");
+    let native_creation = std::fs::write(root.path().join(name), b"raw");
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let path = Path::parse(&format!("/{}", "%FF".repeat(100))).expect("logical bytes");
+    if !native_bytes_are_supported(native_creation, &fs, &path) {
+        return;
+    }
     assert_eq!(
         b"raw",
         fs.read_all(&path, Default::default(), 8)
@@ -92,17 +97,46 @@ fn test_absolute_host_paths_preserve_non_utf8_components() {
     let directory = tempfile::tempdir().expect("fixture root");
     let name = OsString::from_vec(vec![b'r', b'a', b'w', 0xff]);
     let native = directory.path().join(name);
-    std::fs::write(&native, b"host").expect("native host fixture");
+    let native_creation = std::fs::write(&native, b"host");
     let logical = host_path_to_logical(&native).expect("absolute host path must convert without lossy text");
     let fs = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
 
     assert!(logical.as_str().ends_with("/raw%FF"));
+    if !native_bytes_are_supported(native_creation, &fs, &logical) {
+        return;
+    }
     assert_eq!(
         b"host",
         fs.read_all(&logical, Default::default(), 8)
             .expect("converted host path must remain addressable")
             .as_slice(),
     );
+}
+
+/// Tests successful raw-name I/O where supported, and preserves macOS's
+/// native EILSEQ rejection where the filesystem requires valid UTF-8 names.
+#[cfg(target_os = "macos")]
+fn native_bytes_are_supported(result: std::io::Result<()>, filesystem: &FileSystem, path: &Path) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(error) => {
+            const EILSEQ: i32 = 92;
+            assert_eq!(error.raw_os_error(), Some(EILSEQ), "unexpected native fixture failure");
+            let failure = filesystem
+                .write_all(path, b"rejected", Default::default())
+                .expect_err("the adapter must preserve native filename rejection");
+            assert_eq!(failure.error().path(), Some(path));
+            assert!(std::error::Error::source(failure.error()).is_some());
+            false
+        }
+    }
+}
+
+/// Other tested Unix filesystems must support the raw-name I/O fixture.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn native_bytes_are_supported(result: std::io::Result<()>, _filesystem: &FileSystem, _path: &Path) -> bool {
+    result.expect("native raw-name fixture must be created");
+    true
 }
 
 /// A long escaped logical path can still target a native path under its OS cap.
