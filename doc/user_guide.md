@@ -6,8 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.5.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.5.0`).
+0.6.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.6.0`).
 
 ## Provider resource ceilings
 
@@ -15,6 +15,16 @@ Native `LocalFileSystem` defaults are replaceable convenience Options. This
 adapter treats `LocalResourcePolicy` as per-request ceilings: list/copy request
 limits are intersected with provider limits, and omitting a request limit cannot
 remove a provider limit. These are not aggregate quotas across concurrent requests.
+
+The adapter constructs operation behavior from the complete request, then
+applies native `tighten_resource_limits`. Provider ceilings cannot turn on
+recursion, ignore a missing target, create parents, or change overwrite policy.
+Writers explicitly select native `PreserveExisting`; the portable API does not
+expose a native metadata-policy switch. Temporary publication passes absolute
+namespace targets to `persist_with`. Logical `qubit_fs::Path` normalization
+remains the facade contract; native Host preservation of `link/..` does not
+change logical path syntax or restore components already normalized by the
+portable layer. Native dot traversal is available through `qubit-local-files`.
 
 `LocalResourcePolicy::bounded(list, copy, delete)` sets independent ceilings for
 the three ordinary recursive operation families. Deletion requests preserve
