@@ -204,11 +204,12 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
     use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().expect("listing root must be created");
+    let root_path = std::fs::canonicalize(root.path()).expect("listing fixture must avoid ambient parent aliases");
     let outside = tempfile::tempdir().expect("listing target must be created");
     std::fs::write(outside.path().join("child"), b"payload").expect("listing child must be written");
     symlink(outside.path(), root.path().join("link")).expect("listing symlink must be created");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
-    let logical_root = host_path_to_logical(root.path()).expect("listing root must be logical");
+    let logical_root = host_path_to_logical(&root_path).expect("listing root must be logical");
 
     let mut without_following_stream = file_system
         .list(
@@ -260,15 +261,16 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
     use std::os::unix::fs::symlink;
 
     let root = tempfile::tempdir().expect("copy root must be created");
+    let root_path = std::fs::canonicalize(root.path()).expect("copy fixture must avoid ambient parent aliases");
     let outside = tempfile::tempdir().expect("copy target must be created");
     std::fs::write(outside.path().join("child"), b"payload").expect("copy child must be written");
-    let source = root.path().join("source");
+    let source = root_path.join("source");
     std::fs::create_dir(&source).expect("copy source must be created");
     symlink(outside.path(), source.join("link")).expect("copy symlink must be created");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
     let source = host_path_to_logical(&source).expect("copy source must be logical");
 
-    let no_follow_target = root.path().join("no-follow");
+    let no_follow_target = root_path.join("no-follow");
     file_system
         .copy(
             &source,
@@ -283,7 +285,7 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
             .is_symlink()
     );
 
-    let follow_target = root.path().join("follow");
+    let follow_target = root_path.join("follow");
     file_system
         .copy(
             &source,
@@ -363,7 +365,13 @@ fn test_stat_maps_not_a_directory_io_kind() {
     let error = file_system
         .stat(&host_path_to_logical(&component.join("child")).expect("child path must be logical"))
         .expect_err("a child below a regular file must fail");
-    assert_eq!(error.kind(), FsErrorKind::NotDirectory);
+    let native = std::fs::symlink_metadata(component.join("child")).expect_err("native child lookup must fail");
+    let expected = match native.kind() {
+        std::io::ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
+        std::io::ErrorKind::NotFound => FsErrorKind::NotFound,
+        unexpected => panic!("unexpected native lookup category: {unexpected:?}"),
+    };
+    assert_eq!(error.kind(), expected);
 }
 
 /// Unsupported provider-level metadata policies fail before filesystem side
