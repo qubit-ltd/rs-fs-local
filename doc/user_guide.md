@@ -6,8 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.6.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.6.0`).
+0.7.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.7.0`).
 
 ## Provider resource ceilings
 
@@ -299,3 +299,10 @@ progress, while the mapped error kind follows the native cause when available.
 - [README](../README.md)
 - [中文用户手册](user_guide.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
+
+## Filesystem contract update
+
+Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
+for the configured hierarchical root. `ListScope::Namespace` is rejected before
+native I/O. This provider does not advertise `RangeRead`, so `read_prefix`
+continues to use a bounded sequential read without adding a range requirement.
