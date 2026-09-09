@@ -15,11 +15,10 @@ permissions:
 
 jobs:
   rust-ci:
-    uses: qubit-ltd/rs-ci/.github/workflows/rust-ci.yml@main
+    uses: qubit-ltd/rs-local-files/.github/workflows/repository-ci.yml@main
     with:
-      coverage_enforce_thresholds: "1"
-      run_windows_tests: true
-      run_macos_tests: true
+      repository: rs-fs-local
+      revision: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit
 
   downstream-contracts:

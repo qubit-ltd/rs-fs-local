@@ -67,6 +67,7 @@ use super::local_directory_stream_spi::LocalDirectoryStreamSpi;
 use super::local_file_writer_spi::LocalFileWriterSpi;
 use super::local_options_mapper;
 use super::local_outcome_mapper;
+use super::local_temp_path_projection::LocalTempPathProjection;
 use super::local_temp_resource_spi::LocalTempResourceSpi;
 use crate::LocalResourcePolicy;
 use crate::constants::FILE_SCHEME;
@@ -738,13 +739,22 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         &self.provider_id,
                     ),
                 })?;
-        let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
+        let projection = parent
+            .as_deref()
+            .map(|parent| LocalTempPathProjection::new(parent, value.path()))
+            .transpose()?;
+        let public_path = projection
+            .as_ref()
+            .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
+            .transpose()?;
+        let path = self.logical_path(public_path.as_deref().unwrap_or(value.path()), FsOperation::CreateTemp)?;
         Ok(OpenedTempFile::new(
             self.info(path).with_metadata(FileMetadata::new(FileKind::File)),
             Box::new(LocalTempResourceSpi::file(
                 value,
                 self.is_rooted(),
                 self.provider_id.clone(),
+                projection,
             )),
         ))
     }
@@ -792,13 +802,22 @@ impl FileSystemSpi for LocalFileSystemSpi {
                     &self.provider_id,
                 ),
             })?;
-        let path = self.logical_path(value.path(), FsOperation::CreateTemp)?;
+        let projection = parent
+            .as_deref()
+            .map(|parent| LocalTempPathProjection::new(parent, value.path()))
+            .transpose()?;
+        let public_path = projection
+            .as_ref()
+            .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
+            .transpose()?;
+        let path = self.logical_path(public_path.as_deref().unwrap_or(value.path()), FsOperation::CreateTemp)?;
         Ok(OpenedTempDirectory::new(
             self.info(path).with_metadata(FileMetadata::new(FileKind::Directory)),
             Box::new(LocalTempResourceSpi::directory(
                 value,
                 self.is_rooted(),
                 self.provider_id.clone(),
+                projection,
             )),
         ))
     }

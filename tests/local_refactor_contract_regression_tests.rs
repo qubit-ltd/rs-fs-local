@@ -7,15 +7,22 @@
 // =============================================================================
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::error::FsErrorKind;
+#[cfg(unix)]
 use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
+#[cfg(unix)]
 use qubit_fs::write::WriteDisposition;
+#[cfg(unix)]
 use qubit_fs::write::WriteFailureState;
+#[cfg(unix)]
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+#[cfg(unix)]
 use qubit_fs_local::host_path_to_logical;
+#[cfg(unix)]
 use qubit_io::Output;
+#[cfg(unix)]
 use qubit_local_files::test_support::install_test_fault;
 
 #[cfg(unix)]

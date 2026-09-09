@@ -25,6 +25,7 @@ use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+#[cfg(unix)]
 use qubit_fs_local::host_path_to_logical;
 use qubit_fs_testkit::FileSystemContract;
 use qubit_fs_testkit::FileSystemContractSuite;

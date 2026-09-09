@@ -28,6 +28,48 @@ use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_local_files::test_support::install_test_fault;
 
+/// Temporary resources retain the caller's parent alias across creation,
+/// explicit publication, and generated keep targets.
+#[cfg(unix)]
+#[test]
+fn test_temp_resources_preserve_requested_parent_alias() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempfile::tempdir().expect("alias fixture");
+    std::fs::create_dir(root.path().join("real")).expect("real parent");
+    symlink("real", root.path().join("alias")).expect("relative parent alias");
+    let host_parent = host_path_to_logical(&root.path().join("alias")).expect("host alias path");
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let rooted = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem");
+    for (filesystem, parent) in [
+        (host, host_parent),
+        (rooted, Path::parse("/alias").expect("rooted alias")),
+    ] {
+        let prefix = format!("{}/", parent.as_str());
+        let mut file = filesystem
+            .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+            .expect("create aliased temporary file");
+        assert!(file.path().as_str().starts_with(&prefix));
+        let target = Path::parse(&format!("{prefix}published")).expect("publication target");
+        let outcome = file
+            .persist(&target, PersistOptions::default())
+            .expect("publish through alias");
+        assert_eq!(outcome.target(), &target);
+        filesystem
+            .delete_file(&target, DeleteOptions::default())
+            .expect("remove publication");
+        let mut directory = filesystem
+            .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent)))
+            .expect("create aliased temporary directory");
+        assert!(directory.path().as_str().starts_with(&prefix));
+        let outcome = directory.keep().expect("keep under requested parent");
+        assert!(outcome.target().as_str().starts_with(&prefix));
+        filesystem
+            .delete_directory(outcome.target(), DeleteOptions::default())
+            .expect("remove kept directory");
+    }
+}
+
 fn run_in_test_fault_process<F>(test_name: &str, fault: &str, action: F)
 where
     F: FnOnce(),
@@ -272,9 +314,8 @@ fn test_temp_file_indeterminate_persist_preserves_existing_target_on_drop() {
         let target = host_path_to_logical(&root.path().join("existing.txt")).expect("host target path must be valid");
         let file_system =
             LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must be created");
-        file_system
-            .write_all(&target, b"existing", WriteOptions::default())
-            .expect("existing target must be written");
+        std::fs::write(root.path().join("existing.txt"), b"existing")
+            .expect("existing target fixture must not invoke the injected install path");
         let mut temporary = file_system
             .create_temp_file(TempFileOptions::default().with_parent(Some(parent)))
             .expect("temporary file must be created");
@@ -343,11 +384,21 @@ fn test_temp_file_persist_install_failure_is_indeterminate() {
         .persist(&target, PersistOptions::default().with_overwrite(true))
         .expect_err("file persistence cannot replace a directory");
 
-    assert_eq!(failure.state(), PersistFailureState::NotPublished);
-    assert_eq!(temporary.state(), TempResourceState::Owned);
-    temporary
-        .cleanup()
-        .expect("known-unpublished temporary file should remain recoverable");
+    #[cfg(not(windows))]
+    {
+        assert_eq!(failure.state(), PersistFailureState::NotPublished);
+        assert_eq!(temporary.state(), TempResourceState::Owned);
+        temporary
+            .cleanup()
+            .expect("known-unpublished temporary file should remain recoverable");
+    }
+    #[cfg(windows)]
+    {
+        // The native Windows rename failure does not certify publication state.
+        assert_eq!(failure.state(), PersistFailureState::Indeterminate);
+        assert_eq!(temporary.state(), TempResourceState::Indeterminate);
+    }
+    assert!(root.path().join("directory-target").is_dir());
 }
 
 /// Keeping a temporary directory preserves it and releases automatic cleanup.
