@@ -180,12 +180,12 @@ dependencies = [
  "fluent-uri",
  "qubit-budget",
  "qubit-io",
- "qubit-redact 0.8.0",
+ "qubit-redact",
 ]
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "qubit-fs",
  "qubit-fs-registry",
@@ -209,7 +209,7 @@ name = "qubit-fs-registry"
 version = "0.4.0"
 dependencies = [
  "qubit-fs",
- "qubit-redact 0.8.0",
+ "qubit-redact",
  "qubit-spi",
 ]
 
@@ -224,12 +224,12 @@ dependencies = [
 
 [[package]]
 name = "qubit-local-files"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "getrandom",
  "libc",
  "qubit-budget",
- "qubit-redact 0.8.0 (git+https://github.com/qubit-ltd/rs-redact?branch=dev-starfish)",
+ "qubit-redact",
  "rustix",
  "windows-sys",
 ]
@@ -237,16 +237,10 @@ dependencies = [
 [[package]]
 name = "qubit-redact"
 version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4bc84cd4d94ab169a9c65af5254830ba969e680840638af18eddbbcd62c4c38"
 dependencies = [
  "fluent-uri",
- "qubit-budget",
-]
-
-[[package]]
-name = "qubit-redact"
-version = "0.8.0"
-source = "git+https://github.com/qubit-ltd/rs-redact?branch=dev-starfish#f052d517ce55ef84db21201dfb979c143b63eac7"
-dependencies = [
  "qubit-budget",
 ]
 
