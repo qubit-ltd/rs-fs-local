@@ -18,6 +18,7 @@ use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
@@ -396,7 +397,7 @@ fn test_rooted_list_keeps_entry_paths_below_requested_root() {
 
     let mut stream = fixture
         .file_system()
-        .list(&requested_root, ListOptions::default())
+        .list(&ListScope::Path((requested_root).clone()), ListOptions::default())
         .expect("requested directory must be listed");
     let entry = stream
         .next_entry()
@@ -420,7 +421,7 @@ fn test_rooted_list_keeps_entry_paths_below_root_request() {
 
     let mut stream = fixture
         .file_system()
-        .list(&requested_root, ListOptions::default())
+        .list(&ListScope::Path((requested_root).clone()), ListOptions::default())
         .expect("root directory must be listed");
     let entry = stream
         .next_entry()
@@ -511,7 +512,7 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
     let mut stream = fixture
         .file_system()
         .list(
-            &root,
+            &ListScope::Path((root).clone()),
             ListOptions::default().with_prefix(Some("report%25name.txt".to_owned())),
         )
         .expect("local adapter must accept canonical prefixes");

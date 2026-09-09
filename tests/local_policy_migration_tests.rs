@@ -12,6 +12,7 @@ use std::time::Duration;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::ListFilter;
 use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalCopyResourceLimits;
@@ -71,7 +72,10 @@ fn test_filtered_listing_keeps_distinct_counting_scopes() {
     let filesystem =
         LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("unbounded provider");
     let mut entries = filesystem
-        .list(&Path::parse("/").expect("root path"), options.clone())
+        .list(
+            &ListScope::Path((Path::parse("/").expect("root path")).clone()),
+            options.clone(),
+        )
         .expect("filtered listing");
     assert!(
         entries
@@ -81,7 +85,10 @@ fn test_filtered_listing_keeps_distinct_counting_scopes() {
     );
     let bounded = LocalFileSystems::rooted(root.path(), policy(1, 100)).expect("bounded provider");
     let mut entries = bounded
-        .list(&Path::parse("/").expect("root path"), options)
+        .list(
+            &ListScope::Path((Path::parse("/").expect("root path")).clone()),
+            options,
+        )
         .expect("bounded filtered listing");
     assert_eq!(
         entries

@@ -411,7 +411,15 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// Returns path or option conversion errors and mapped native list
     /// failures.
     fn list(&self, request: ListRequest<'_>) -> FsResult<OpenedDirectoryStream> {
-        let path = self.native_path(request.path())?;
+        let logical_path = request.scope().path().ok_or_else(|| {
+            FsError::new(
+                FsErrorKind::InvalidOptions,
+                FsOperation::List,
+                "local listing requires a directory path",
+            )
+            .with_provider(&self.provider_id)
+        })?;
+        let path = self.native_path(logical_path)?;
         let options = local_options_mapper::list(
             request.options(),
             self.native.scope(),
@@ -428,7 +436,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 };
                 OpenedDirectoryStream::new(Box::new(stream))
             })
-            .map_err(|error| self.map(error, FsOperation::List, request.path()))
+            .map_err(|error| self.map(error, FsOperation::List, logical_path))
     }
 
     /// Opens a host file for reading.
@@ -802,6 +810,7 @@ mod tests {
     use qubit_fs::copy::CopyOptions;
     use qubit_fs::directory::DeleteOptions;
     use qubit_fs::directory::ListOptions;
+    use qubit_fs::directory::ListScope;
     use qubit_fs::metadata::FileSystemId;
     use qubit_fs::path::Path;
     use qubit_fs::spi::ProviderOperation;
@@ -840,7 +849,10 @@ mod tests {
             .expect("native defaults");
         let filesystem = FileSystem::from_spi(spi).expect("facade");
         let mut entries = filesystem
-            .list(&Path::parse("/").expect("root path"), ListOptions::default())
+            .list(
+                &ListScope::Path((Path::parse("/").expect("root path")).clone()),
+                ListOptions::default(),
+            )
             .expect("listing");
         assert!(entries.next_entry().expect("first entry").is_some());
         assert!(

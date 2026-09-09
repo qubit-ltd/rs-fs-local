@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use qubit_fs::FileSystem;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -68,6 +69,35 @@ fn test_local_provider_returns_concrete_resolution() {
 
     let _: &FileSystem = resolution.file_system();
     assert_eq!(resolution.canonical_uri().scheme(), "file");
+}
+
+/// A registry resolution can enumerate a real local directory using Path scope.
+#[test]
+fn test_local_resolution_lists_path_scope() {
+    let root = tempfile::tempdir().expect("isolated directory");
+    std::fs::write(root.path().join("entry"), b"content").expect("seed local entry");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(
+            LocalFileSystemProvider::rooted(
+                FileSystemId::new("listing-resolution").unwrap(),
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("open rooted provider"),
+        )
+        .expect("register rooted provider");
+    let resolution = registry
+        .resolve_config(&FileSystemConfig::new(ConnectionUri::parse("file:///").unwrap()))
+        .expect("resolve configured root");
+    let scope = ListScope::Path(resolution.path().clone());
+    let mut stream = resolution
+        .file_system()
+        .list(&scope, Default::default())
+        .expect("list resolved root");
+    let entry = stream.next_entry().expect("read local entry").expect("seeded entry");
+    assert_eq!(entry.path.as_str(), "/entry");
+    assert!(stream.next_entry().expect("finish listing").is_none());
 }
 
 /// Equivalent absolute `file:` spellings resolve to one canonical URI.
