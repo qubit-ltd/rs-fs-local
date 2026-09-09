@@ -12,9 +12,11 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs::metadata::SymlinkPolicy;
 use qubit_fs::path::Path;
 use qubit_fs::path::PathSemantics;
+#[cfg(unix)]
 use qubit_fs::temp::TempOptions as TempFileOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+#[cfg(unix)]
 use qubit_fs_local::host_path_to_logical;
 
 /// The host factory returns a concrete hierarchical local filesystem.

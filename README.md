@@ -111,6 +111,11 @@ entry limit counts entries returned after filtering. Temporary-resource
 cleanup, Drop, and native publication cleanup do not inherit ordinary deletion
 ceilings. These settings are not aggregate quotas across concurrent requests.
 
+Temporary resources preserve the requested logical parent spelling, including
+directory aliases, in their returned paths and generated keep targets. Explicit
+publication reports the requested logical target. Native guards retain their
+original creation authority and cleanup paths throughout these operations.
+
 ## What It Provides
 
 - A concrete synchronous `FileSystem` facade over local files, with host and

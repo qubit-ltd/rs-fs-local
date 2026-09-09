@@ -18,6 +18,8 @@ use qubit_fs::error::FsOperation;
 use qubit_fs::path::Path;
 use qubit_fs::rename::RenameFailureState;
 use qubit_fs::rename::RenameOptions;
+#[cfg(windows)]
+use qubit_fs::write::WriteAbortOutcome;
 use qubit_fs::write::WriteDisposition;
 use qubit_fs::write::WriteFailureState;
 use qubit_fs::write::WriteOptions;
@@ -109,7 +111,10 @@ fn test_writer_conflict_retains_unchanged_effect_and_native_source() {
     std::fs::write(root.path().join("target"), b"concurrent").expect("concurrent target should be installed");
 
     let failure = writer.commit().expect_err("concurrent target should conflict");
+    #[cfg(not(windows))]
     assert_eq!(WriteFailureState::NotPublished, failure.state());
+    #[cfg(windows)]
+    assert_eq!(WriteFailureState::RetryableNotPublished, failure.state());
     assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
     assert!(
         failure
@@ -117,6 +122,15 @@ fn test_writer_conflict_retains_unchanged_effect_and_native_source() {
             .source()
             .and_then(|source| source.downcast_ref::<LocalFileError>())
             .is_some()
+    );
+    assert_eq!(
+        std::fs::read(root.path().join("target")).expect("concurrent target survives"),
+        b"concurrent"
+    );
+    #[cfg(windows)]
+    assert_eq!(
+        writer.abort().expect("retained native writer can abort"),
+        WriteAbortOutcome::NotPublished
     );
 }
 
