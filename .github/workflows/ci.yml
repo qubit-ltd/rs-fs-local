@@ -21,3 +21,14 @@ jobs:
       run_windows_tests: true
       run_macos_tests: true
     secrets: inherit
+
+  downstream-contracts:
+    name: Coordinated downstream contracts
+    permissions:
+      contents: read
+    uses: qubit-ltd/rs-local-files/.github/workflows/downstream-contracts.yml@main
+    with:
+      local_files_ref: main
+      fs_local_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      mime_ref: main
+      support_ref: main
