@@ -17,6 +17,7 @@ use qubit_fs::metadata::FileSystemCapabilitySupport;
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_local::host_path_to_logical;
 use qubit_io::Input;
 
 /// Host and rooted providers enforce the same window on the opened file.
@@ -34,7 +35,7 @@ fn test_local_range_window_and_metadata() {
         } else {
             (
                 LocalFileSystems::host(LocalResourcePolicy::standard()).expect("host"),
-                Path::parse(native.to_str().expect("UTF-8 path")).expect("host path"),
+                host_path_to_logical(&native).expect("host path"),
             )
         };
         assert_eq!(
@@ -109,16 +110,16 @@ fn test_local_range_does_not_reopen_path() {
     assert_eq!(&bytes[..count], b"rig");
 }
 
-/// Native filesystem seek limits retain their original error and context.
+/// Native seek failures retain context, and subsequent reads match the native
+/// handle.
 #[test]
 fn test_local_range_preserves_native_seek_result() {
     let root = tempfile::tempdir().expect("root");
     let native = root.path().join("file");
     std::fs::write(&native, b"payload").expect("seed");
     let offset = i64::MAX as u64;
-    let native_result = std::fs::File::open(&native)
-        .expect("native reader")
-        .seek(SeekFrom::Start(offset));
+    let mut native_reader = std::fs::File::open(&native).expect("native reader");
+    let native_result = native_reader.seek(SeekFrom::Start(offset));
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
     let path = Path::parse("/file").expect("path");
     let result = fs.open_reader(&path, ReadOptions::default().with_offset(Some(offset)));
@@ -136,9 +137,27 @@ fn test_local_range_preserves_native_seek_result() {
             assert_eq!(source.kind(), native_error.kind());
             assert_eq!(source.raw_os_error(), native_error.raw_os_error());
         }
-        Ok(_) => {
+        Ok(position) => {
+            assert_eq!(position, offset, "native seek must reach the requested offset");
             let mut reader = result.expect("native seek supported");
-            assert_eq!(reader.read(&mut [0; 1]).expect("EOF"), 0);
+            // A successful seek need not make the next native read valid at
+            // extreme offsets. Preserve the read result as well as seek errors.
+            let mut native_bytes = [0; 1];
+            let mut bytes = [0; 1];
+            let native_read = std::io::Read::read(&mut native_reader, &mut native_bytes);
+            let read = reader.read(&mut bytes);
+            match native_read {
+                Ok(native_count) => {
+                    let count = read.expect("native read supported");
+                    assert_eq!(count, native_count, "range read must preserve the native byte count");
+                    assert_eq!(&bytes[..count], &native_bytes[..native_count]);
+                }
+                Err(native_error) => {
+                    let error = read.expect_err("native read rejection must propagate");
+                    assert_eq!(error.kind(), native_error.kind());
+                    assert_eq!(error.raw_os_error(), native_error.raw_os_error());
+                }
+            }
         }
     }
 }
