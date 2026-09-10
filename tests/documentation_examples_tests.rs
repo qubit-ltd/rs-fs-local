@@ -269,7 +269,7 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         assert!(
             text.contains("rooted_with_id(")
                 && text.contains("LocalResourcePolicy")
-                && text.contains("LocalResourcePolicy::bounded(")
+                && text.contains("LocalResourcePolicy::standard()")
                 && text.contains("bounded(list, copy, delete)")
                 && text.contains("rooted_with_id(id, root, policy)"),
             "{document} must explain the three-argument rooted_with_id API"

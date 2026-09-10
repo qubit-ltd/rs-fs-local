@@ -12,7 +12,7 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
-This README documents `qubit-fs-local` 0.7.0 (package version `0.7.0`).
+This README documents `qubit-fs-local` 0.8.0 (package version `0.8.0`).
 
 This version uses `qubit-local-files` 0.4. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
@@ -41,20 +41,12 @@ absolute logical paths inside that authority:
 
 ```rust
 use std::path::Path;
-use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
-use qubit_fs_local::{
-    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
-    LocalListResourceLimits, LocalResourcePolicy,
-};
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
-let policy = LocalResourcePolicy::bounded(
-    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
-    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
-    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
-);
+let policy = LocalResourcePolicy::standard();
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
@@ -66,7 +58,7 @@ println!("{metadata:?}");
 ```
 
 Every constructor requires an explicit `LocalResourcePolicy`. Prefer
-`bounded(list, copy, delete)` with all three operation budgets. Use `unbounded()`
+`standard()` for finite budgets, or customize `bounded(list, copy, delete)`. Use `unbounded()`
 only when the application deliberately accepts unbounded recursive work.
 `LocalFileSystems::host(policy)` opens the process host namespace. `rooted(root, policy)`
 generates a process-local identity, while
@@ -81,18 +73,10 @@ for a path that is already a rooted logical path; the two representations have
 different authorities.
 
 ```rust
-use std::time::Duration;
 use qubit_fs::read::ReadOptions;
-use qubit_fs_local::{
-    host_path_to_logical, LocalCopyResourceLimits, LocalDeleteResourceLimits,
-    LocalFileSystems, LocalListResourceLimits, LocalResourcePolicy,
-};
+use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
 
-let policy = LocalResourcePolicy::bounded(
-    LocalListResourceLimits::new(16, 1_000, 1 << 20, 16, Duration::from_secs(10))?,
-    LocalCopyResourceLimits::new(16, 1_000, 16 << 20, 16, Duration::from_secs(10))?,
-    LocalDeleteResourceLimits::new(16, 1_000, 1 << 20, Duration::from_secs(10)),
-);
+let policy = LocalResourcePolicy::standard();
 let file_system = LocalFileSystems::host(policy)?;
 let native = std::env::current_dir()?.join("Cargo.toml");
 let path = host_path_to_logical(&native)?;
@@ -158,8 +142,12 @@ filesystem facade.
 
 Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
 for the configured hierarchical root. `ListScope::Namespace` is rejected before
-native I/O. This provider does not advertise `RangeRead`, so `read_prefix`
-continues to use a bounded sequential read without adding a range requirement.
+native I/O. This provider advertises Conditional `RangeRead` for native regular-file windows.
+The adapter seeks and reads through the same opened native handle, retaining full
+resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
+resource existence; missing paths still fail. This does not promise a snapshot
+under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
+range support, so local prefix reads continue to use bounded sequential consumption.
 
 ## Testing
 

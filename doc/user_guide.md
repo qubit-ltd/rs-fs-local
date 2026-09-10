@@ -6,8 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.7.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.7.0`).
+0.8.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.8.0`).
 
 ## Provider resource ceilings
 
@@ -304,5 +304,31 @@ progress, while the mapped error kind follows the native cause when available.
 
 Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
 for the configured hierarchical root. `ListScope::Namespace` is rejected before
-native I/O. This provider does not advertise `RangeRead`, so `read_prefix`
-continues to use a bounded sequential read without adding a range requirement.
+native I/O. This provider advertises Conditional `RangeRead` for native regular-file windows.
+The adapter seeks and reads through the same opened native handle, retaining full
+resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
+resource existence; missing paths still fail. This does not promise a snapshot
+under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
+range support, so local prefix reads continue to use bounded sequential consumption.
+
+## Standard budgets and explicit overrides
+
+`LocalResourcePolicy::standard()` performs no I/O and selects these finite
+per-operation ceilings. It is an explicit constructor, not a `Default` implementation.
+
+| Operation | Depth | Entries | Byte budget | Open directories | Deadline |
+| --- | --- | --- | --- | --- | --- |
+| list | 64 | 100,000 | 16 MiB path/name text | 32 | 30 seconds |
+| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 seconds |
+| delete | 64 | 100,000 | 16 MiB pending path text | not separately configured | 30 seconds |
+
+Use `with_list_limits(Some(...))`, `with_copy_limits(Some(...))`, or
+`with_delete_limits(Some(...))` to replace one domain. Passing `None` explicitly
+removes that domain's ceiling. Other domains remain unchanged. Deadlines are
+cooperative, not interruption of blocked native calls; budgets are not process
+RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
+cleanup remains separate from ordinary deletion budgets.
+
+Opening writer or temporary sessions follows the core 0.6 `OpenFailure` contract.
+Preserve its recovery session and any explicit cleanup error; see the
+[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery-in-06).
