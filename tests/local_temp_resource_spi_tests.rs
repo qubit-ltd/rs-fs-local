@@ -7,15 +7,21 @@
 // =============================================================================
 //! Regression coverage for temporary-resource SPI recovery.
 
+use std::error::Error;
 use std::ffi::OsStr;
+use std::path::Path as NativePath;
 
+use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::DeleteOptions;
 use qubit_fs::error::FsEffectState;
+use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
+use qubit_fs::path::PathComponent;
 use qubit_fs::temp::PersistCleanupState;
 use qubit_fs::temp::PersistFailureState;
 use qubit_fs::temp::PersistOptions;
@@ -26,6 +32,8 @@ use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
+use qubit_local_files::error::LocalFileError;
+use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::test_support::install_test_fault;
 
 /// Temporary resources retain the caller's parent alias across creation,
@@ -463,23 +471,23 @@ fn test_temp_directory_cleanup_failure_rejects_replacement_path() {
     let error = temporary
         .cleanup()
         .expect_err("missing temporary directory must make cleanup fail");
-    assert_eq!(error.kind(), FsErrorKind::NotFound);
-    assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
+    assert_cleanup_source_uncertainty(&error, true);
+    assert_eq!(temporary.state(), TempResourceState::Indeterminate);
 
     std::fs::write(root.path().join(path.as_str().trim_start_matches('/')), b"replacement")
         .expect("replacement fixture must be restored");
     let error = temporary
         .cleanup()
         .expect_err("replacement directory must fail identity validation");
-    assert_eq!(error.kind(), FsErrorKind::NotDirectory);
-    assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
+    assert_eq!(error.kind(), FsErrorKind::InvalidState);
+    assert_eq!(temporary.state(), TempResourceState::Indeterminate);
     file_system.stat(&path).expect("replacement entry must remain");
 }
 
 /// A missing native temporary file is reported through the file-specific
-/// cleanup mapping and remains eligible for retry.
+/// cleanup mapping and permanently loses source authority.
 #[test]
-fn test_temp_file_cleanup_failure_retains_resource_for_retry() {
+fn test_temp_file_cleanup_failure_preserves_source_uncertainty() {
     let root = tempfile::tempdir().expect("test root must be created");
     let id = FileSystemId::new("temp-file-cleanup-retry-root").expect("test identity must be valid");
     let file_system = LocalFileSystems::rooted_with_id(id, root.path(), LocalResourcePolicy::unbounded())
@@ -496,8 +504,8 @@ fn test_temp_file_cleanup_failure_retains_resource_for_retry() {
         .cleanup()
         .expect_err("missing temporary file must make cleanup fail");
 
-    assert_eq!(FsErrorKind::NotFound, error.kind());
-    assert_eq!(temporary.state(), TempResourceState::CleanupRequired);
+    assert_cleanup_source_uncertainty(&error, true);
+    assert_eq!(temporary.state(), TempResourceState::Indeterminate);
 }
 
 /// Keeping a temporary file preserves it and makes later lifecycle commands
@@ -618,4 +626,276 @@ fn test_host_temp_resources_persist_and_cleanup() {
         .stat(&directory_path)
         .expect_err("cleaned host temporary directory must be absent");
     assert_eq!(error.kind(), FsErrorKind::NotFound);
+}
+
+/// Replacing a host file cannot restore publication or cleanup authority.
+#[test]
+fn test_host_temp_file_replacement_preserves_source_uncertainty() {
+    for keep in [false, true] {
+        verify_file_replacement(false, keep, false, false);
+    }
+}
+
+/// Replacing a rooted file cannot restore publication or cleanup authority.
+#[test]
+fn test_rooted_temp_file_replacement_preserves_source_uncertainty() {
+    for keep in [false, true] {
+        verify_file_replacement(true, keep, false, false);
+    }
+}
+
+/// Replacing a host directory cannot restore publication or cleanup authority.
+#[test]
+fn test_host_temp_directory_replacement_preserves_source_uncertainty() {
+    for keep in [false, true] {
+        verify_directory_replacement(false, keep, false, false);
+    }
+}
+
+/// Replacing a rooted directory cannot restore publication or cleanup
+/// authority.
+#[test]
+fn test_rooted_temp_directory_replacement_preserves_source_uncertainty() {
+    for keep in [false, true] {
+        verify_directory_replacement(true, keep, false, false);
+    }
+}
+
+/// Exercises replacement through the public file facade with an independently
+/// retained original inode, then checks rejected retries and cleanup before
+/// Drop.
+fn verify_file_replacement(rooted: bool, keep: bool, cleanup_first: bool, missing: bool) {
+    let root = tempfile::tempdir().expect("replacement test root");
+    let (filesystem, parent) = replacement_filesystem(root.path(), rooted);
+    let target = parent.child(&PathComponent::parse("published").expect("target component"));
+    let mut temporary = filesystem
+        .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+        .expect("temporary file");
+    let native_source = root.path().join(
+        temporary
+            .path()
+            .as_str()
+            .strip_prefix(parent.as_str())
+            .expect("temporary parent")
+            .trim_start_matches('/'),
+    );
+    std::fs::write(&native_source, b"original").expect("original file content");
+    std::fs::rename(&native_source, root.path().join("retained-original")).expect("retain original inode");
+    if !missing {
+        std::fs::write(&native_source, b"replacement").expect("replacement file");
+    }
+    if cleanup_first {
+        let error = temporary.cleanup().expect_err("identity loss rejects cleanup");
+        assert_cleanup_source_uncertainty(&error, missing);
+        assert_eq!(TempResourceState::Indeterminate, temporary.state());
+        if missing {
+            std::fs::write(&native_source, b"replacement").expect("replacement after missing source");
+        }
+    }
+
+    let failure = if keep {
+        temporary.keep()
+    } else {
+        temporary.persist(&target, PersistOptions::default())
+    }
+    .expect_err("replacement must reject publication");
+    assert_eq!(TempResourceState::Indeterminate, temporary.state());
+    assert_eq!(
+        if cleanup_first {
+            None
+        } else {
+            Some(FsEffectState::Unchanged)
+        },
+        failure.error().effect_state(),
+    );
+    assert_eq!(PersistFailureState::NotPublishedSourceIndeterminate, failure.state());
+    let source_failure = failure.state();
+    assert!(!root.path().join("published").exists());
+    let invalid_target = Path::parse("/").expect("root target");
+    let retry = temporary
+        .persist(&invalid_target, PersistOptions::default())
+        .expect_err("invalid retry");
+    assert_eq!(source_failure, retry.state());
+    assert_eq!(FsErrorKind::InvalidState, retry.error().kind());
+    assert_eq!(source_failure, temporary.keep().expect_err("keep retry").state());
+    temporary.cleanup().expect_err("uncertain source cannot be cleaned");
+    assert_eq!(TempResourceState::Indeterminate, temporary.state());
+    assert_eq!(
+        source_failure,
+        temporary
+            .persist(&target, PersistOptions::default())
+            .expect_err("retry after cleanup")
+            .state()
+    );
+    drop(temporary);
+    assert_eq!(
+        b"replacement",
+        std::fs::read(&native_source)
+            .expect("replacement survives Drop")
+            .as_slice()
+    );
+    assert_eq!(
+        b"original",
+        std::fs::read(root.path().join("retained-original"))
+            .expect("original survives Drop")
+            .as_slice()
+    );
+    assert!(!root.path().join("published").exists());
+}
+
+/// Exercises the same ownership boundary for a directory, including its child
+/// content, through the public facade and both publication entry points.
+fn verify_directory_replacement(rooted: bool, keep: bool, cleanup_first: bool, missing: bool) {
+    let root = tempfile::tempdir().expect("replacement test root");
+    let (filesystem, parent) = replacement_filesystem(root.path(), rooted);
+    let target = parent.child(&PathComponent::parse("published").expect("target component"));
+    let mut temporary = filesystem
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent.clone())))
+        .expect("temporary directory");
+    let native_source = root.path().join(
+        temporary
+            .path()
+            .as_str()
+            .strip_prefix(parent.as_str())
+            .expect("temporary parent")
+            .trim_start_matches('/'),
+    );
+    std::fs::write(native_source.join("content"), b"original").expect("original directory content");
+    std::fs::rename(&native_source, root.path().join("retained-original")).expect("retain original inode");
+    if !missing {
+        std::fs::create_dir(&native_source).expect("replacement directory");
+        std::fs::write(native_source.join("content"), b"replacement").expect("replacement directory content");
+    }
+    if cleanup_first {
+        let error = temporary.cleanup().expect_err("identity loss rejects cleanup");
+        assert_cleanup_source_uncertainty(&error, missing);
+        assert_eq!(TempResourceState::Indeterminate, temporary.state());
+        if missing {
+            std::fs::create_dir(&native_source).expect("replacement after missing directory");
+            std::fs::write(native_source.join("content"), b"replacement").expect("replacement directory content");
+        }
+    }
+
+    let failure = if keep {
+        temporary.keep()
+    } else {
+        temporary.persist(&target, PersistOptions::default())
+    }
+    .expect_err("replacement must reject publication");
+    assert_eq!(TempResourceState::Indeterminate, temporary.state());
+    assert_eq!(
+        if cleanup_first {
+            None
+        } else {
+            Some(FsEffectState::Unchanged)
+        },
+        failure.error().effect_state(),
+    );
+    assert_eq!(PersistFailureState::NotPublishedSourceIndeterminate, failure.state());
+    let source_failure = failure.state();
+    assert!(!root.path().join("published").exists());
+    let invalid_target = Path::parse("/").expect("root target");
+    let retry = temporary
+        .persist(&invalid_target, PersistOptions::default())
+        .expect_err("invalid retry");
+    assert_eq!(source_failure, retry.state());
+    assert_eq!(FsErrorKind::InvalidState, retry.error().kind());
+    assert_eq!(source_failure, temporary.keep().expect_err("keep retry").state());
+    temporary.cleanup().expect_err("uncertain source cannot be cleaned");
+    assert_eq!(TempResourceState::Indeterminate, temporary.state());
+    assert_eq!(
+        source_failure,
+        temporary
+            .persist(&target, PersistOptions::default())
+            .expect_err("retry after cleanup")
+            .state()
+    );
+    drop(temporary);
+    assert_eq!(
+        b"replacement",
+        std::fs::read(native_source.join("content"))
+            .expect("replacement survives Drop")
+            .as_slice()
+    );
+    assert_eq!(
+        b"original",
+        std::fs::read(root.path().join("retained-original/content"))
+            .expect("original survives Drop")
+            .as_slice()
+    );
+    assert!(!root.path().join("published").exists());
+}
+
+/// Builds a facade and its logical scratch parent for the selected authority.
+fn replacement_filesystem(root: &NativePath, rooted: bool) -> (FileSystem, Path) {
+    if rooted {
+        (
+            LocalFileSystems::rooted(root, LocalResourcePolicy::unbounded()).expect("rooted filesystem"),
+            Path::parse("/").expect("rooted parent"),
+        )
+    } else {
+        (
+            LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem"),
+            host_path_to_logical(root).expect("host parent"),
+        )
+    }
+}
+
+/// First cleanup detects a missing or replaced host file before any
+/// publication.
+#[test]
+fn test_host_temp_file_cleanup_first_preserves_source_uncertainty() {
+    for missing in [false, true] {
+        verify_file_replacement(false, false, true, missing);
+    }
+}
+
+/// First cleanup detects a missing or replaced rooted file before publication.
+#[test]
+fn test_rooted_temp_file_cleanup_first_preserves_source_uncertainty() {
+    for missing in [false, true] {
+        verify_file_replacement(true, false, true, missing);
+    }
+}
+
+/// First cleanup detects a missing or replaced host directory before
+/// publication.
+#[test]
+fn test_host_temp_directory_cleanup_first_preserves_source_uncertainty() {
+    for missing in [false, true] {
+        verify_directory_replacement(false, false, true, missing);
+    }
+}
+
+/// First cleanup detects a missing or replaced rooted directory before
+/// publication.
+#[test]
+fn test_rooted_temp_directory_cleanup_first_preserves_source_uncertainty() {
+    for missing in [false, true] {
+        verify_directory_replacement(true, false, true, missing);
+    }
+}
+
+/// Verifies source uncertainty without claiming a cleanup mutation and retains
+/// the original native failure and its diagnostic path for either identity
+/// loss.
+fn assert_cleanup_source_uncertainty(error: &FsError, missing: bool) {
+    assert_eq!(FsErrorKind::Indeterminate, error.kind());
+    assert_eq!(Some(FsEffectState::Unchanged), error.effect_state());
+    assert_eq!(FsOperation::CleanupTemp, error.operation());
+    assert!(error.provider().is_some());
+    assert!(error.path().is_some());
+    let native = error
+        .source()
+        .and_then(|source| source.downcast_ref::<LocalFileError>())
+        .expect("native cleanup cause");
+    assert_eq!(
+        if missing {
+            LocalFileErrorKind::NotFound
+        } else {
+            LocalFileErrorKind::InvalidPath
+        },
+        native.kind()
+    );
+    assert!(native.path().is_some());
 }
