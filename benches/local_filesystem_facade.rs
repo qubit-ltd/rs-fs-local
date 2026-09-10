@@ -61,7 +61,7 @@ fn bench_local_facade_copy(c: &mut Criterion) {
                     .expect("facade copy should succeed");
                 black_box(outcome.stats().bytes);
             },
-            BatchSize::SmallInput,
+            BatchSize::PerIteration,
         );
     });
 }
