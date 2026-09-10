@@ -1,10 +1,10 @@
 # Qubit FS Local Adapter 设计
 
 > 状态：已批准的目标设计，已按最终版 `qubit-fs` 与
-> `qubit-local-files` 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
+> `qubit-local-files` 0.5 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
-> 适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）· [English design](local_file_system_adapter_design.md) ·
+> 适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）与 `qubit-fs` 0.7 · [English design](local_file_system_adapter_design.md) ·
 > [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
@@ -372,13 +372,26 @@ temp handle，其
 persist、cleanup 和 child 操作继续使用原 root authority，不能把 diagnostic host
 path 当作 cleanup 权限。
 
-Persist failure state 一一映射：
+Persist failure mapping 同时使用 native 的两个维度；effect 只描述本次目标发布，不能代替
+历史发布事实：
 
-| Native state | `qubit-fs` state |
-| --- | --- |
-| `NotPublished` | `NotPublished` |
-| `Published` | `PublishedSourceRetained` |
-| `Indeterminate` | `Indeterminate` |
+| Native publication | Native source | `qubit-fs` state | `FsEffectState` |
+| --- | --- | --- | --- |
+| `NotPublished` | `Owned` | `NotPublished` | `Unchanged` |
+| `NotPublished` | `Released` | `NotPublishedSourceReleased` | `Unchanged` |
+| `NotPublished` | `Indeterminate` | `NotPublishedSourceIndeterminate` | `Unchanged` |
+| `NotPublished` | `CleanupRequired` | `NotPublishedSourceCleanupRequired` | `Unchanged` |
+| `Published` | `CleanupRequired` | `PublishedSourceRetained` | `Applied` |
+| `Published` | `Released` | `PublishedSourceReleased` | `Applied` |
+| `Published` | `Indeterminate` | `PublishedSourceIndeterminate` | `Applied` |
+| `Indeterminate` | 任意 | `Indeterminate` | `Indeterminate` |
+| `Published` | `Owned` | 内部不变量违例，映射为 `Indeterminate` | `Indeterminate` |
+
+Adapter 先把原生错误持有的资源放回 session slot，再构造可移植错误。在直接 adapter
+边界，非法重试被拒绝时，本次调用的目标 effect 为 `Unchanged`。门面可能不再调用 adapter，
+而是继续返回此前的 published 恢复状态和 `publication_target`；这份历史快照不表示发生了
+一次新发布。源资格不确定后，后续路径错误、cleanup 失败以及可移植异步门面的取消都不能
+恢复源所有权。
 
 `ResolvedPersistOptions` 只有 `overwrite` 和 `creates_parent` 会映射到
 `LocalPersistOptions`；其他持久化要求不在 native persist 选项中伪造，native durability
@@ -389,7 +402,9 @@ Persist failure state 一一映射：
 显式 cleanup 报告错误，Drop 是 best effort。需要对清理工作设预算时，应在 native 层另立
 包含残留资源和恢复权属的设计，不能把普通删除预算解释为全部生命周期操作的总配额。
 
-任何无法确定 source/target 状态的 native failure 都必须映射为 `Indeterminate`。
+源资格不确定而目标事实明确时，必须使用对应的 `*SourceIndeterminate` 状态并保留已知
+目标 effect。未来未知变体及无效的 `Published` + `Owned` 组合保守映射为整体
+`Indeterminate`。
 
 ## 11. 异步边界
 

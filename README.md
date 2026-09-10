@@ -14,7 +14,7 @@ parsing and native-path conversion part of application code.
 
 This README documents `qubit-fs-local` 0.8.0 (package version `0.8.0`).
 
-This version uses `qubit-local-files` 0.4. Provider ceilings tighten resources
+This version uses `qubit-fs` 0.7 and `qubit-local-files` 0.5. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
@@ -22,15 +22,15 @@ facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
 ## Installation
 
 ```bash
-cargo add qubit-fs qubit-fs-local
+cargo add qubit-fs@0.7 qubit-fs-local@0.8
 ```
 
 Enable registry integration only when registering the optional `file`
 provider with `qubit-fs-registry`:
 
 ```bash
-cargo add qubit-fs-registry
-cargo add qubit-fs-local --features registry
+cargo add qubit-fs-registry@0.6
+cargo add qubit-fs-local@0.8 --features registry
 ```
 
 ## Quick Start
@@ -99,6 +99,11 @@ Temporary resources preserve the requested logical parent spelling, including
 directory aliases, in their returned paths and generated keep targets. Explicit
 publication reports the requested logical target. Native guards retain their
 original creation authority and cleanup paths throughout these operations.
+Persistence failures keep the current target-publication fact separate from
+source qualification. An invalid retry, cleanup error, or cancellation cannot
+erase an earlier confirmed `publication_target`; source-indeterminate states
+permit read-only reconciliation, while cleanup-required states permit cleanup
+without another publication attempt.
 
 ## What It Provides
 

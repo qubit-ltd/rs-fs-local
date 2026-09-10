@@ -6,7 +6,7 @@
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
 `qubit-fs-local` 0.8.0 版本（包版本 `0.8.0`）：直接创建 host/rooted 门面，以及可选的
-registry provider。
+registry provider。本版本集成 `qubit-fs` 0.7 与 `qubit-local-files` 0.5。
 
 ## Provider 资源上限
 
@@ -100,14 +100,14 @@ canonical URI。
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs qubit-fs-local
+cargo add qubit-fs@0.7 qubit-fs-local@0.8
 ```
 
 如需 registry，请启用 feature，并在应用中添加 registry crate：
 
 ```bash
-cargo add qubit-fs-registry
-cargo add qubit-fs-local --features registry
+cargo add qubit-fs-registry@0.6
+cargo add qubit-fs-local@0.8 --features registry
 ```
 
 ## 核心工作流
@@ -241,6 +241,21 @@ native `PublicationIncomplete` 会映射为 `FsEffectState::PartiallyApplied`，
 错误保留为 source。原因与副作用彼此独立：副作用状态描述命名空间进度，映射后的错误类别
 在可用时遵循 native cause。
 
+临时资源持久化进一步细分这两个维度。Adapter 将 native publication（`NotPublished`、
+`Published` 或 `Indeterminate`）与源资格（`Owned`、`CleanupRequired`、`Released`
+或 `Indeterminate`）组合成 `PersistFailureState`。其中：
+
+- `NotPublishedSourceIndeterminate` 表示本次调用没有发布目标，但不能安全变更或删除源，
+  只能只读核查；
+- `PublishedSourceIndeterminate` 表示目标已确认，但源权限不确定，应保留目标事实并核查源；
+- `NotPublishedSourceCleanupRequired` 表示本次调用没有发布，只允许清理残留资源。
+
+后续非法目标、被拒绝的重试或 cleanup 错误都不能恢复源所有权。在直接 adapter 边界，
+被拒绝调用的目标 effect 为 `Unchanged`；门面也可能不再调用 provider，而是继续保留此前
+published 的恢复状态和 `PersistFailure::publication_target()`。这份历史快照不表示本次
+发生了新发布。`PublishedSourceRetained` 之后的 cleanup 只处理保留的原生 sandbox，
+不回滚目标。应用应保留失败和临时句柄，直到状态允许 cleanup 或完成应用自己的只读核查。
+
 ## 排障
 
 | 现象 | 检查项 |
@@ -288,5 +303,5 @@ Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
 不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
 上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
 
-writer 和临时会话的打开遵循核心 0.6 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+writer 和临时会话的打开遵循核心 0.7 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。

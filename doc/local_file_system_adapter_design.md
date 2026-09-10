@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter Design
 
 > Approved target design for `qubit-fs-local` 0.8.0 (package version `0.8.0`), reviewed against the public
-> `qubit-fs` and `qubit-local-files` boundaries. Implementation and regression
+> `qubit-fs` 0.7 and `qubit-local-files` 0.5 boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
 > [中文设计文档](local_file_system_adapter_design.zh_CN.md) · [User guide](user_guide.md)
@@ -225,22 +225,40 @@ LocalTempFile / LocalTempDirectory → temp session adapter
 
 The public resource remains bound to its originating `FileSystem`. Rooted
 persist, cleanup, and child operations retain the original root authority.
-Persist failure states map directly:
+Persist failure mapping uses both native axes; the effect column describes the
+current target publication attempt rather than all historical publication:
 
-| Native state | `qubit-fs` state |
-| --- | --- |
-| `NotPublished` | `NotPublished` |
-| `Published` | `PublishedSourceRetained` |
-| `Indeterminate` | `Indeterminate` |
+| Native publication | Native source | `qubit-fs` state | `FsEffectState` |
+| --- | --- | --- | --- |
+| `NotPublished` | `Owned` | `NotPublished` | `Unchanged` |
+| `NotPublished` | `Released` | `NotPublishedSourceReleased` | `Unchanged` |
+| `NotPublished` | `Indeterminate` | `NotPublishedSourceIndeterminate` | `Unchanged` |
+| `NotPublished` | `CleanupRequired` | `NotPublishedSourceCleanupRequired` | `Unchanged` |
+| `Published` | `CleanupRequired` | `PublishedSourceRetained` | `Applied` |
+| `Published` | `Released` | `PublishedSourceReleased` | `Applied` |
+| `Published` | `Indeterminate` | `PublishedSourceIndeterminate` | `Applied` |
+| `Indeterminate` | any | `Indeterminate` | `Indeterminate` |
+| `Published` | `Owned` | invariant violation; `Indeterminate` | `Indeterminate` |
+
+The adapter restores the retained native resource before constructing the
+portable error. At the direct adapter boundary, a rejected invalid retry has an
+`Unchanged` target effect for that call. The facade may retain an earlier
+published recovery state and `publication_target` without invoking the adapter;
+that historical snapshot is not a new publication. Source-indeterminate states
+stay indeterminate across later path errors, cleanup failures, and asynchronous
+cancellation in the portable facade.
 
 Only `overwrite` and `creates_parent` map to `LocalPersistOptions`; unsupported
 atomicity or metadata requirements are not fabricated. Explicit cleanup reports
-errors, `Drop` is best effort, and unknown source/target state is
-`Indeterminate`.
+errors, and `Drop` is best effort. When source qualification is indeterminate
+but publication is known, the adapter uses the corresponding
+source-indeterminate state and preserves the known target effect. Future unknown
+variants and the invalid `Published` + `Owned` combination fall back
+conservatively to `Indeterminate`.
 
 ## 11. Async boundary
 
-Version 0.4 implements synchronous `FileSystemSpi` only: no
+Version 0.8 implements synchronous `FileSystemSpi` only: no
 `AsyncFileSystemSpi`, boxed futures, runtime tasks, or automatic async registry
 provider around blocking I/O. Async copy is verified by providers implementing
 the async SPI.
