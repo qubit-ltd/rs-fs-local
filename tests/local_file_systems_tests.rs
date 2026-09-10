@@ -147,6 +147,7 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
         );
         for capability in FileSystemCapability::ALL.iter().copied() {
             let expected = match capability {
+                FileSystemCapability::RangeRead => FileSystemCapabilitySupport::Conditional,
                 FileSystemCapability::DurableRename
                 | FileSystemCapability::DurableFileCopy
                 | FileSystemCapability::DurableWrite => {

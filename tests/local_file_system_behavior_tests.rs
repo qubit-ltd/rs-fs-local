@@ -554,7 +554,7 @@ fn test_rooted_operations_map_missing_entries() {
     let writer = file_system
         .open_writer(&path("/absent-parent/output"), WriteOptions::default())
         .expect_err("writer without a parent must fail");
-    assert_eq!(FsErrorKind::NotFound, writer.kind());
+    assert_eq!(FsErrorKind::NotFound, writer.error().kind());
     let regular_file = path("/regular-file");
     file_system
         .write_all(&regular_file, b"file", WriteOptions::default())
@@ -566,13 +566,13 @@ fn test_rooted_operations_map_missing_entries() {
     let temporary_file = file_system
         .create_temp_file(TempFileOptions::default().with_parent(Some(regular_file.clone())))
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
-    assert_eq!(Some(&regular_file), temporary_file.path());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_file.error().kind());
+    assert_eq!(Some(&regular_file), temporary_file.error().path());
     let temporary_directory = file_system
         .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(regular_file.clone())))
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
-    assert_eq!(Some(&regular_file), temporary_directory.path());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_directory.error().kind());
+    assert_eq!(Some(&regular_file), temporary_directory.error().path());
 }
 
 /// Recursive directory deletion rejects a regular file without removing it.
@@ -674,7 +674,7 @@ fn test_host_operations_map_missing_native_entries() {
     let writer = file_system
         .open_writer(&missing_child, WriteOptions::default())
         .expect_err("writer without a parent must fail");
-    assert_eq!(FsErrorKind::NotFound, writer.kind());
+    assert_eq!(FsErrorKind::NotFound, writer.error().kind());
 
     let regular_file = root.path().join("regular-file");
     std::fs::write(&regular_file, b"file").expect("regular fixture file must be written");
@@ -687,13 +687,13 @@ fn test_host_operations_map_missing_native_entries() {
     let temporary_file = file_system
         .create_temp_file(TempFileOptions::default().with_parent(Some(file_parent.clone())))
         .expect_err("temporary file with a file parent must fail");
-    assert_eq!(FsErrorKind::NotDirectory, temporary_file.kind());
-    assert_eq!(Some(&file_parent), temporary_file.path());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_file.error().kind());
+    assert_eq!(Some(&file_parent), temporary_file.error().path());
     let temporary_directory = file_system
         .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(file_parent.clone())))
         .expect_err("temporary directory with a file parent must fail");
-    assert_eq!(FsErrorKind::NotDirectory, temporary_directory.kind());
-    assert_eq!(Some(&file_parent), temporary_directory.path());
+    assert_eq!(FsErrorKind::NotDirectory, temporary_directory.error().kind());
+    assert_eq!(Some(&file_parent), temporary_directory.error().path());
 }
 
 /// Recursive directory deletion rejects a host regular file without removing

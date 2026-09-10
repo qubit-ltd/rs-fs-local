@@ -53,6 +53,45 @@ pub struct LocalResourcePolicy {
 }
 
 impl LocalResourcePolicy {
+    /// Returns explicit bounded defaults for ordinary local tools.
+    ///
+    /// Listing and deletion allow 64 levels, 100,000 entries and 16 MiB of
+    /// tracked path text. Copying allows 64 levels, 100,000 entries and 1 GiB
+    /// of copied bytes. Walkers may hold 32 directories; all three operations
+    /// have a cooperative 30-second deadline. These are per-operation limits,
+    /// not aggregate memory quotas or interruptible I/O timeouts.
+    ///
+    /// This method performs no I/O. Use the domain-specific overrides for
+    /// larger workloads or explicitly select `unbounded` when appropriate.
+    ///
+    /// # Returns
+    /// A policy with finite listing, copying and deletion limits.
+    #[must_use]
+    pub fn standard() -> Self {
+        let list = LocalListResourceLimits::new(64, 100_000, 16 * 1024 * 1024, 32, Duration::from_secs(30))
+            .expect("standard directory budget is positive");
+        let copy = LocalCopyResourceLimits::new(64, 100_000, 1024 * 1024 * 1024, 32, Duration::from_secs(30))
+            .expect("standard directory budget is positive");
+        let delete = LocalDeleteResourceLimits::new(64, 100_000, 16 * 1024 * 1024, Duration::from_secs(30));
+        Self::bounded(list, copy, delete)
+    }
+
+    /// Replaces listing ceilings; `None` explicitly leaves listing unbounded.
+    /// Other operation limits and lifecycle cleanup semantics are unchanged.
+    #[must_use]
+    pub const fn with_list_limits(mut self, limits: Option<LocalListResourceLimits>) -> Self {
+        self.list = limits;
+        self
+    }
+
+    /// Replaces copying ceilings; `None` explicitly leaves copying unbounded.
+    /// Other operation limits and lifecycle cleanup semantics are unchanged.
+    #[must_use]
+    pub const fn with_copy_limits(mut self, limits: Option<LocalCopyResourceLimits>) -> Self {
+        self.copy = limits;
+        self
+    }
+
     /// Sets finite per-request ceilings for listing, copying, and deletion.
     ///
     /// This does not enable recursive operation modes. Temporary-resource

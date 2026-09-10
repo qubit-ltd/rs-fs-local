@@ -35,8 +35,8 @@ use qubit_local_files as native_files;
 ///
 /// # Parameters
 ///
-/// - `_`: Resolved read options; the native backend needs no additional
-///   configuration for the currently supported fields.
+/// - `_`: Resolved options. Byte windows are applied to the opened reader by
+///   `LocalRangeReader`; native opening needs no additional configuration.
 ///
 /// # Returns
 ///

@@ -255,6 +255,7 @@ impl LocalFileSystemSpi {
         let mut capabilities = FileSystemCapabilities::new()
             .with_guaranteed(FileSystemCapability::List)
             .with_guaranteed(FileSystemCapability::Read)
+            .with_conditional(FileSystemCapability::RangeRead)
             .with_guaranteed(FileSystemCapability::Write)
             .with_guaranteed(FileSystemCapability::Append)
             .with_guaranteed(FileSystemCapability::CreateDirectory)
@@ -459,10 +460,27 @@ impl FileSystemSpi for LocalFileSystemSpi {
         if let Some(timeout) = self.open_retry_timeout {
             options = options.with_open_retry_timeout(timeout);
         }
-        self.native
+        let reader = self
+            .native
             .open_reader_with_options(&path, &options)
-            .map(|value| OpenedReader::new(self.info(request.path().clone()), Box::new(value)))
-            .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))
+            .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))?;
+        let info = self
+            .info(request.path().clone())
+            .with_metadata(local_outcome_mapper::metadata(reader.metadata().clone()));
+        let window = request.options().options();
+        let reader =
+            super::local_range_reader::LocalRangeReader::new(reader, window.offset().unwrap_or(0), window.length())
+                .map_err(|error| {
+                    FsError::with_source(
+                        FsErrorKind::Io,
+                        FsOperation::OpenReader,
+                        "local range seek failed",
+                        error,
+                    )
+                    .with_path(request.path().clone())
+                    .with_provider(self.properties.info().provider_id())
+                })?;
+        Ok(OpenedReader::new(info, Box::new(reader)))
     }
 
     /// Opens a host file for stateful publication.
