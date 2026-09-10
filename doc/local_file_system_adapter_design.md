@@ -1,6 +1,6 @@
 # Qubit FS Local Adapter Design
 
-> Approved target design for `qubit-fs-local` 0.7.0 (package version `0.7.0`), reviewed against the public
+> Approved target design for `qubit-fs-local` 0.8.0 (package version `0.8.0`), reviewed against the public
 > `qubit-fs` and `qubit-local-files` boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
@@ -321,3 +321,32 @@ Native platform algorithms are tested by `qubit-local-files`; this crate checks
 that translation preserves their semantics. The fuzz target is
 `fuzz/fuzz_targets/registry_uri_resolution.rs`, bounds input to 4096 bytes, and
 exercises URI resolution without filesystem mutation.
+
+## Standard budgets and explicit overrides
+
+`LocalResourcePolicy::standard()` performs no I/O and selects these finite
+per-operation ceilings. It is an explicit constructor, not a `Default` implementation.
+
+| Operation | Depth | Entries | Byte budget | Open directories | Deadline |
+| --- | --- | --- | --- | --- | --- |
+| list | 64 | 100,000 | 16 MiB path/name text | 32 | 30 seconds |
+| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 seconds |
+| delete | 64 | 100,000 | 16 MiB pending path text | not separately configured | 30 seconds |
+
+Use `with_list_limits(Some(...))`, `with_copy_limits(Some(...))`, or
+`with_delete_limits(Some(...))` to replace one domain. Passing `None` explicitly
+removes that domain's ceiling. Other domains remain unchanged. Deadlines are
+cooperative, not interruption of blocked native calls; budgets are not process
+RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
+cleanup remains separate from ordinary deletion budgets.
+
+Opening writer or temporary sessions follows the core 0.6 `OpenFailure` contract.
+Preserve its recovery session and any explicit cleanup error; see the
+[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery-in-06).
+
+This provider advertises Conditional `RangeRead` for native regular-file windows.
+The adapter seeks and reads through the same opened native handle, retaining full
+resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
+resource existence; missing paths still fail. This does not promise a snapshot
+under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
+range support, so local prefix reads continue to use bounded sequential consumption.

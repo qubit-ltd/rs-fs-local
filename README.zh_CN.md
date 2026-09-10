@@ -11,7 +11,7 @@
 主机文件系统，或将一个原生目录保留为 rooted 文件系统 authority，同时不希望在应用代码中
 处理 URI 解析和原生路径转换时，可使用本 crate。
 
-本文档适用于 `qubit-fs-local` 0.7.0（包版本 `0.7.0`）。
+本文档适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）。
 
 本版本使用 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不覆盖请求行为；
 writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
@@ -37,20 +37,12 @@ cargo add qubit-fs-local --features registry
 
 ```rust
 use std::path::Path;
-use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
-use qubit_fs_local::{
-    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
-    LocalListResourceLimits, LocalResourcePolicy,
-};
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
-let policy = LocalResourcePolicy::bounded(
-    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
-    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
-    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
-);
+let policy = LocalResourcePolicy::standard();
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
     Path::new("/srv/app-data"),
@@ -62,7 +54,7 @@ println!("{metadata:?}");
 ```
 
 所有构造函数都要求显式传入 `LocalResourcePolicy`。通常应使用包含三类操作预算的
-`bounded(list, copy, delete)`；只有应用明确接受无界递归工作时才使用 `unbounded()`。
+`standard()`，需要定制时使用 `bounded(list, copy, delete)`；只有明确接受无界递归工作时才使用 `unbounded()`。
 `LocalFileSystems::host(policy)`
 打开进程主机命名空间；`rooted(root, policy)` 生成进程本地标识；`rooted_with_id(id, root, policy)`
 保留调用方提供的标识。若该标识必须在进程之外保持稳定，应使用后者。
@@ -72,18 +64,10 @@ println!("{metadata:?}");
 已经是 rooted 逻辑路径时使用 `qubit_fs::Path::parse`；两者表示的 authority 不同。
 
 ```rust
-use std::time::Duration;
 use qubit_fs::read::ReadOptions;
-use qubit_fs_local::{
-    host_path_to_logical, LocalCopyResourceLimits, LocalDeleteResourceLimits,
-    LocalFileSystems, LocalListResourceLimits, LocalResourcePolicy,
-};
+use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
 
-let policy = LocalResourcePolicy::bounded(
-    LocalListResourceLimits::new(16, 1_000, 1 << 20, 16, Duration::from_secs(10))?,
-    LocalCopyResourceLimits::new(16, 1_000, 16 << 20, 16, Duration::from_secs(10))?,
-    LocalDeleteResourceLimits::new(16, 1_000, 1 << 20, Duration::from_secs(10)),
-);
+let policy = LocalResourcePolicy::standard();
 let file_system = LocalFileSystems::host(policy)?;
 let native = std::env::current_dir()?.join("Cargo.toml");
 let path = host_path_to_logical(&native)?;
@@ -136,7 +120,10 @@ cleanup、Drop 和原生发布清理不继承普通删除预算；这些配置�
 
 列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
 `ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
-本地 provider 未声明 `RangeRead`，因此 `read_prefix` 继续有界顺序读取，不自动增加范围要求。
+本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
+句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
+资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
+Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
 
 ## 测试
 

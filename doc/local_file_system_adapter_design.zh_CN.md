@@ -4,7 +4,7 @@
 > `qubit-local-files` 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
-> 适用于 `qubit-fs-local` 0.7.0（包版本 `0.7.0`）· [English design](local_file_system_adapter_design.md) ·
+> 适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）· [English design](local_file_system_adapter_design.md) ·
 > [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
@@ -544,3 +544,27 @@ src/
 平台安全算法不在本 crate 重复测试；它们由 `qubit-local-files` 测试。本 crate 只验证
 没有因转换丢失其语义。`fuzz/fuzz_targets/registry_uri_resolution.rs` 将输入限制为
 4096 字节，在不修改文件系统的条件下验证 URI resolution。
+
+## 标准预算与显式覆盖
+
+`LocalResourcePolicy::standard()` 不执行 I/O，并为每次操作设置下表中的有限上限。
+它是显式构造方法，不提供隐式 `Default` 实现。
+
+| 操作 | 深度 | 条目数 | 字节预算 | 打开的目录数 | 期限 |
+| --- | --- | --- | --- | --- | --- |
+| list | 64 | 100,000 | 16 MiB 路径／名称文本 | 32 | 30 秒 |
+| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 秒 |
+| delete | 64 | 100,000 | 16 MiB 待处理路径文本 | 不单独配置 | 30 秒 |
+
+用 `with_list_limits(Some(...))`、`with_copy_limits(Some(...))` 或
+`with_delete_limits(Some(...))` 覆盖对应领域；传入 `None` 表示显式取消该领域的上限，
+不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
+上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
+
+writer 和临时会话的打开遵循核心 0.6 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
+
+本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
+句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
+资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
+Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
