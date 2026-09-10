@@ -13,21 +13,21 @@
 
 本文档适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）。
 
-本版本使用 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不覆盖请求行为；
+本版本使用 `qubit-fs` 0.7 和 `qubit-local-files` 0.5。provider 上限只收紧资源预算，不覆盖请求行为；
 writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md)。
 
 ## 安装
 
 ```bash
-cargo add qubit-fs qubit-fs-local
+cargo add qubit-fs@0.7 qubit-fs-local@0.8
 ```
 
 仅当需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才启用 registry 集成：
 
 ```bash
-cargo add qubit-fs-registry
-cargo add qubit-fs-local --features registry
+cargo add qubit-fs-registry@0.6
+cargo add qubit-fs-local@0.8 --features registry
 ```
 
 ## 快速开始
@@ -84,6 +84,9 @@ cleanup、Drop 和原生发布清理不继承普通删除预算；这些配置�
 
 临时资源的返回路径和 keep 生成的目标保留请求中的逻辑父目录写法，包括目录别名。
 显式发布返回请求中的逻辑目标。整个过程中，原生 guard 始终保留创建时的权限和清理路径。
+持久化失败分别保留本次调用的目标发布事实与当前源资格。非法重试、cleanup 错误或取消
+不会抹去先前确认的 `publication_target`；源资格不确定时只能只读核查，需要清理时只能
+继续 cleanup，不能再次尝试发布。
 
 ## 提供的能力
 

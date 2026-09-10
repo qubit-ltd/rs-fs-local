@@ -7,7 +7,8 @@
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
 0.8.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.8.0`).
+(package version `0.8.0`). This release integrates `qubit-fs` 0.7 and
+`qubit-local-files` 0.5.
 
 ## Provider resource ceilings
 
@@ -117,15 +118,15 @@ one rooted facade.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs qubit-fs-local
+cargo add qubit-fs@0.7 qubit-fs-local@0.8
 ```
 
 For registry use, enable the feature and add the registry crate in the
 application:
 
 ```bash
-cargo add qubit-fs-registry
-cargo add qubit-fs-local --features registry
+cargo add qubit-fs-registry@0.6
+cargo add qubit-fs-local@0.8 --features registry
 ```
 
 ## Core Workflow
@@ -272,6 +273,27 @@ For native `PublicationIncomplete`, the adapter reports
 source. Cause and effect are independent: the effect state describes namespace
 progress, while the mapped error kind follows the native cause when available.
 
+Temporary persistence applies the same separation more precisely. The adapter
+combines native publication (`NotPublished`, `Published`, or `Indeterminate`)
+with source qualification (`Owned`, `CleanupRequired`, `Released`, or
+`Indeterminate`) to produce `PersistFailureState`. In particular:
+
+- `NotPublishedSourceIndeterminate` means this call did not publish, but the
+  source cannot safely be mutated or deleted; reconcile read-only.
+- `PublishedSourceIndeterminate` means the target is confirmed while source
+  authority is uncertain; retain the target fact and reconcile the source.
+- `NotPublishedSourceCleanupRequired` means this call did not publish and only
+  residual cleanup is allowed.
+
+A later invalid target, rejected retry, or cleanup error cannot restore source
+ownership. A direct adapter rejection has an `Unchanged` target effect for that
+call; the facade can instead retain its earlier published recovery state and
+`PersistFailure::publication_target()` without another provider call. That
+historical snapshot is not a new publication. After `PublishedSourceRetained`,
+cleanup acts on the retained native sandbox; it is not a target rollback. Keep
+the failure and the temporary handle until the state permits cleanup or
+application-specific read-only reconciliation.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -329,6 +351,6 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the core 0.6 `OpenFailure` contract.
+Opening writer or temporary sessions follows the core 0.7 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
-[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery-in-06).
+[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
