@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter 设计
 
 > 状态：已批准的目标设计，已按最终版 `qubit-fs` 与
-> `qubit-local-files` 0.5 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
+> `qubit-local-files` 0.3 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
 > 适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）与 `qubit-fs` 0.7 · [English design](local_file_system_adapter_design.md) ·
