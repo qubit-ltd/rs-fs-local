@@ -10,6 +10,82 @@ filesystem backed by the local host. It covers the current `qubit-fs-local`
 (package version `0.8.0`). This release integrates `qubit-fs` 0.7 and
 `qubit-local-files` 0.3.
 
+## Conceptual Model
+
+`LocalFileSystems` is a factory for a concrete `FileSystem` facade.
+
+```text
+application logical Path
+        │
+        ├─ host() ──────────────► process host namespace
+        └─ rooted*_with_id() ───► one retained native root
+```
+
+The facade accepts absolute, hierarchical `qubit_fs::Path` values. A rooted
+facade keeps a native root and uses logical paths below it. `rooted` creates a
+process-local ID; `rooted_with_id` uses the supplied `FileSystemId`.
+
+With the `registry` feature, `LocalFileSystemProvider` is a provider factory
+for supported `file:` configurations. A successful registry resolution exposes
+the configured filesystem, provider-decoded logical path, and a canonical URI.
+
+## Scenario
+
+An application stores generated reports beneath `/srv/app-data` and must not
+treat that native root as an application path on every operation. The success
+condition is that `/reports/summary.csv` is addressed as a logical path through
+one rooted facade.
+
+## Installation and Minimal Configuration
+
+```bash
+cargo add qubit-fs@0.7 qubit-fs-local@0.8
+```
+
+For registry use, enable the feature and add the registry crate in the
+application:
+
+```bash
+cargo add qubit-fs-registry@0.6
+cargo add qubit-fs-local@0.8 --features registry
+```
+
+## Core Workflow
+
+```rust
+use std::path::Path;
+use std::time::Duration;
+
+use qubit_fs::Path as LogicalPath;
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
+
+let policy = LocalResourcePolicy::bounded(
+    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
+    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
+);
+let fs = LocalFileSystems::rooted_with_id(
+    FileSystemId::new("app-data")?,
+    Path::new("/srv/app-data"),
+    policy,
+)?;
+let report = LogicalPath::parse("/reports/summary.csv")?;
+let metadata = fs.stat(&report)?;
+# let _ = metadata;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Every constructor requires `LocalResourcePolicy`; pass complete bounded list,
+copy, and delete limits for ordinary recursive workflows. Use `unbounded()` only
+after explicitly accepting unbounded recursive resource use. Choose `host(policy)` only when the intended authority is the process host
+namespace. Use `rooted_with_id` when the filesystem identity must be supplied
+by the application; use `rooted` when a distinct process-local identity is
+sufficient.
+
 ## Provider resource ceilings
 
 Native `LocalFileSystem` defaults are replaceable convenience Options. This
@@ -89,81 +165,27 @@ recursive deletion has already removed entries, inspect the returned `FsError`
 effect state before retrying. Its native `LocalFileError` source exposes
 `cause_kind()` separately; an absent effect state means that no effect was proven.
 
-## Conceptual Model
+### Standard budgets and explicit overrides
 
-`LocalFileSystems` is a factory for a concrete `FileSystem` facade.
+`LocalResourcePolicy::standard()` performs no I/O and selects these finite
+per-operation ceilings. It is an explicit constructor, not a `Default` implementation.
 
-```text
-application logical Path
-        │
-        ├─ host() ──────────────► process host namespace
-        └─ rooted*_with_id() ───► one retained native root
-```
+| Operation | Depth | Entries | Byte budget | Open directories | Deadline |
+| --- | --- | --- | --- | --- | --- |
+| list | 64 | 100,000 | 16 MiB path/name text | 32 | 30 seconds |
+| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 seconds |
+| delete | 64 | 100,000 | 16 MiB pending path text | not separately configured | 30 seconds |
 
-The facade accepts absolute, hierarchical `qubit_fs::Path` values. A rooted
-facade keeps a native root and uses logical paths below it. `rooted` creates a
-process-local ID; `rooted_with_id` uses the supplied `FileSystemId`.
+Use `with_list_limits(Some(...))`, `with_copy_limits(Some(...))`, or
+`with_delete_limits(Some(...))` to replace one domain. Passing `None` explicitly
+removes that domain's ceiling. Other domains remain unchanged. Deadlines are
+cooperative, not interruption of blocked native calls; budgets are not process
+RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
+cleanup remains separate from ordinary deletion budgets.
 
-With the `registry` feature, `LocalFileSystemProvider` is a provider factory
-for supported `file:` configurations. A successful registry resolution exposes
-the configured filesystem, provider-decoded logical path, and a canonical URI.
-
-## Scenario
-
-An application stores generated reports beneath `/srv/app-data` and must not
-treat that native root as an application path on every operation. The success
-condition is that `/reports/summary.csv` is addressed as a logical path through
-one rooted facade.
-
-## Installation and Minimal Configuration
-
-```bash
-cargo add qubit-fs@0.7 qubit-fs-local@0.8
-```
-
-For registry use, enable the feature and add the registry crate in the
-application:
-
-```bash
-cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.8 --features registry
-```
-
-## Core Workflow
-
-```rust
-use std::path::Path;
-use std::time::Duration;
-
-use qubit_fs::Path as LogicalPath;
-use qubit_fs::metadata::FileSystemId;
-use qubit_fs_local::{
-    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
-    LocalListResourceLimits, LocalResourcePolicy,
-};
-
-let policy = LocalResourcePolicy::bounded(
-    LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
-    LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
-    LocalDeleteResourceLimits::new(32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30)),
-);
-let fs = LocalFileSystems::rooted_with_id(
-    FileSystemId::new("app-data")?,
-    Path::new("/srv/app-data"),
-    policy,
-)?;
-let report = LogicalPath::parse("/reports/summary.csv")?;
-let metadata = fs.stat(&report)?;
-# let _ = metadata;
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-Every constructor requires `LocalResourcePolicy`; pass complete bounded list,
-copy, and delete limits for ordinary recursive workflows. Use `unbounded()` only
-after explicitly accepting unbounded recursive resource use. Choose `host(policy)` only when the intended authority is the process host
-namespace. Use `rooted_with_id` when the filesystem identity must be supplied
-by the application; use `rooted` when a distinct process-local identity is
-sufficient.
+Opening writer or temporary sessions follows the core 0.7 `OpenFailure` contract.
+Preserve its recovery session and any explicit cleanup error; see the
+[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
 
 ## Advanced Usage
 
@@ -315,42 +337,20 @@ application-specific read-only reconciliation.
 - Keep the provider selection and filesystem identity alongside a canonical URI
   when a rooted resolution must be replayed; the URI alone does not identify
   its retained native authority.
+- Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
+  for the configured hierarchical root. `ListScope::Namespace` is rejected before
+  native I/O.
+- This provider advertises Conditional `RangeRead` for native regular-file windows.
+  The adapter seeks and reads through the same opened native handle, retaining full
+  resource metadata. Zero-length, EOF, and beyond-EOF windows are empty after checking
+  resource existence; missing paths still fail. This does not promise a snapshot
+  under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
+  range support, so local prefix reads continue to use bounded sequential consumption.
 
 ## Further Reading
 
 - [README](../README.md)
 - [中文用户手册](user_guide.zh_CN.md)
+- [Adapter design](local_file_system_adapter_design.md)
+- [中文适配器设计](local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
-
-## Filesystem contract update
-
-Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
-for the configured hierarchical root. `ListScope::Namespace` is rejected before
-native I/O. This provider advertises Conditional `RangeRead` for native regular-file windows.
-The adapter seeks and reads through the same opened native handle, retaining full
-resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
-resource existence; missing paths still fail. This does not promise a snapshot
-under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
-range support, so local prefix reads continue to use bounded sequential consumption.
-
-## Standard budgets and explicit overrides
-
-`LocalResourcePolicy::standard()` performs no I/O and selects these finite
-per-operation ceilings. It is an explicit constructor, not a `Default` implementation.
-
-| Operation | Depth | Entries | Byte budget | Open directories | Deadline |
-| --- | --- | --- | --- | --- | --- |
-| list | 64 | 100,000 | 16 MiB path/name text | 32 | 30 seconds |
-| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 seconds |
-| delete | 64 | 100,000 | 16 MiB pending path text | not separately configured | 30 seconds |
-
-Use `with_list_limits(Some(...))`, `with_copy_limits(Some(...))`, or
-`with_delete_limits(Some(...))` to replace one domain. Passing `None` explicitly
-removes that domain's ceiling. Other domains remain unchanged. Deadlines are
-cooperative, not interruption of blocked native calls; budgets are not process
-RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
-cleanup remains separate from ordinary deletion budgets.
-
-Opening writer or temporary sessions follows the core 0.7 `OpenFailure` contract.
-Preserve its recovery session and any explicit cleanup error; see the
-[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
