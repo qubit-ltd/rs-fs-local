@@ -571,6 +571,8 @@ dependencies = [
 [[package]]
 name = "qubit-local-files"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dc4ce1d906f35fe19fe2b43ebd78f4715da846fede436f2721d2cdc6d90217d"
 dependencies = [
  "getrandom 0.4.3",
  "libc",
