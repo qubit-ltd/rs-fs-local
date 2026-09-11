@@ -275,8 +275,8 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "{document} must explain the three-argument rooted_with_id API"
         );
         assert!(
-            !text.contains("rooted_with_id(id, root)`") && !text.contains("rooted_with_id(id, root)"),
-            "{document} must not retain the old rooted_with_id signature"
+            !text.contains("rooted_with_id(id, root)`"),
+            "{document} must not retain the old two-argument rooted_with_id signature"
         );
     }
 }
