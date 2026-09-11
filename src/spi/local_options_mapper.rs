@@ -51,6 +51,8 @@ pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::options::LocalReadO
 /// # Parameters
 ///
 /// - `options`: Resolved facade listing options.
+/// - `scope`: Native authority that owns the listed directory.
+/// - `defaults`: Provider resource ceilings and reopen policy to tighten.
 ///
 /// # Returns
 ///
@@ -171,10 +173,11 @@ pub(crate) fn create_directory(
 /// # Parameters
 ///
 /// - `options`: Resolved facade deletion options.
+/// - `defaults`: Provider deletion resource ceilings to tighten.
 ///
 /// # Returns
 ///
-/// Native recursion and missing-entry policy.
+/// Native recursion and missing-entry policy tightened by `defaults`.
 #[inline]
 pub(crate) fn delete(
     options: &ResolvedDeleteOptions,
@@ -273,6 +276,21 @@ pub(crate) fn copy(
 }
 
 /// Maps an abstract operation override to the native scope-aware policy.
+///
+/// # Parameters
+///
+/// - `policy`: Portable symlink policy requested by the caller.
+/// - `scope`: Native authority interpreting symlink traversal.
+/// - `operation`: Facade operation requesting the mapping.
+///
+/// # Returns
+///
+/// The native symlink policy equivalent for `scope`.
+///
+/// # Errors
+///
+/// Returns `RequirementNotMet` when the portable policy cannot be expressed
+/// for the selected operation.
 fn native_symlink_policy(
     policy: SymlinkPolicy,
     scope: native_files::path::LocalFileSystemScope,
@@ -392,6 +410,15 @@ fn unsupported(operation: FsOperation) -> FsError {
 }
 
 /// Applies the resolved request source mode to otherwise configured defaults.
+///
+/// # Parameters
+///
+/// - `defaults`: Native copy options configured before the request is applied.
+/// - `mode`: Portable source mode selected by the resolved copy request.
+///
+/// # Returns
+///
+/// `defaults` with the source mode overridden to match `mode`.
 fn copy_source_options(
     defaults: native_files::options::LocalCopyOptions,
     mode: CopyMode,

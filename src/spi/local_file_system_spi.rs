@@ -75,6 +75,16 @@ use crate::constants::LOCAL_PROVIDER_ID;
 use crate::path::local_path_mapper;
 
 /// Host or Rooted implementation of the synchronous local filesystem SPI.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_local::spi::LocalFileSystemSpi;
+/// use qubit_fs_local::LocalResourcePolicy;
+///
+/// let _spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())?;
+/// # Ok::<(), qubit_fs::error::FsError>(())
+/// ```
 #[must_use]
 pub struct LocalFileSystemSpi {
     /// Configured Host or Rooted native filesystem engine.
@@ -176,6 +186,19 @@ impl LocalFileSystemSpi {
     }
 
     /// Maps one rooted constructor into provider context.
+    ///
+    /// # Parameters
+    ///
+    /// - `root`: Native directory to retain as filesystem authority.
+    /// - `provider_id`: Provider identity attached to open failures.
+    ///
+    /// # Returns
+    ///
+    /// A native rooted filesystem handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider-unavailable error when the native root cannot open.
     fn open_rooted(root: &NativePath, provider_id: &str) -> FsResult<native_files::LocalFileSystem> {
         native_files::LocalFileSystem::rooted(root).map_err(|error| {
             FsError::with_source(
@@ -189,6 +212,21 @@ impl LocalFileSystemSpi {
     }
 
     /// Builds the SPI around one fully configured native instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable filesystem identity exposed by the SPI.
+    /// - `provider_id`: Provider identity attached to configuration failures.
+    /// - `native`: Open native filesystem whose defaults will be updated.
+    /// - `resource_policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A configured SPI retaining immutable provider properties.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider error when native defaults or property assembly fail.
     fn from_native(
         id: FileSystemId,
         provider_id: &str,
@@ -236,6 +274,12 @@ impl LocalFileSystemSpi {
     }
 
     /// Builds the immutable provider property snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable filesystem identity exposed by the SPI.
+    /// - `provider_id`: Provider identity attached to translated failures.
+    /// - `native`: Native filesystem whose capabilities inform the snapshot.
     ///
     /// # Returns
     ///
@@ -315,21 +359,63 @@ impl LocalFileSystemSpi {
     }
 
     /// Converts one logical path for the configured native scope.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Absolute logical path to convert.
+    ///
+    /// # Returns
+    ///
+    /// The equivalent native path in this SPI authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns path-conversion errors from the local path mapper.
     fn native_path(&self, path: &Path) -> FsResult<PathBuf> {
         local_path_mapper::native(self.native.scope(), path)
     }
 
     /// Converts a logical source-target pair for the configured scope.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Absolute logical source path.
+    /// - `target`: Absolute logical target path.
+    ///
+    /// # Returns
+    ///
+    /// Native source and target paths in this SPI authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns path-conversion errors from the local path mapper.
     fn native_pair(&self, source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
         Ok((self.native_path(source)?, self.native_path(target)?))
     }
 
     /// Converts a returned native path to its logical representation.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Native path returned by local I/O.
+    /// - `operation`: Facade operation requesting the conversion.
+    ///
+    /// # Returns
+    ///
+    /// The canonical absolute logical path.
+    ///
+    /// # Errors
+    ///
+    /// Returns path-conversion errors from the local path mapper.
     fn logical_path(&self, path: &NativePath, operation: FsOperation) -> FsResult<Path> {
         local_path_mapper::logical(self.native.scope(), path, operation)
     }
 
     /// Reports whether native paths are Rooted descendants.
+    ///
+    /// # Returns
+    ///
+    /// `true` when this SPI retains a descriptor-backed rooted authority.
     #[inline(always)]
     fn is_rooted(&self) -> bool {
         matches!(self.native.scope(), native_files::path::LocalFileSystemScope::Rooted)

@@ -94,6 +94,19 @@ pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
 
 /// Converts a complete native copy failure without discarding staging or
 /// cleanup diagnostics retained by the native pipeline.
+///
+/// # Parameters
+///
+/// - `error`: Native copy failure retaining partial statistics and paths.
+/// - `path`: Logical source path supplied by the caller.
+/// - `target`: Logical target path supplied by the caller.
+/// - `failure_path`: Optional logical path where the failure occurred.
+/// - `failure_target`: Optional logical target associated with the failure.
+/// - `provider_id`: Provider identity attached to the mapped error.
+///
+/// # Returns
+///
+/// A facade copy error with translated kind, paths, and provider context.
 #[inline]
 pub(crate) fn copy_failure(
     error: native_files::outcome::LocalCopyFailure,
@@ -120,6 +133,16 @@ pub(crate) fn copy_failure(
 
 /// Attaches an explicit effect state for native error categories that prove
 /// publication progress independently of a typed operation failure.
+///
+/// # Parameters
+///
+/// - `error`: Facade error awaiting optional effect enrichment.
+/// - `effect_state`: Confirmed external effect derived from the native failure.
+///
+/// # Returns
+///
+/// `error` unchanged when `effect_state` is `None`; otherwise the error with
+/// the supplied effect state attached.
 #[inline]
 fn attach_native_effect(error: FsError, effect_state: Option<FsEffectState>) -> FsError {
     match effect_state {
@@ -129,6 +152,15 @@ fn attach_native_effect(error: FsError, effect_state: Option<FsEffectState>) -> 
 }
 
 /// Maps native lifecycle effects into portable request effects.
+///
+/// # Parameters
+///
+/// - `error`: Native failure whose effect state should be translated.
+///
+/// # Returns
+///
+/// A portable effect when the native category encodes publication progress;
+/// otherwise `None`.
 #[inline]
 fn native_effect_state(error: &native_files::LocalFileError) -> Option<FsEffectState> {
     match error.effect_state() {
@@ -142,6 +174,14 @@ fn native_effect_state(error: &native_files::LocalFileError) -> Option<FsEffectS
 }
 
 /// Converts portable copy failure state into provider-neutral effect state.
+///
+/// # Parameters
+///
+/// - `state`: Copy publication state reported by the facade.
+///
+/// # Returns
+///
+/// The equivalent portable filesystem effect state.
 #[inline]
 pub(crate) const fn copy_effect_state(state: CopyFailureState) -> FsEffectState {
     match state {
@@ -153,6 +193,14 @@ pub(crate) const fn copy_effect_state(state: CopyFailureState) -> FsEffectState 
 }
 
 /// Converts portable rename failure state into provider-neutral effect state.
+///
+/// # Parameters
+///
+/// - `state`: Rename namespace state reported by the facade.
+///
+/// # Returns
+///
+/// The equivalent portable filesystem effect state.
 #[inline]
 pub(crate) const fn rename_effect_state(state: RenameFailureState) -> FsEffectState {
     match state {

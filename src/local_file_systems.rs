@@ -27,6 +27,16 @@ use crate::spi::LocalFileSystemSpi;
 static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Factory for concrete host and rooted local filesystem facades.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+///
+/// let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+/// assert_eq!(filesystem.properties().info().id().as_str(), "local-host");
+/// # Ok::<(), qubit_fs::error::FsError>(())
+/// ```
 pub enum LocalFileSystems {}
 
 impl LocalFileSystems {
@@ -117,6 +127,22 @@ impl LocalFileSystems {
     ///
     /// This is intended for applications that register multiple rooted local
     /// providers in one provider registry.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable identity exposed by the rooted filesystem.
+    /// - `provider_id`: Registry provider identity validated for this root.
+    /// - `root`: Native directory to retain as filesystem authority.
+    /// - `policy`: Recursive resource and lifecycle policy.
+    ///
+    /// # Returns
+    ///
+    /// A rooted synchronous filesystem using the supplied identities.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `root` cannot be opened or the rooted filesystem
+    /// cannot be assembled with `id` and `provider_id`.
     #[cfg(feature = "registry")]
     pub(crate) fn rooted_with_provider_id(
         id: FileSystemId,

@@ -32,6 +32,17 @@ use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
 
 /// Creates local filesystem resolutions for accepted `file:` configurations.
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(feature = "registry")]
+/// use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
+/// # #[cfg(feature = "registry")]
+/// let provider = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+/// # #[cfg(feature = "registry")]
+/// let _ = provider;
+/// ```
 #[derive(Clone)]
 #[must_use]
 pub struct LocalFileSystemProvider {
@@ -195,6 +206,10 @@ impl ProviderMetadata for LocalFileSystemProvider {
 }
 
 /// Builds the default local provider descriptor from shared identities.
+///
+/// # Returns
+///
+/// The static `local-file` descriptor with the `file` URI alias.
 #[inline]
 fn default_descriptor() -> ProviderDescriptor {
     ProviderDescriptor::new(ProviderId::new(LOCAL_PROVIDER_ID).expect("static provider identity is valid"))

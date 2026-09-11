@@ -45,6 +45,20 @@ pub(super) fn decode(raw: &str) -> Result<Path, ProviderFailure<FsError>> {
 
 /// Re-encodes a canonical logical path as the unique absolute `file:` URI
 /// spelling used by registry resolutions.
+///
+/// # Parameters
+///
+/// - `path`: Canonical absolute logical path to encode.
+///
+/// # Returns
+///
+/// The normalized `file:` URI whose path segment round-trips through
+/// [`decode`].
+///
+/// # Errors
+///
+/// Returns an invalid-configuration failure when the path cannot be encoded
+/// or parsed as a canonical registry URI.
 pub(super) fn canonical_uri(path: &Path) -> Result<Uri, ProviderFailure<FsError>> {
     let text = path.as_str();
     let mut encoded = String::with_capacity(text.len());
@@ -110,6 +124,18 @@ fn decode_component(component: &str) -> Result<String, ProviderFailure<FsError>>
 }
 
 /// Strictly percent-decodes a URI component without treating `+` as a space.
+///
+/// # Parameters
+///
+/// - `component`: Raw URI segment without slash separators.
+///
+/// # Returns
+///
+/// Decoded native path bytes for the segment.
+///
+/// # Errors
+///
+/// Returns an invalid-path failure for malformed escapes or embedded NUL bytes.
 fn decode_uri_bytes(component: &str) -> Result<Vec<u8>, ProviderFailure<FsError>> {
     let bytes = component.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
@@ -142,6 +168,14 @@ fn decode_uri_bytes(component: &str) -> Result<Vec<u8>, ProviderFailure<FsError>
 }
 
 /// Converts one ASCII hexadecimal digit to its numeric value.
+///
+/// # Parameters
+///
+/// - `byte`: ASCII digit or `a`–`f` / `A`–`F` byte.
+///
+/// # Returns
+///
+/// `Some(n)` for a valid digit or `None` for any other byte.
 const fn hex_value(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -152,6 +186,15 @@ const fn hex_value(byte: u8) -> Option<u8> {
 }
 
 /// Canonicalizes URI bytes without first constructing a native path value.
+///
+/// # Parameters
+///
+/// - `bytes`: Decoded segment bytes to encode as canonical escaped text.
+///
+/// # Returns
+///
+/// Uppercase percent escapes for non-UTF-8 bytes and controls; UTF-8 scalars
+/// are copied when they do not require escaping.
 fn canonicalize_uri_bytes(bytes: &[u8]) -> String {
     let mut canonical = String::with_capacity(bytes.len());
     let mut remaining = bytes;
@@ -177,6 +220,11 @@ fn canonicalize_uri_bytes(bytes: &[u8]) -> String {
 }
 
 /// Appends UTF-8 scalars using local canonical escaped-byte text.
+///
+/// # Parameters
+///
+/// - `canonical`: Destination buffer receiving canonical path text.
+/// - `text`: Valid UTF-8 prefix to append.
 fn push_uri_scalars(canonical: &mut String, text: &str) {
     for scalar in text.chars() {
         if scalar == '%' || scalar.is_control() {
@@ -190,6 +238,11 @@ fn push_uri_scalars(canonical: &mut String, text: &str) {
 }
 
 /// Appends one uppercase percent escape.
+///
+/// # Parameters
+///
+/// - `canonical`: Destination buffer receiving the escape sequence.
+/// - `byte`: Raw byte to encode as `%XX`.
 fn push_uri_escaped_byte(canonical: &mut String, byte: u8) {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     canonical.push('%');

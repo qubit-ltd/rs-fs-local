@@ -47,6 +47,7 @@ impl LocalFileWriterSpi {
     /// # Parameters
     ///
     /// - `writer`: Native writer owned by the new adapter.
+    /// - `provider_id`: Provider identity attached to lifecycle errors.
     ///
     /// # Returns
     ///
@@ -241,7 +242,6 @@ impl FileWriterSpi for LocalFileWriterSpi {
 ///
 /// `Unchanged` before publication, `Applied` after confirmed publication, or
 /// `Indeterminate` when the native writer cannot determine the outcome.
-/// Converts native writer publication state into portable effect state.
 #[inline]
 const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
     match state {
@@ -252,6 +252,14 @@ const fn write_effect_state(state: WriteFailureState) -> FsEffectState {
 }
 
 /// Converts a terminal portable commit state into its abort outcome.
+///
+/// # Parameters
+///
+/// - `state`: Publication state observed after an unrecoverable commit failure.
+///
+/// # Returns
+///
+/// The abort outcome that matches the confirmed destination state.
 #[inline]
 fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
     match state {
@@ -262,6 +270,14 @@ fn abort_outcome_from_failure(state: WriteFailureState) -> WriteAbortOutcome {
 }
 
 /// Converts native abort publication certainty to the portable outcome.
+///
+/// # Parameters
+///
+/// - `state`: Native publication certainty reported by abort, if any.
+///
+/// # Returns
+///
+/// The portable abort outcome equivalent to the native certainty.
 #[inline]
 fn abort_outcome(state: Option<native_files::outcome::LocalWriteFailureState>) -> WriteAbortOutcome {
     match state {
