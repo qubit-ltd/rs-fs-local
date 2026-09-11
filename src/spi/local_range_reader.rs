@@ -1,7 +1,9 @@
 // =============================================================================
-//    Copyright (c) 2026 Haixing Hu.
+//    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Byte windows on an already-open native regular file.
 
@@ -28,6 +30,20 @@ impl LocalRangeReader {
     /// seek normally and preserve any native I/O error. Metadata is an opening
     /// observation, not a file snapshot or a promise against concurrent
     /// changes.
+    ///
+    /// # Parameters
+    ///
+    /// - `reader`: Already-open native regular file handle.
+    /// - `offset`: Byte offset from the start of the file.
+    /// - `length`: Optional maximum bytes to read; `None` reads through EOF.
+    ///
+    /// # Returns
+    ///
+    /// A reader that never consumes more than the resolved window.
+    ///
+    /// # Errors
+    ///
+    /// Propagates native seek failures for nonzero offsets inside range.
     pub(crate) fn new(mut reader: LocalFileReader, offset: u64, length: Option<u64>) -> io::Result<Self> {
         let beyond_native_range = offset > i64::MAX as u64 && offset >= reader.metadata().len();
         let length = if length == Some(0) || beyond_native_range {
@@ -46,6 +62,18 @@ impl LocalRangeReader {
 
 impl Read for LocalRangeReader {
     /// Consumes at most the remaining window, propagating native read errors.
+    ///
+    /// # Parameters
+    ///
+    /// - `output`: Destination buffer for bytes read from the window.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes copied into `output`, which may be zero at EOF.
+    ///
+    /// # Errors
+    ///
+    /// Propagates native read failures from the underlying handle.
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         self.inner.read(output)
     }

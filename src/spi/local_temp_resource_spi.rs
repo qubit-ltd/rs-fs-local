@@ -296,11 +296,11 @@ impl TempResourceSpi for LocalTempResourceSpi {
 ///
 /// # Parameters
 ///
-/// - `overwrite`: Whether an existing destination may be replaced.
+/// - `options`: Resolved portable persist options for the request.
 ///
 /// # Returns
 ///
-/// Native persistence options with the requested replacement policy.
+/// Native persistence options reflecting overwrite and parent-creation policy.
 #[inline(always)]
 fn persist_options(options: &PersistOptions) -> LocalPersistOptions {
     let mut native = LocalPersistOptions::new();
@@ -438,6 +438,20 @@ fn persist_directory(
 
 /// Keeps a retained native temporary file and restores it after a
 /// pre-publication failure.
+///
+/// # Parameters
+///
+/// - `slot`: Adapter storage for the active native temporary file.
+/// - `provider_id`: Provider identity attached to lifecycle failures.
+///
+/// # Returns
+///
+/// The completed native keep outcome.
+///
+/// # Errors
+///
+/// Returns `InvalidState` when `slot` is empty. Native failures are mapped
+/// with their recovery state and restore the returned resource into `slot`.
 fn keep_file(slot: &mut Option<LocalTempFile>, provider_id: &str) -> Result<LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.keep() {
@@ -463,6 +477,20 @@ fn keep_file(slot: &mut Option<LocalTempFile>, provider_id: &str) -> Result<Loca
 
 /// Keeps a retained native temporary directory and restores it after a
 /// pre-publication failure.
+///
+/// # Parameters
+///
+/// - `slot`: Adapter storage for the active native temporary directory.
+/// - `provider_id`: Provider identity attached to lifecycle failures.
+///
+/// # Returns
+///
+/// The completed native keep outcome.
+///
+/// # Errors
+///
+/// Returns `InvalidState` when `slot` is empty. Native failures are mapped
+/// with their recovery state and restore the returned resource into `slot`.
 fn keep_directory(
     slot: &mut Option<LocalTempDirectory>,
     provider_id: &str,
@@ -499,6 +527,15 @@ fn keep_directory(
 ///
 /// Unknown future combinations and the invalid Published + Owned combination
 /// conservatively return `Indeterminate`.
+///
+/// # Parameters
+///
+/// - `publication`: Native destination publication state after failure.
+/// - `source`: Native source authority retained by the resource.
+///
+/// # Returns
+///
+/// The closest portable persistence failure state supported by both facts.
 #[inline]
 fn persist_failure_state(publication: LocalPersistFailureState, source: LocalTempSourceState) -> PersistFailureState {
     use qubit_local_files::outcome::LocalPersistFailureState as Publication;
@@ -527,7 +564,6 @@ fn persist_failure_state(publication: LocalPersistFailureState, source: LocalTem
 ///
 /// `Unchanged` when no target was published, `Applied` when publication is
 /// confirmed, or `Indeterminate` when publication cannot be determined.
-/// Converts native temporary persistence state into portable effect state.
 #[inline]
 const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
     match state {
@@ -631,6 +667,10 @@ fn cleanup_error(
 }
 
 /// Rejects cleanup when the adapter has already released its native resource.
+///
+/// # Returns
+///
+/// An `InvalidState` error scoped to temporary-resource cleanup.
 fn terminal_cleanup_error() -> FsError {
     FsError::new(
         FsErrorKind::InvalidState,
