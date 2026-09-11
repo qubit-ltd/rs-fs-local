@@ -57,14 +57,12 @@ println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Every constructor requires an explicit `LocalResourcePolicy`. Prefer
-`standard()` for finite budgets, or customize `bounded(list, copy, delete)`. Use `unbounded()`
-only when the application deliberately accepts unbounded recursive work.
-`LocalFileSystems::host(policy)` opens the process host namespace. `rooted(root, policy)`
-generates a process-local identity, while
-`rooted_with_id(id, root, policy)` preserves the caller-provided identity and
-applies the same explicit policy. The latter is the appropriate choice when
-that identity must be stable outside the process.
+Use `LocalFileSystems::host(policy)` for the process host namespace,
+`rooted(root, policy)` for a generated process-local identity, or
+`rooted_with_id(id, root, policy)` when the filesystem identity must stay
+stable outside the process. Every constructor requires an explicit
+`LocalResourcePolicy`; prefer `standard()` unless the application needs custom
+limits.
 
 When a native host path comes from an API such as `std::env::current_dir`,
 convert it with `host_path_to_logical` before passing it to the facade. This
@@ -85,25 +83,23 @@ assert!(prefix.len() <= 4096);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`bounded(list, copy, delete)` sets explicit per-request ceilings
-for the three ordinary operation categories.
-The three limit families are independent: listing and copy use their own
-depth/entry/byte/open-directory/deadline values, while deletion uses depth,
-entry, pending-path-byte, and deadline values. A provider listing entry ceiling counts
-entries yielded by the native walker before prefix filtering, while a request
-entry limit counts entries returned after filtering. Temporary-resource
-cleanup, Drop, and native publication cleanup do not inherit ordinary deletion
-ceilings. These settings are not aggregate quotas across concurrent requests.
+Every constructor requires an explicit `LocalResourcePolicy`. Prefer
+`standard()` for finite per-operation budgets unless the application needs
+custom limits. Provider ceilings, publication recovery, registry fallback, and
+listing or range-read contracts are documented in the
+[user guide](doc/user_guide.md).
 
-Temporary resources preserve the requested logical parent spelling, including
-directory aliases, in their returned paths and generated keep targets. Explicit
-publication reports the requested logical target. Native guards retain their
-original creation authority and cleanup paths throughout these operations.
-Persistence failures keep the current target-publication fact separate from
-source qualification. An invalid retry, cleanup error, or cancellation cannot
-erase an earlier confirmed `publication_target`; source-indeterminate states
-permit read-only reconciliation, while cleanup-required states permit cleanup
-without another publication attempt.
+## Why This Project Exists
+
+Applications on `qubit-fs` address storage through logical paths and optional
+connection URIs. When the backend is the process host or one retained native
+directory, something must map those contracts to native I/O without pushing URI
+decoding, provider rules, and resource ceilings into every caller.
+`qubit-fs-local` is that adapter: `LocalFileSystems` builds direct facades, and
+the optional `registry` feature registers a `file:` provider factory.
+
+The crate does not implement remote storage, credential resolution, or an
+asynchronous local `FileSystem` facade.
 
 ## What It Provides
 
@@ -142,17 +138,6 @@ filesystem facade.
 - [中文设计文档](doc/local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
 - [中文 README](README.zh_CN.md)
-
-## Filesystem contract update
-
-Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
-for the configured hierarchical root. `ListScope::Namespace` is rejected before
-native I/O. This provider advertises Conditional `RangeRead` for native regular-file windows.
-The adapter seeks and reads through the same opened native handle, retaining full
-resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
-resource existence; missing paths still fail. This does not promise a snapshot
-under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
-range support, so local prefix reads continue to use bounded sequential consumption.
 
 ## Testing
 

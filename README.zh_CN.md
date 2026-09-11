@@ -15,7 +15,7 @@
 
 本版本使用 `qubit-fs` 0.7 和 `qubit-local-files` 0.3。provider 上限只收紧资源预算，不覆盖请求行为；
 writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
-详见[用户指南](doc/user_guide.zh_CN.md)。
+详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 
 ## 安装
 
@@ -53,11 +53,9 @@ println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-所有构造函数都要求显式传入 `LocalResourcePolicy`。通常应使用包含三类操作预算的
-`standard()`，需要定制时使用 `bounded(list, copy, delete)`；只有明确接受无界递归工作时才使用 `unbounded()`。
-`LocalFileSystems::host(policy)`
-打开进程主机命名空间；`rooted(root, policy)` 生成进程本地标识；`rooted_with_id(id, root, policy)`
-保留调用方提供的标识。若该标识必须在进程之外保持稳定，应使用后者。
+进程主机命名空间使用 `LocalFileSystems::host(policy)`；`rooted(root, policy)` 生成进程内
+标识；若标识必须在进程外保持稳定，使用 `rooted_with_id(id, root, policy)`。所有构造函数都需要
+显式传入 `LocalResourcePolicy`，通常优先使用 `standard()`。
 
 当原生主机路径来自 `std::env::current_dir` 等 API 时，应先使用
 `host_path_to_logical` 转换，再传给门面。这样可以保留百分号转义和 Unix 非 UTF-8 文件名。
@@ -76,19 +74,19 @@ assert!(prefix.len() <= 4096);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`bounded(list, copy, delete)` 显式设置三类普通操作的每次请求上限。list 和 copy 各自包含
-深度、条目数、字节数/名称字节数、打开目录数和 deadline；delete 则包含深度、条目数、待处理
-路径字节数和 deadline。列表的 provider 条目计数为 native walker 在 prefix 过滤前产出的条目；
-请求条目上限计数为过滤后返回的条目。临时资源
-cleanup、Drop 和原生发布清理不继承普通删除预算；这些配置也不是并发请求的累计配额。
+provider 上限、发布恢复、registry fallback，以及列举与范围读契约详见
+[用户手册](doc/user_guide.zh_CN.md)。
 
-临时资源的返回路径和 keep 生成的目标保留请求中的逻辑父目录写法，包括目录别名。
-显式发布返回请求中的逻辑目标。整个过程中，原生 guard 始终保留创建时的权限和清理路径。
-持久化失败分别保留本次调用的目标发布事实与当前源资格。非法重试、cleanup 错误或取消
-不会抹去先前确认的 `publication_target`；源资格不确定时只能只读核查，需要清理时只能
-继续 cleanup，不能再次尝试发布。
+## 为什么需要本项目
 
-## 提供的能力
+基于 `qubit-fs` 的应用通过逻辑路径，以及可选的连接 URI 访问存储。当后端是进程主机或
+某个固定的原生目录时，需要有一层适配把上述契约映射到原生 I/O，而不是让业务代码各自处理
+URI 解码、provider 规则和资源上限。`qubit-fs-local` 承担这一角色：`LocalFileSystems`
+用于直接创建门面，可选的 `registry` feature 则注册 `file:` provider 工厂。
+
+本 crate 不提供远程存储、凭据解析，也不提供异步本地 `FileSystem` 门面。
+
+## 核心能力
 
 - 通过 host 和 rooted 构造路径提供本地文件的具体同步 `FileSystem` 门面。
 - 可选的 `LocalFileSystemProvider` 位于 `registry` feature 后；它将支持的 `file:` 配置
@@ -118,15 +116,6 @@ cleanup、Drop 和原生发布清理不继承普通删除预算；这些配置�
 - [中文适配器设计](doc/local_file_system_adapter_design.zh_CN.md)
 - [API 文档](https://docs.rs/qubit-fs-local)
 - [English README](README.md)
-
-## 文件系统契约更新
-
-列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
-`ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
-本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
-句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
-资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
-Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
 
 ## 测试
 
