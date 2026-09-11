@@ -8,72 +8,6 @@
 `qubit-fs-local` 0.8.0 版本（包版本 `0.8.0`）：直接创建 host/rooted 门面，以及可选的
 registry provider。本版本集成 `qubit-fs` 0.7 与 `qubit-local-files` 0.3。
 
-## Provider 资源上限
-
-原生 `LocalFileSystem` 默认 Options 是可被替换的便利配置；本适配层将
-`LocalResourcePolicy` 作为每次请求的强制上限。list/copy 请求预算与 provider 预算
-取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
-
-适配层先从完整请求构造操作行为，再调用原生 `tighten_resource_limits` 收紧预算。
-provider 上限不会开启递归、忽略缺失目标、创建父目录或改变覆盖策略。writer 显式使用
-原生 `PreserveExisting`，可移植 API 不增加原生元数据策略开关。临时资源发布把
-命名空间绝对目标传给 `persist_with`。门面仍遵循 `qubit_fs::Path` 的逻辑规范化契约；
-原生 Host 对 `link/..` 的保留不改变逻辑路径语法，也不会恢复已由可移植层折叠的组件。
-需要原生点组件遍历时，直接使用 `qubit-local-files`。
-
-`LocalResourcePolicy::bounded(list, copy, delete)` 为三类普通递归操作设置彼此独立的上限。
-删除请求选择递归或忽略缺失时仍保留这些
-上限。请求目录自身计为一个条目、深度为零；待处理路径按原生编码长度计费，不包括分配器
-开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
-删除上限；不会从 list/copy 预算推导隐藏的删除限制。
-
-三类上限的计量对象不同：
-
-| 上限 | 计量的工作 | 执行位置 |
-| --- | --- | --- |
-| provider list `max_entries` | adapter prefix 过滤前由 walker 产出的条目 | 原生 walker |
-| request list `max_entries` | prefix 过滤后返回的条目 | 门面 |
-| copy/delete 上限 | 对应操作的原生遍历和 payload 工作 | 原生操作 |
-
-因此，即使 prefix 没有匹配项，也可能耗尽 provider walker 上限。协作式 deadline
-会在原生调用前后检查，不能中断已经开始的 I/O 调用。
-
-下面的数值是应用场景示例，不是库默认值：
-
-```rust
-use std::time::Duration;
-use qubit_fs_local::{
-    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
-    LocalListResourceLimits, LocalResourcePolicy,
-};
-
-let policy = LocalResourcePolicy::bounded(
-    LocalListResourceLimits::new(
-        32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30),
-    )?,
-    LocalCopyResourceLimits::new(
-        32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30),
-    )?,
-    LocalDeleteResourceLimits::new(
-        32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30),
-    ),
-);
-let file_system = LocalFileSystems::host(policy)?;
-# let _ = file_system;
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-逻辑路径文本上限报告为 `Unknown`，因为原生 component 上限无法涵盖百分号展开和非 UTF-8
-文件名。绝对原生主机路径应使用 `host_path_to_logical` 转换；已经是 rooted 逻辑文本时使用
-`qubit_fs::Path::parse`。临时资源 cleanup、Drop 和原生发布清理属于独立生命周期范围，不继承
-普通删除上限。显式 cleanup 会报告自身错误；Drop 是 best effort。local provider 会接管所有
-它能够表达的 copy，不会 Declined 到门面 fallback；原生工作开始后的失败保留状态和部分统计。
-
-adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 `IsDirectory`，通过
-`delete_directory` 删除普通文件或最终符号链接返回 `NotDirectory`，且不会删除该 entry。
-递归删除已经移除条目后失败时，应在重试前检查返回 `FsError` 的副作用状态。其 native
-`LocalFileError` source 单独提供 `cause_kind()`；effect 缺失表示没有证据证明副作用。
-
 ## 概念模型
 
 `LocalFileSystems` 是创建具体 `FileSystem` 门面的工厂。
@@ -143,6 +77,91 @@ let metadata = fs.stat(&report)?;
 list/copy/delete limits，只有明确接受无界递归资源使用时才用 `unbounded()`。只有当进程主机命名空间就是预期 authority 时才选择
 `host(policy)`。当文件系统标识需要由应用提供时使用 `rooted_with_id`；进程内唯一标识足够时
 使用 `rooted`。
+
+## Provider 资源上限
+
+原生 `LocalFileSystem` 默认 Options 是可被替换的便利配置；本适配层将
+`LocalResourcePolicy` 作为每次请求的强制上限。list/copy 请求预算与 provider 预算
+取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
+
+适配层先从完整请求构造操作行为，再调用原生 `tighten_resource_limits` 收紧预算。
+provider 上限不会开启递归、忽略缺失目标、创建父目录或改变覆盖策略。writer 显式使用
+原生 `PreserveExisting`，可移植 API 不增加原生元数据策略开关。临时资源发布把
+命名空间绝对目标传给 `persist_with`。门面仍遵循 `qubit_fs::Path` 的逻辑规范化契约；
+原生 Host 对 `link/..` 的保留不改变逻辑路径语法，也不会恢复已由可移植层折叠的组件。
+需要原生点组件遍历时，直接使用 `qubit-local-files`。
+
+`LocalResourcePolicy::bounded(list, copy, delete)` 为三类普通递归操作设置彼此独立的上限。
+删除请求选择递归或忽略缺失时仍保留这些
+上限。请求目录自身计为一个条目、深度为零；待处理路径按原生编码长度计费，不包括分配器
+开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
+删除上限；不会从 list/copy 预算推导隐藏的删除限制。
+
+三类上限的计量对象不同：
+
+| 上限 | 计量的工作 | 执行位置 |
+| --- | --- | --- |
+| provider list `max_entries` | adapter prefix 过滤前由 walker 产出的条目 | 原生 walker |
+| request list `max_entries` | prefix 过滤后返回的条目 | 门面 |
+| copy/delete 上限 | 对应操作的原生遍历和 payload 工作 | 原生操作 |
+
+因此，即使 prefix 没有匹配项，也可能耗尽 provider walker 上限。协作式 deadline
+会在原生调用前后检查，不能中断已经开始的 I/O 调用。
+
+下面的数值是应用场景示例，不是库默认值：
+
+```rust
+use std::time::Duration;
+use qubit_fs_local::{
+    LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
+    LocalListResourceLimits, LocalResourcePolicy,
+};
+
+let policy = LocalResourcePolicy::bounded(
+    LocalListResourceLimits::new(
+        32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30),
+    )?,
+    LocalCopyResourceLimits::new(
+        32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30),
+    )?,
+    LocalDeleteResourceLimits::new(
+        32, 10_000, 4 * 1024 * 1024, Duration::from_secs(30),
+    ),
+);
+let file_system = LocalFileSystems::host(policy)?;
+# let _ = file_system;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+逻辑路径文本上限报告为 `Unknown`，因为原生 component 上限无法涵盖百分号展开和非 UTF-8
+文件名。绝对原生主机路径应使用 `host_path_to_logical` 转换；已经是 rooted 逻辑文本时使用
+`qubit_fs::Path::parse`。临时资源 cleanup、Drop 和原生发布清理属于独立生命周期范围，不继承
+普通删除上限。显式 cleanup 会报告自身错误；Drop 是 best effort。local provider 会接管所有
+它能够表达的 copy，不会 Declined 到门面 fallback；原生工作开始后的失败保留状态和部分统计。
+
+adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 `IsDirectory`，通过
+`delete_directory` 删除普通文件或最终符号链接返回 `NotDirectory`，且不会删除该 entry。
+递归删除已经移除条目后失败时，应在重试前检查返回 `FsError` 的副作用状态。其 native
+`LocalFileError` source 单独提供 `cause_kind()`；effect 缺失表示没有证据证明副作用。
+
+### 标准预算与显式覆盖
+
+`LocalResourcePolicy::standard()` 不执行 I/O，并为每次操作设置下表中的有限上限。
+它是显式构造方法，不提供隐式 `Default` 实现。
+
+| 操作 | 深度 | 条目数 | 字节预算 | 打开的目录数 | 期限 |
+| --- | --- | --- | --- | --- | --- |
+| list | 64 | 100,000 | 16 MiB 路径／名称文本 | 32 | 30 秒 |
+| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 秒 |
+| delete | 64 | 100,000 | 16 MiB 待处理路径文本 | 不单独配置 | 30 秒 |
+
+用 `with_list_limits(Some(...))`、`with_copy_limits(Some(...))` 或
+`with_delete_limits(Some(...))` 覆盖对应领域；传入 `None` 表示显式取消该领域的上限，
+不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
+上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
+
+writer 和临时会话的打开遵循核心 0.7 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 ## 进阶用法
 
@@ -271,37 +290,17 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
 - rooted containment 与原生文件系统行为属于 provider 边界；应保留 rooted 门面，而非在应用中反复拼接原生路径。
 - 将 `file:` URI 视为仅本地输入。远程 authority 和 URI options 有意不作为该 provider 的配置通道。
 - 如果需要 replay rooted resolution，应将 provider selection 和 filesystem identity 与 canonical URI 一起保存；URI 本身不能标识其保留的原生 authority。
+- 列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
+  `ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
+- 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
+  句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
+  资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
+  Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
 
 ## 延伸阅读
 
 - [README](../README.zh_CN.md)
 - [English user guide](user_guide.md)
+- [English adapter design](local_file_system_adapter_design.md)
+- [中文适配器设计](local_file_system_adapter_design.zh_CN.md)
 - [API 文档](https://docs.rs/qubit-fs-local)
-
-## 文件系统契约更新
-
-列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
-`ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
-本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
-句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
-资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
-Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
-
-## 标准预算与显式覆盖
-
-`LocalResourcePolicy::standard()` 不执行 I/O，并为每次操作设置下表中的有限上限。
-它是显式构造方法，不提供隐式 `Default` 实现。
-
-| 操作 | 深度 | 条目数 | 字节预算 | 打开的目录数 | 期限 |
-| --- | --- | --- | --- | --- | --- |
-| list | 64 | 100,000 | 16 MiB 路径／名称文本 | 32 | 30 秒 |
-| copy | 64 | 100,000 | 1 GiB payload | 32 | 30 秒 |
-| delete | 64 | 100,000 | 16 MiB 待处理路径文本 | 不单独配置 | 30 秒 |
-
-用 `with_list_limits(Some(...))`、`with_copy_limits(Some(...))` 或
-`with_delete_limits(Some(...))` 覆盖对应领域；传入 `None` 表示显式取消该领域的上限，
-不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
-上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
-
-writer 和临时会话的打开遵循核心 0.7 的 `OpenFailure` 契约。应保留恢复会话与显式清理
-错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
