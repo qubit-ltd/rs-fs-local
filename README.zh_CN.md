@@ -55,7 +55,8 @@ println!("{metadata:?}");
 
 进程主机命名空间使用 `LocalFileSystems::host(policy)`；`rooted(root, policy)` 生成进程内
 标识；若标识必须在进程外保持稳定，使用 `rooted_with_id(id, root, policy)`。所有构造函数都需要
-显式传入 `LocalResourcePolicy`，通常优先使用 `standard()`。
+显式传入 `LocalResourcePolicy`，通常优先使用 `standard()`；需要分别指定列举、复制与删除
+上限时使用 `LocalResourcePolicy::bounded(list, copy, delete)`。
 
 当原生主机路径来自 `std::env::current_dir` 等 API 时，应先使用
 `host_path_to_logical` 转换，再传给门面。这样可以保留百分号转义和 Unix 非 UTF-8 文件名。
