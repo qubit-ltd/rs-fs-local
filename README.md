@@ -85,7 +85,9 @@ assert!(prefix.len() <= 4096);
 
 Every constructor requires an explicit `LocalResourcePolicy`. Prefer
 `standard()` for finite per-operation budgets unless the application needs
-custom limits. Provider ceilings, publication recovery, registry fallback, and
+custom limits. Use `LocalResourcePolicy::bounded(list, copy, delete)` when
+listing, copy, and deletion ceilings must be chosen explicitly. Provider
+ceilings, publication recovery, registry fallback, and
 listing or range-read contracts are documented in the
 [user guide](doc/user_guide.md).
 
