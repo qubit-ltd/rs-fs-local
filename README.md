@@ -14,7 +14,7 @@ parsing and native-path conversion part of application code.
 
 This README documents `qubit-fs-local` 0.8.0 (package version `0.8.0`).
 
-This version uses `qubit-fs` 0.7 and `qubit-local-files` 0.5. Provider ceilings tighten resources
+This version uses `qubit-fs` 0.7 and `qubit-local-files` 0.3. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).

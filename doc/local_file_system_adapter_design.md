@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter Design
 
 > Approved target design for `qubit-fs-local` 0.8.0 (package version `0.8.0`), reviewed against the public
-> `qubit-fs` 0.7 and `qubit-local-files` 0.5 boundaries. Implementation and regression
+> `qubit-fs` 0.7 and `qubit-local-files` 0.3 boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
 > [中文设计文档](local_file_system_adapter_design.zh_CN.md) · [User guide](user_guide.md)
