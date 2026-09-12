@@ -32,10 +32,10 @@ fn bench_local_facade_read_prefix(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(max_bytes as u64));
         group.bench_function(format!("max_{max_bytes}"), |bench| {
             bench.iter(|| {
-                let bytes = filesystem
+                let outcome = filesystem
                     .read_prefix(black_box(&logical_path), ReadOptions::default(), max_bytes)
                     .expect("facade prefix read should succeed");
-                black_box(bytes.len());
+                black_box(outcome.bytes().len());
             });
         });
     }

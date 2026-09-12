@@ -71,7 +71,7 @@ let file_system = LocalFileSystems::host(policy)?;
 let native = std::env::current_dir()?.join("Cargo.toml");
 let path = host_path_to_logical(&native)?;
 let prefix = file_system.read_prefix(&path, ReadOptions::default(), 4096)?;
-assert!(prefix.len() <= 4096);
+assert!(prefix.bytes().len() <= 4096);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 

@@ -15,6 +15,7 @@ use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
+use qubit_fs::read::PrefixReadTermination;
 use qubit_fs_local::LocalCopyResourceLimits;
 use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystems;
@@ -117,12 +118,12 @@ fn test_logical_parent_components_keep_portable_path_semantics() {
     let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted facade");
     let path = Path::parse("/a/link/../config").expect("logical path");
     assert_eq!(path.as_str(), "/a/config");
-    assert_eq!(
-        filesystem
-            .read_prefix(&path, ReadOptions::default(), 8)
-            .expect("portable read"),
-        b"A"
-    );
+    let outcome = filesystem
+        .read_prefix(&path, ReadOptions::default(), 8)
+        .expect("portable read");
+    assert_eq!(outcome.bytes(), b"A");
+    assert_eq!(outcome.max_bytes(), 8);
+    assert_eq!(outcome.termination(), PrefixReadTermination::StreamEnded);
     assert_eq!(
         fs::read(root.path().join("a/link/../config")).expect("native read"),
         b"B"

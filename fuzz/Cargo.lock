@@ -10,9 +10,9 @@ checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
 name = "bitflags"
-version = "2.13.1"
+version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
 name = "borrow-or-share"
@@ -175,7 +175,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
@@ -215,18 +215,18 @@ dependencies = [
 
 [[package]]
 name = "qubit-io"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "150e82d6bc1397f90c9d11c15aef225d298f06c0bbce860699863268015ce94e"
+checksum = "e3eea3e8f7e4b8f96cff01287dec8214ec565b0531b5b495204d14df7a05b85e"
 dependencies = [
  "qubit-utils",
 ]
 
 [[package]]
 name = "qubit-local-files"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dc4ce1d906f35fe19fe2b43ebd78f4715da846fede436f2721d2cdc6d90217d"
+checksum = "3b69e190a7c78e092d59ebe432aabd63bce474626d1c806faaecfdef4b9c967f"
 dependencies = [
  "getrandom",
  "libc",
@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.9.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4bc84cd4d94ab169a9c65af5254830ba969e680840638af18eddbbcd62c4c38"
+checksum = "2ab4556d5e9f160e7c4a27beb7b79a999df55df1ef8f4ef0ac47cd7b6d657e41"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
@@ -361,9 +361,9 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "smallvec"
-version = "1.16.0"
+version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f"
+checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 
 [[package]]
 name = "syn"
