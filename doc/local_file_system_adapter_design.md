@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter Design
 
-> Approved target design for `qubit-fs-local` 0.8.0 (package version `0.8.0`), reviewed against the public
-> `qubit-fs` 0.7 and `qubit-local-files` 0.3 boundaries. Implementation and regression
+> Approved target design for `qubit-fs-local` 0.9.0 (package version `0.9.0`), reviewed against the public
+> `qubit-fs` 0.8 and `qubit-local-files` 0.3 boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
 > [中文设计文档](local_file_system_adapter_design.zh_CN.md) · [User guide](user_guide.md)
@@ -358,7 +358,7 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the core 0.6 `OpenFailure` contract.
+Opening writer or temporary sessions follows the core 0.8 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery-in-06).
 
