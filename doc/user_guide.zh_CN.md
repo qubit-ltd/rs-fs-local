@@ -5,8 +5,8 @@
 ## 手册目标与读者
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.8.0 版本（包版本 `0.8.0`）：直接创建 host/rooted 门面，以及可选的
-registry provider。本版本集成 `qubit-fs` 0.7 与 `qubit-local-files` 0.3。
+`qubit-fs-local` 0.9.0 版本（包版本 `0.9.0`）：直接创建 host/rooted 门面，以及可选的
+registry provider。本版本集成 `qubit-fs` 0.8 与 `qubit-local-files` 0.3。
 
 ## 概念模型
 
@@ -34,14 +34,14 @@ canonical URI。
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.7 qubit-fs-local@0.8
+cargo add qubit-fs@0.8 qubit-fs-local@0.9
 ```
 
 如需 registry，请启用 feature，并在应用中添加 registry crate：
 
 ```bash
 cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.8 --features registry
+cargo add qubit-fs-local@0.9 --features registry
 ```
 
 ## 核心工作流
@@ -160,7 +160,7 @@ adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 
 不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
 上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
 
-writer 和临时会话的打开遵循核心 0.7 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+writer 和临时会话的打开遵循核心 0.8 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 ## 进阶用法

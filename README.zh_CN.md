@@ -11,23 +11,23 @@
 主机文件系统，或将一个原生目录保留为 rooted 文件系统 authority，同时不希望在应用代码中
 处理 URI 解析和原生路径转换时，可使用本 crate。
 
-本文档适用于 `qubit-fs-local` 0.8.0（包版本 `0.8.0`）。
+本文档适用于 `qubit-fs-local` 0.9.0（包版本 `0.9.0`）。
 
-本版本使用 `qubit-fs` 0.7 和 `qubit-local-files` 0.3。provider 上限只收紧资源预算，不覆盖请求行为；
+本版本使用 `qubit-fs` 0.8 和 `qubit-local-files` 0.3。provider 上限只收紧资源预算，不覆盖请求行为；
 writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.7 qubit-fs-local@0.8
+cargo add qubit-fs@0.8 qubit-fs-local@0.9
 ```
 
 仅当需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才启用 registry 集成：
 
 ```bash
 cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.8 --features registry
+cargo add qubit-fs-local@0.9 --features registry
 ```
 
 ## 快速开始
