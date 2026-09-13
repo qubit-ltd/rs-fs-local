@@ -49,11 +49,11 @@ name = "local_filesystem_facade"
 harness = false
 
 [dependencies]
-qubit-fs = { path = "../rs-fs", version = "0.8", default-features = false }
-qubit-local-files = "0.3"
+qubit-fs = { path = "../rs-fs", default-features = false }
+qubit-local-files = "0.4"
 qubit-io = "0.17"
-qubit-fs-registry = { path = "../rs-fs-registry", version = "0.6", optional = true }
-qubit-spi = { path = "../rs-spi", version = "0.12", optional = true }
+qubit-fs-registry = { path = "../rs-fs-registry", optional = true }
+qubit-spi = { version = "0.12", optional = true }
 
 [features]
 default = []
@@ -66,8 +66,8 @@ serde_json = "1"
 criterion = "0.5"
 tempfile = "3.27"
 qubit-io = "0.17"
-qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.7" }
-qubit-local-files = { version = "0.3", features = ["test-support"] }
+qubit-fs-testkit = { path = "../rs-fs-testkit" }
+qubit-local-files = { version = "0.4", features = ["test-support"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
