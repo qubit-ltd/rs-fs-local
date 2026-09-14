@@ -45,10 +45,8 @@ fn test_readme_and_user_guide_examples_compile() {
     let workspace = tempfile::tempdir().expect("isolated example sources");
     let bin = workspace.path().join("src/bin");
     fs::create_dir_all(&bin).expect("bin directory");
-    let package: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
-        .expect("read manifest")
-        .parse()
-        .expect("parse manifest");
+    let source = fs::read_to_string(root.join("Cargo.toml")).expect("read manifest");
+    let package: toml::Value = toml::from_str(&source).expect("parse manifest");
     let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
     let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
     let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
@@ -108,14 +106,24 @@ fn test_readme_and_user_guide_examples_compile() {
     assert!(status.success(), "document examples must compile");
 }
 
-/// Renders a dependency from its actual version declaration, retaining an
-/// available sibling.
+/// Renders a dependency from its declaration or sibling package version while
+/// retaining the sibling's path identity when available.
 fn dependency_spec(root: &Path, value: &toml::Value) -> String {
     let mut table = value.as_table().expect("versioned dependency table").clone();
-    assert!(
-        table.get("version").and_then(toml::Value::as_str).is_some(),
-        "version is required"
-    );
+    if table.get("version").and_then(toml::Value::as_str).is_none() {
+        let declared_path = table
+            .get("path")
+            .and_then(toml::Value::as_str)
+            .expect("dependency requires a path or version");
+        let sibling = resolve_dependency_path(root, Path::new(declared_path));
+        let source = fs::read_to_string(sibling.join("Cargo.toml"))
+            .expect("path-only dependency requires an available sibling manifest");
+        let manifest: toml::Value = toml::from_str(&source).expect("parse sibling manifest");
+        let version = manifest["package"]["version"]
+            .as_str()
+            .expect("sibling package version");
+        table.insert("version".into(), toml::Value::String(version.to_owned()));
+    }
     table.remove("optional");
     if let Some(path) = table.remove("path") {
         if !root.join("Cargo.toml").is_file() {
@@ -132,6 +140,23 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
         }
     }
     toml::Value::Table(table).to_string()
+}
+
+/// Path-only development dependencies inherit the sibling package release.
+#[test]
+fn test_dependency_spec_resolves_path_only_sibling_version() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = fs::read_to_string(root.join("Cargo.toml")).expect("read manifest");
+    let mut manifest: toml::Value = toml::from_str(&source).expect("parse manifest");
+    manifest["dependencies"]["qubit-fs"]
+        .as_table_mut()
+        .expect("filesystem dependency table")
+        .remove("version");
+    let spec = dependency_spec(root, &manifest["dependencies"]["qubit-fs"]);
+    let rendered: toml::Value = toml::from_str(&format!("dependency = {spec}")).expect("parse dependency");
+
+    assert_eq!(rendered["dependency"]["version"].as_str(), Some("0.8.0"));
+    assert!(rendered["dependency"]["path"].as_str().is_some());
 }
 
 /// Cargo must see the same symlink spelling in direct and transitive
@@ -158,11 +183,9 @@ fn test_dependency_spec_preserves_sibling_symlink_identity() {
     )
     .unwrap();
     symlink(&target, &alias).unwrap();
-    let input: toml::Value = "dependency = { version = '0.1', path = 'linked-dependency' }"
-        .parse()
-        .unwrap();
+    let input: toml::Value = toml::from_str("dependency = { version = '0.1', path = 'linked-dependency' }").unwrap();
     let spec = dependency_spec(&root, &input["dependency"]);
-    let output: toml::Value = format!("dependency = {spec}").parse().unwrap();
+    let output: toml::Value = toml::from_str(&format!("dependency = {spec}")).unwrap();
     assert_eq!(output["dependency"]["path"].as_str(), alias.to_str());
     assert_ne!(alias, alias.canonicalize().unwrap());
 }
@@ -184,7 +207,7 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
     }
     let package = fs::read_to_string(declared_path.join("Cargo.toml"))
         .ok()
-        .and_then(|source| source.parse::<toml::Value>().ok())
+        .and_then(|source| toml::from_str::<toml::Value>(&source).ok())
         .and_then(|value| value["package"]["name"].as_str().map(str::to_owned));
     if let Some(package) = package
         && let Some(suffix) = package.strip_prefix("qubit-")
@@ -197,35 +220,31 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
     root.join(declared_path)
 }
 
-/// Missing siblings retain the current declared requirements, rather than
-/// historical constants.
+/// A versioned dependency remains usable when its checkout is unavailable.
 #[test]
-fn test_documentation_dependencies_without_siblings() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let input: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
-        .expect("read manifest")
-        .parse()
-        .expect("parse manifest");
-    for name in ["qubit-fs", "qubit-fs-registry", "qubit-spi"] {
-        let spec = dependency_spec(
-            Path::new("/nonexistent/local-documentation"),
-            &input["dependencies"][name],
-        );
-        let parsed: toml::Value = format!("dependency = {spec}")
-            .parse()
-            .expect("valid generated dependency");
-        assert_eq!(parsed["dependency"]["version"], input["dependencies"][name]["version"]);
-        assert!(parsed["dependency"].get("path").is_none());
-    }
+fn test_versioned_documentation_dependency_without_sibling() {
+    let input: toml::Value =
+        toml::from_str("dependency = { version = '0.7', path = '../missing' }").expect("synthetic dependency");
+    let spec = dependency_spec(Path::new("/nonexistent/local-documentation"), &input["dependency"]);
+    let parsed: toml::Value = toml::from_str(&format!("dependency = {spec}")).expect("valid generated dependency");
+
+    assert_eq!(parsed["dependency"]["version"].as_str(), Some("0.7"));
+    assert!(parsed["dependency"].get("path").is_none());
+}
+
+/// A path-only dependency must not invent a publishable requirement.
+#[test]
+#[should_panic(expected = "path-only dependency requires an available sibling manifest")]
+fn test_path_only_documentation_dependency_without_sibling_is_rejected() {
+    let input: toml::Value = toml::from_str("dependency = { path = '../missing' }").expect("synthetic dependency");
+    let _ = dependency_spec(Path::new("/nonexistent/local-documentation"), &input["dependency"]);
 }
 
 #[test]
 fn test_current_documentation_versions_and_signatures_follow_manifest() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let manifest: toml::Value = fs::read_to_string(root.join("Cargo.toml"))
-        .expect("read manifest")
-        .parse()
-        .expect("parse manifest");
+    let source = fs::read_to_string(root.join("Cargo.toml")).expect("read manifest");
+    let manifest: toml::Value = toml::from_str(&source).expect("parse manifest");
     let version = manifest["package"]["version"]
         .as_str()
         .expect("package version")
