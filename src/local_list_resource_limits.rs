@@ -86,7 +86,6 @@ impl LocalListResourceLimits {
 
     /// Returns the maximum recursive depth.
     #[must_use]
-    #[inline(always)]
     pub const fn max_depth(self) -> usize {
         self.max_depth
     }
@@ -94,28 +93,24 @@ impl LocalListResourceLimits {
     /// Returns the maximum entries yielded by the native walker before
     /// adapter prefix filtering.
     #[must_use]
-    #[inline(always)]
     pub const fn max_entries(self) -> usize {
         self.max_entries
     }
 
     /// Returns the maximum total bytes retained for seen entry names.
     #[must_use]
-    #[inline(always)]
     pub const fn max_seen_name_bytes(self) -> usize {
         self.max_seen_name_bytes
     }
 
     /// Returns the maximum concurrently open directories.
     #[must_use]
-    #[inline(always)]
     pub const fn max_open_directories(self) -> usize {
         self.max_open_directories
     }
 
     /// Returns the recursive operation deadline.
     #[must_use]
-    #[inline(always)]
     pub const fn deadline(self) -> Duration {
         self.deadline
     }
