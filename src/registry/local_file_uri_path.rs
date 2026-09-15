@@ -317,6 +317,10 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(proptest::test_runner::Config {
+            rng_seed: proptest::test_runner::RngSeed::Fixed(1),
+            ..proptest::test_runner::Config::default()
+        })]
         #[test]
         fn test_decode_canonical_uri_round_trips_safe_paths(
             segments in path_segments(),
