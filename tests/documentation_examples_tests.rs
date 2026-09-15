@@ -65,12 +65,18 @@ fn test_readme_and_user_guide_examples_compile() {
     .iter()
     .enumerate()
     {
-        let blocks = rust_blocks(&fs::read_to_string(root.join(document)).expect("document should be readable"));
+        let blocks = rust_blocks(
+            &fs::read_to_string(root.join(document)).expect("document should be readable"),
+        );
         assert!(!blocks.is_empty(), "{document} must have Rust examples");
         for (block_index, block) in blocks.iter().enumerate() {
-            let code = format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n");
-            fs::write(bin.join(format!("doc_{document_index}_{block_index}.rs")), code)
-                .expect("example source should be written");
+            let code =
+                format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n");
+            fs::write(
+                bin.join(format!("doc_{document_index}_{block_index}.rs")),
+                code,
+            )
+            .expect("example source should be written");
         }
     }
 
@@ -84,8 +90,14 @@ fn test_readme_and_user_guide_examples_compile() {
         "{}",
         String::from_utf8_lossy(&metadata.stderr)
     );
-    let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
-    for name in ["qubit-fs", "qubit-fs-registry", "qubit-fs-local", "qubit-spi"] {
+    let graph: serde_json::Value =
+        serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
+    for name in [
+        "qubit-fs",
+        "qubit-fs-registry",
+        "qubit-fs-local",
+        "qubit-spi",
+    ] {
         assert_eq!(
             graph["packages"]
                 .as_array()
@@ -100,7 +112,10 @@ fn test_readme_and_user_guide_examples_compile() {
     let status = Command::new(env!("CARGO"))
         .args(["check", "--locked", "--quiet", "--bins"])
         .current_dir(workspace.path())
-        .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+        .env(
+            "CARGO_TARGET_DIR",
+            root.join("target/documentation-examples"),
+        )
         .status()
         .expect("compile document examples");
     assert!(status.success(), "document examples must compile");
@@ -109,7 +124,10 @@ fn test_readme_and_user_guide_examples_compile() {
 /// Renders a dependency from its declaration or sibling package version while
 /// retaining the sibling's path identity when available.
 fn dependency_spec(root: &Path, value: &toml::Value) -> String {
-    let mut table = value.as_table().expect("versioned dependency table").clone();
+    let mut table = value
+        .as_table()
+        .expect("versioned dependency table")
+        .clone();
     if table.get("version").and_then(toml::Value::as_str).is_none() {
         let declared_path = table
             .get("path")
@@ -153,7 +171,8 @@ fn test_dependency_spec_resolves_path_only_sibling_version() {
         .expect("filesystem dependency table")
         .remove("version");
     let spec = dependency_spec(root, &manifest["dependencies"]["qubit-fs"]);
-    let rendered: toml::Value = toml::from_str(&format!("dependency = {spec}")).expect("parse dependency");
+    let rendered: toml::Value =
+        toml::from_str(&format!("dependency = {spec}")).expect("parse dependency");
 
     assert_eq!(rendered["dependency"]["version"].as_str(), Some("0.8.0"));
     assert!(rendered["dependency"]["path"].as_str().is_some());
@@ -183,7 +202,8 @@ fn test_dependency_spec_preserves_sibling_symlink_identity() {
     )
     .unwrap();
     symlink(&target, &alias).unwrap();
-    let input: toml::Value = toml::from_str("dependency = { version = '0.1', path = 'linked-dependency' }").unwrap();
+    let input: toml::Value =
+        toml::from_str("dependency = { version = '0.1', path = 'linked-dependency' }").unwrap();
     let spec = dependency_spec(&root, &input["dependency"]);
     let output: toml::Value = toml::from_str(&format!("dependency = {spec}")).unwrap();
     assert_eq!(output["dependency"]["path"].as_str(), alias.to_str());
@@ -224,9 +244,14 @@ fn resolve_dependency_path(root: &Path, declared_path: &Path) -> PathBuf {
 #[test]
 fn test_versioned_documentation_dependency_without_sibling() {
     let input: toml::Value =
-        toml::from_str("dependency = { version = '0.7', path = '../missing' }").expect("synthetic dependency");
-    let spec = dependency_spec(Path::new("/nonexistent/local-documentation"), &input["dependency"]);
-    let parsed: toml::Value = toml::from_str(&format!("dependency = {spec}")).expect("valid generated dependency");
+        toml::from_str("dependency = { version = '0.7', path = '../missing' }")
+            .expect("synthetic dependency");
+    let spec = dependency_spec(
+        Path::new("/nonexistent/local-documentation"),
+        &input["dependency"],
+    );
+    let parsed: toml::Value =
+        toml::from_str(&format!("dependency = {spec}")).expect("valid generated dependency");
 
     assert_eq!(parsed["dependency"]["version"].as_str(), Some("0.7"));
     assert!(parsed["dependency"].get("path").is_none());
@@ -236,8 +261,12 @@ fn test_versioned_documentation_dependency_without_sibling() {
 #[test]
 #[should_panic(expected = "path-only dependency requires an available sibling manifest")]
 fn test_path_only_documentation_dependency_without_sibling_is_rejected() {
-    let input: toml::Value = toml::from_str("dependency = { path = '../missing' }").expect("synthetic dependency");
-    let _ = dependency_spec(Path::new("/nonexistent/local-documentation"), &input["dependency"]);
+    let input: toml::Value =
+        toml::from_str("dependency = { path = '../missing' }").expect("synthetic dependency");
+    let _ = dependency_spec(
+        Path::new("/nonexistent/local-documentation"),
+        &input["dependency"],
+    );
 }
 
 #[test]
@@ -279,7 +308,9 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "`qubit-fs-local` 0.3",
         ];
         assert!(
-            stale_local_versions.iter().all(|token| !text.contains(token)),
+            stale_local_versions
+                .iter()
+                .all(|token| !text.contains(token)),
             "{document} must describe the 0.4 API"
         );
     }

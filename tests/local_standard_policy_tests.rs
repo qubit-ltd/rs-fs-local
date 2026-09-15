@@ -64,10 +64,15 @@ fn test_standard_overrides_are_independent_and_none_is_explicit() {
 #[test]
 fn test_standard_rooted_report_and_tightened_list_limit() {
     let root = tempfile::tempdir().expect("isolated root");
-    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("filesystem");
+    let fs =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("filesystem");
     let path = Path::parse("/report").expect("path");
-    fs.write_all(&path, b"report", WriteOptions::default()).expect("write");
-    assert_eq!(fs.read_all(&path, ReadOptions::default(), 6).expect("read"), b"report");
+    fs.write_all(&path, b"report", WriteOptions::default())
+        .expect("write");
+    assert_eq!(
+        fs.read_all(&path, ReadOptions::default(), 6).expect("read"),
+        b"report"
+    );
     let scope = ListScope::Path(Path::root());
     assert!(
         fs.list(&scope, Default::default())
@@ -76,12 +81,16 @@ fn test_standard_rooted_report_and_tightened_list_limit() {
             .expect("entry")
             .is_some()
     );
-    let list = LocalListResourceLimits::new(64, 0, 1024, 1, Duration::from_secs(30)).expect("zero entries");
+    let list = LocalListResourceLimits::new(64, 0, 1024, 1, Duration::from_secs(30))
+        .expect("zero entries");
     let fs = LocalFileSystems::rooted(
         root.path(),
         LocalResourcePolicy::standard().with_list_limits(Some(list)),
     )
     .expect("filesystem");
     let mut stream = fs.list(&scope, Default::default()).expect("open list");
-    assert!(stream.next_entry().is_err(), "tightened native limit must apply");
+    assert!(
+        stream.next_entry().is_err(),
+        "tightened native limit must apply"
+    );
 }

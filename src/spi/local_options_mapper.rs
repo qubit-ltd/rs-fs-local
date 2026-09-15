@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Conversion of resolved core options to native local-files options.
 
@@ -80,7 +79,8 @@ pub(crate) fn list(
         return Err(unsupported(FsOperation::List));
     }
     if let Some(policy) = options.options().symlink_policy_override() {
-        native = native.with_symlink_policy(native_symlink_policy(policy, scope, FsOperation::List)?);
+        native =
+            native.with_symlink_policy(native_symlink_policy(policy, scope, FsOperation::List)?);
     }
     if let Some(maximum) = options.options().max_depth() {
         native = native.with_max_depth(maximum);
@@ -113,7 +113,9 @@ pub(crate) fn list(
 /// Returns `RequirementNotMet` when the request contains a precondition,
 /// content type, user metadata, or checksum that the native backend cannot
 /// express.
-pub(crate) fn write(options: &ResolvedWriteOptions) -> Result<native_files::options::LocalWriteOptions, FsError> {
+pub(crate) fn write(
+    options: &ResolvedWriteOptions,
+) -> Result<native_files::options::LocalWriteOptions, FsError> {
     let options = options.options();
     let mode = match options.disposition() {
         WriteDisposition::CreateNew => native_files::options::LocalWriteMode::CreateNew,
@@ -211,9 +213,15 @@ pub(crate) fn rename(options: &ResolvedRenameOptions) -> native_files::options::
         native = native.with_overwrite();
     }
     native = native.with_durability(match options.options().durability() {
-        DurabilityRequirement::Required => native_files::policy::LocalDurabilityRequirement::Required,
-        DurabilityRequirement::Preferred => native_files::policy::LocalDurabilityRequirement::Preferred,
-        DurabilityRequirement::NotRequired => native_files::policy::LocalDurabilityRequirement::NotRequired,
+        DurabilityRequirement::Required => {
+            native_files::policy::LocalDurabilityRequirement::Required
+        }
+        DurabilityRequirement::Preferred => {
+            native_files::policy::LocalDurabilityRequirement::Preferred
+        }
+        DurabilityRequirement::NotRequired => {
+            native_files::policy::LocalDurabilityRequirement::NotRequired
+        }
     });
     native
 }
@@ -249,13 +257,19 @@ pub(crate) fn copy(
         .with_atomicity(atomicity(options.atomicity()))
         .with_durability(durability(options.durability()));
     if options.symlink_policy_override().is_some() {
-        native = native.with_symlink_policy(native_symlink_policy(symlink_policy, scope, FsOperation::Copy)?);
+        native = native.with_symlink_policy(native_symlink_policy(
+            symlink_policy,
+            scope,
+            FsOperation::Copy,
+        )?);
     }
     native = copy_source_options(native, options.mode());
     if options.conflict() == CopyConflictPolicy::Overwrite {
-        native = native.with_type_conflict(native_files::options::LocalCopyTypeConflictPolicy::Replace);
+        native =
+            native.with_type_conflict(native_files::options::LocalCopyTypeConflictPolicy::Replace);
     } else if options.conflict() == CopyConflictPolicy::Skip {
-        native = native.with_type_conflict(native_files::options::LocalCopyTypeConflictPolicy::Skip);
+        native =
+            native.with_type_conflict(native_files::options::LocalCopyTypeConflictPolicy::Skip);
     }
     if options.create_parent() {
         native = native.with_create_parent();
@@ -347,11 +361,15 @@ fn metadata_preservation(
     value: MetadataPreservePolicy,
 ) -> Result<native_files::options::LocalMetadataPreservePolicy, FsError> {
     match value {
-        MetadataPreservePolicy::None => Ok(native_files::options::LocalMetadataPreservePolicy::None),
-        MetadataPreservePolicy::Portable => Ok(native_files::options::LocalMetadataPreservePolicy::Permissions),
-        MetadataPreservePolicy::UserMetadata | MetadataPreservePolicy::ProviderNative | MetadataPreservePolicy::All => {
-            Err(unsupported(FsOperation::Copy))
+        MetadataPreservePolicy::None => {
+            Ok(native_files::options::LocalMetadataPreservePolicy::None)
         }
+        MetadataPreservePolicy::Portable => {
+            Ok(native_files::options::LocalMetadataPreservePolicy::Permissions)
+        }
+        MetadataPreservePolicy::UserMetadata
+        | MetadataPreservePolicy::ProviderNative
+        | MetadataPreservePolicy::All => Err(unsupported(FsOperation::Copy)),
     }
 }
 
@@ -368,8 +386,12 @@ fn metadata_preservation(
 const fn atomicity(value: AtomicityRequirement) -> native_files::policy::LocalAtomicityRequirement {
     match value {
         AtomicityRequirement::Required => native_files::policy::LocalAtomicityRequirement::Required,
-        AtomicityRequirement::Preferred => native_files::policy::LocalAtomicityRequirement::Preferred,
-        AtomicityRequirement::NotRequired => native_files::policy::LocalAtomicityRequirement::NotRequired,
+        AtomicityRequirement::Preferred => {
+            native_files::policy::LocalAtomicityRequirement::Preferred
+        }
+        AtomicityRequirement::NotRequired => {
+            native_files::policy::LocalAtomicityRequirement::NotRequired
+        }
     }
 }
 
@@ -383,11 +405,19 @@ const fn atomicity(value: AtomicityRequirement) -> native_files::policy::LocalAt
 ///
 /// The equivalent native durability requirement.
 #[inline]
-const fn durability(value: DurabilityRequirement) -> native_files::policy::LocalDurabilityRequirement {
+const fn durability(
+    value: DurabilityRequirement,
+) -> native_files::policy::LocalDurabilityRequirement {
     match value {
-        DurabilityRequirement::Required => native_files::policy::LocalDurabilityRequirement::Required,
-        DurabilityRequirement::Preferred => native_files::policy::LocalDurabilityRequirement::Preferred,
-        DurabilityRequirement::NotRequired => native_files::policy::LocalDurabilityRequirement::NotRequired,
+        DurabilityRequirement::Required => {
+            native_files::policy::LocalDurabilityRequirement::Required
+        }
+        DurabilityRequirement::Preferred => {
+            native_files::policy::LocalDurabilityRequirement::Preferred
+        }
+        DurabilityRequirement::NotRequired => {
+            native_files::policy::LocalDurabilityRequirement::NotRequired
+        }
     }
 }
 
@@ -426,7 +456,9 @@ fn copy_source_options(
     match mode {
         CopyMode::File => defaults.with_entry_source(),
         CopyMode::Tree => defaults.with_tree_source(),
-        CopyMode::Auto => defaults.with_source_mode(native_files::options::LocalCopySourceMode::Auto),
+        CopyMode::Auto => {
+            defaults.with_source_mode(native_files::options::LocalCopySourceMode::Auto)
+        }
     }
 }
 

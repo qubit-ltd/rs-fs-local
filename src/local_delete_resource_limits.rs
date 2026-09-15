@@ -66,7 +66,12 @@ impl LocalDeleteResourceLimits {
     /// ```
     #[must_use]
     #[inline(always)]
-    pub const fn new(max_depth: usize, max_entries: usize, max_pending_path_bytes: usize, deadline: Duration) -> Self {
+    pub const fn new(
+        max_depth: usize,
+        max_entries: usize,
+        max_pending_path_bytes: usize,
+        deadline: Duration,
+    ) -> Self {
         Self {
             max_depth,
             max_entries,

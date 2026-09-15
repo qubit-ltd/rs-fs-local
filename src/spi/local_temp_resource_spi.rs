@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// qubit-style: allow all -- provider behavior is covered through facade
 // contract tests.
 //! Temporary-resource lifecycle adapter retaining native authority.
 
@@ -134,7 +133,9 @@ impl LocalTempResourceSpi {
     fn require_owned(&self, operation: FsOperation) -> Result<(), SpiPersistFailure> {
         let source = match self {
             Self::File { resource, .. } => resource.as_ref().map(LocalTempFile::source_state),
-            Self::Directory { resource, .. } => resource.as_ref().map(LocalTempDirectory::source_state),
+            Self::Directory { resource, .. } => {
+                resource.as_ref().map(LocalTempDirectory::source_state)
+            }
         }
         .unwrap_or(LocalTempSourceState::Released);
         if source == LocalTempSourceState::Owned {
@@ -202,14 +203,21 @@ impl TempResourceSpi for LocalTempResourceSpi {
     /// when the target cannot be mapped, a mapped I/O failure with native
     /// recovery state when publication fails. Successful publication retains
     /// the requested logical target without another path conversion.
-    fn persist(&mut self, request: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
+    fn persist(
+        &mut self,
+        request: PersistRequest<'_>,
+    ) -> Result<PersistOutcome, SpiPersistFailure> {
         let (target, _) = self.target(request.target())?;
         let provider_id = match self {
-            Self::File { provider_id, .. } | Self::Directory { provider_id, .. } => provider_id.to_owned(),
+            Self::File { provider_id, .. } | Self::Directory { provider_id, .. } => {
+                provider_id.to_owned()
+            }
         };
         let options = persist_options(request.options());
         let result = match self {
-            Self::File { resource: slot, .. } => persist_file(slot, &target, request.target(), options, &provider_id),
+            Self::File { resource: slot, .. } => {
+                persist_file(slot, &target, request.target(), options, &provider_id)
+            }
             Self::Directory { resource: slot, .. } => {
                 persist_directory(slot, &target, request.target(), options, &provider_id)
             }
@@ -230,10 +238,14 @@ impl TempResourceSpi for LocalTempResourceSpi {
         self.require_owned(FsOperation::KeepTemp)?;
         let (rooted, provider_id) = match self {
             Self::File {
-                rooted, provider_id, ..
+                rooted,
+                provider_id,
+                ..
             }
             | Self::Directory {
-                rooted, provider_id, ..
+                rooted,
+                provider_id,
+                ..
             } => (*rooted, provider_id.to_owned()),
         };
         let result = match self {
@@ -241,7 +253,9 @@ impl TempResourceSpi for LocalTempResourceSpi {
             Self::Directory { resource, .. } => keep_directory(resource, &provider_id),
         }?;
         let projection = match self {
-            Self::File { projection, .. } | Self::Directory { projection, .. } => projection.as_ref(),
+            Self::File { projection, .. } | Self::Directory { projection, .. } => {
+                projection.as_ref()
+            }
         };
         let projected = projection
             .map(|projection| projection.project(result.path(), FsOperation::KeepTemp))
@@ -273,20 +287,24 @@ impl TempResourceSpi for LocalTempResourceSpi {
     fn cleanup(&mut self) -> FsResult<()> {
         match self {
             Self::File {
-                resource, provider_id, ..
+                resource,
+                provider_id,
+                ..
             } => {
                 let resource = resource.as_mut().ok_or_else(terminal_cleanup_error)?;
-                resource
-                    .cleanup()
-                    .map_err(|error| file_cleanup_error(error, resource.source_state(), provider_id))
+                resource.cleanup().map_err(|error| {
+                    file_cleanup_error(error, resource.source_state(), provider_id)
+                })
             }
             Self::Directory {
-                resource, provider_id, ..
+                resource,
+                provider_id,
+                ..
             } => {
                 let resource = resource.as_mut().ok_or_else(terminal_cleanup_error)?;
-                resource
-                    .cleanup()
-                    .map_err(|error| directory_cleanup_error(error, resource.source_state(), provider_id))
+                resource.cleanup().map_err(|error| {
+                    directory_cleanup_error(error, resource.source_state(), provider_id)
+                })
             }
         }
     }
@@ -338,7 +356,9 @@ fn map_persist_outcome(result: LocalPersistOutcome, logical: LogicalPath) -> Per
     )
     .with_cleanup_state(match result.cleanup_state() {
         LocalPersistCleanupState::Complete => PersistCleanupState::Complete,
-        LocalPersistCleanupState::ResidualSandbox => PersistCleanupState::ResidualTemporaryContainer,
+        LocalPersistCleanupState::ResidualSandbox => {
+            PersistCleanupState::ResidualTemporaryContainer
+        }
         _ => PersistCleanupState::ResidualTemporaryContainer,
     })
 }
@@ -381,8 +401,14 @@ fn persist_file(
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map(error, FsOperation::PersistTemp, logical_target, None, provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                error_mapper::map(
+                    error,
+                    FsOperation::PersistTemp,
+                    logical_target,
+                    None,
+                    provider_id,
+                )
+                .with_effect_state(persist_effect_state(state)),
                 state,
             ))
         }
@@ -428,8 +454,14 @@ fn persist_directory(
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map(error, FsOperation::PersistTemp, logical_target, None, provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                error_mapper::map(
+                    error,
+                    FsOperation::PersistTemp,
+                    logical_target,
+                    None,
+                    provider_id,
+                )
+                .with_effect_state(persist_effect_state(state)),
                 state,
             ))
         }
@@ -452,7 +484,10 @@ fn persist_directory(
 ///
 /// Returns `InvalidState` when `slot` is empty. Native failures are mapped
 /// with their recovery state and restore the returned resource into `slot`.
-fn keep_file(slot: &mut Option<LocalTempFile>, provider_id: &str) -> Result<LocalPersistOutcome, SpiPersistFailure> {
+fn keep_file(
+    slot: &mut Option<LocalTempFile>,
+    provider_id: &str,
+) -> Result<LocalPersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.keep() {
         Ok(result) => Ok(result),
@@ -467,8 +502,13 @@ fn keep_file(slot: &mut Option<LocalTempFile>, provider_id: &str) -> Result<Loca
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map_without_path(error, FsOperation::KeepTemp, "temporary file keep failed", provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                error_mapper::map_without_path(
+                    error,
+                    FsOperation::KeepTemp,
+                    "temporary file keep failed",
+                    provider_id,
+                )
+                .with_effect_state(persist_effect_state(state)),
                 state,
             ))
         }
@@ -537,18 +577,31 @@ fn keep_directory(
 ///
 /// The closest portable persistence failure state supported by both facts.
 #[inline]
-fn persist_failure_state(publication: LocalPersistFailureState, source: LocalTempSourceState) -> PersistFailureState {
+fn persist_failure_state(
+    publication: LocalPersistFailureState,
+    source: LocalTempSourceState,
+) -> PersistFailureState {
     use qubit_local_files::outcome::LocalPersistFailureState as Publication;
     use qubit_local_files::outcome::LocalTempSourceState as Source;
 
     match (publication, source) {
         (Publication::NotPublished, Source::Owned) => PersistFailureState::NotPublished,
-        (Publication::NotPublished, Source::Released) => PersistFailureState::NotPublishedSourceReleased,
-        (Publication::NotPublished, Source::Indeterminate) => PersistFailureState::NotPublishedSourceIndeterminate,
-        (Publication::NotPublished, Source::CleanupRequired) => PersistFailureState::NotPublishedSourceCleanupRequired,
-        (Publication::Published, Source::CleanupRequired) => PersistFailureState::PublishedSourceRetained,
+        (Publication::NotPublished, Source::Released) => {
+            PersistFailureState::NotPublishedSourceReleased
+        }
+        (Publication::NotPublished, Source::Indeterminate) => {
+            PersistFailureState::NotPublishedSourceIndeterminate
+        }
+        (Publication::NotPublished, Source::CleanupRequired) => {
+            PersistFailureState::NotPublishedSourceCleanupRequired
+        }
+        (Publication::Published, Source::CleanupRequired) => {
+            PersistFailureState::PublishedSourceRetained
+        }
         (Publication::Published, Source::Released) => PersistFailureState::PublishedSourceReleased,
-        (Publication::Published, Source::Indeterminate) => PersistFailureState::PublishedSourceIndeterminate,
+        (Publication::Published, Source::Indeterminate) => {
+            PersistFailureState::PublishedSourceIndeterminate
+        }
         _ => PersistFailureState::Indeterminate,
     }
 }
@@ -690,7 +743,11 @@ fn terminal_cleanup_error() -> FsError {
 ///
 /// A facade cleanup error identifying temporary-file cleanup.
 #[inline(always)]
-fn file_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provider_id: &str) -> FsError {
+fn file_cleanup_error(
+    error: LocalFileError,
+    source: LocalTempSourceState,
+    provider_id: &str,
+) -> FsError {
     cleanup_error(error, source, "temporary file cleanup failed", provider_id)
 }
 
@@ -705,8 +762,14 @@ fn file_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provi
 ///
 /// A facade cleanup error identifying temporary-directory cleanup.
 #[inline(always)]
-fn directory_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provider_id: &str) -> FsError {
-    if source != LocalTempSourceState::Indeterminate && error.kind() == LocalFileErrorKind::InvalidPath {
+fn directory_cleanup_error(
+    error: LocalFileError,
+    source: LocalTempSourceState,
+    provider_id: &str,
+) -> FsError {
+    if source != LocalTempSourceState::Indeterminate
+        && error.kind() == LocalFileErrorKind::InvalidPath
+    {
         return FsError::with_source(
             FsErrorKind::NotDirectory,
             FsOperation::CleanupTemp,
@@ -715,7 +778,12 @@ fn directory_cleanup_error(error: LocalFileError, source: LocalTempSourceState, 
         )
         .with_provider(provider_id);
     }
-    cleanup_error(error, source, "temporary directory cleanup failed", provider_id)
+    cleanup_error(
+        error,
+        source,
+        "temporary directory cleanup failed",
+        provider_id,
+    )
 }
 
 #[cfg(test)]
@@ -758,7 +826,10 @@ mod tests {
             FsOperation::PersistTemp,
             "invalid publication target",
         ));
-        assert_eq!(PersistFailureState::NotPublished, before_publication.state());
+        assert_eq!(
+            PersistFailureState::NotPublished,
+            before_publication.state()
+        );
         assert_eq!(FsErrorKind::InvalidPath, before_publication.error().kind());
 
         let after_publication = logical_persist_error(FsError::new(
@@ -766,8 +837,14 @@ mod tests {
             FsOperation::PersistTemp,
             "published path is not representable",
         ));
-        assert_eq!(PersistFailureState::PublishedSourceReleased, after_publication.state());
-        assert_eq!(Some(FsEffectState::Applied), after_publication.error().effect_state());
+        assert_eq!(
+            PersistFailureState::PublishedSourceReleased,
+            after_publication.state()
+        );
+        assert_eq!(
+            Some(FsEffectState::Applied),
+            after_publication.error().effect_state()
+        );
         assert_eq!(FsErrorKind::InvalidPath, after_publication.error().kind());
     }
 
@@ -776,7 +853,10 @@ mod tests {
     #[test]
     fn test_terminal_resources_reject_lifecycle_operations() {
         let failure = terminal_persist_error();
-        assert_eq!(PersistFailureState::NotPublishedSourceReleased, failure.state());
+        assert_eq!(
+            PersistFailureState::NotPublishedSourceReleased,
+            failure.state()
+        );
         assert_eq!(FsErrorKind::InvalidState, failure.error().kind());
 
         for mut resource in [
@@ -793,7 +873,9 @@ mod tests {
                 projection: None,
             },
         ] {
-            let error = resource.cleanup().expect_err("terminal resource must reject cleanup");
+            let error = resource
+                .cleanup()
+                .expect_err("terminal resource must reject cleanup");
             assert_eq!(FsErrorKind::InvalidState, error.kind());
             assert_eq!(FsOperation::CleanupTemp, error.operation());
             assert_eq!(None, error.effect_state());
@@ -815,14 +897,25 @@ mod tests {
         let error = temporary
             .persist(parent.path().join("published"))
             .expect_err("replacement rejection");
-        let mut adapter = LocalTempResourceSpi::file(error.into_parts().resource, false, "test".to_owned(), None);
-        assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceIndeterminate);
-        adapter.cleanup().expect_err("uncertain source cannot be cleaned");
-        assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceIndeterminate);
+        let mut adapter =
+            LocalTempResourceSpi::file(error.into_parts().resource, false, "test".to_owned(), None);
+        assert_direct_spi_rejected(
+            &mut adapter,
+            PersistFailureState::NotPublishedSourceIndeterminate,
+        );
+        adapter
+            .cleanup()
+            .expect_err("uncertain source cannot be cleaned");
+        assert_direct_spi_rejected(
+            &mut adapter,
+            PersistFailureState::NotPublishedSourceIndeterminate,
+        );
         drop(adapter);
         assert_eq!(
             b"replacement",
-            std::fs::read(source).expect("replacement survives").as_slice()
+            std::fs::read(source)
+                .expect("replacement survives")
+                .as_slice()
         );
     }
 
@@ -832,11 +925,17 @@ mod tests {
         let parent = tempfile::tempdir().expect("test parent");
         let filesystem = LocalFileSystem::host().expect("host filesystem");
         let mut temporary = filesystem
-            .create_temp_directory_with_options(&LocalTempDirectoryOptions::new().with_parent(parent.path()))
+            .create_temp_directory_with_options(
+                &LocalTempDirectoryOptions::new().with_parent(parent.path()),
+            )
             .expect("temporary directory");
         temporary.cleanup().expect("release source");
-        let mut adapter = LocalTempResourceSpi::directory(temporary, false, "test".to_owned(), None);
-        assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceReleased);
+        let mut adapter =
+            LocalTempResourceSpi::directory(temporary, false, "test".to_owned(), None);
+        assert_direct_spi_rejected(
+            &mut adapter,
+            PersistFailureState::NotPublishedSourceReleased,
+        );
     }
 
     /// A published native file with residual sandbox ownership maps a rejected
@@ -858,10 +957,17 @@ mod tests {
             )
             .expect_err("injected post-publication sync failure");
         drop(fault);
-        let mut adapter = LocalTempResourceSpi::file(error.into_parts().resource, false, "test".to_owned(), None);
-        assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceCleanupRequired);
+        let mut adapter =
+            LocalTempResourceSpi::file(error.into_parts().resource, false, "test".to_owned(), None);
+        assert_direct_spi_rejected(
+            &mut adapter,
+            PersistFailureState::NotPublishedSourceCleanupRequired,
+        );
         adapter.cleanup().expect("residual sandbox cleanup");
-        assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceReleased);
+        assert_direct_spi_rejected(
+            &mut adapter,
+            PersistFailureState::NotPublishedSourceReleased,
+        );
         drop(adapter);
         assert!(parent.path().join("published").is_file());
     }
@@ -869,7 +975,10 @@ mod tests {
     /// Checks invalid target, valid target, and keep rejections against
     /// retained authority, including the known absence of a new publication
     /// effect.
-    fn assert_direct_spi_rejected(adapter: &mut LocalTempResourceSpi, expected: PersistFailureState) {
+    fn assert_direct_spi_rejected(
+        adapter: &mut LocalTempResourceSpi,
+        expected: PersistFailureState,
+    ) {
         for target in ["relative", "/target"] {
             let target = Path::parse(target).expect("logical test target");
             let failure = adapter
@@ -877,12 +986,18 @@ mod tests {
                 .expect_err("non-owned source rejects persist target");
             assert_eq!(expected, failure.state());
             assert_eq!(FsErrorKind::InvalidState, failure.error().kind());
-            assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+            assert_eq!(
+                Some(FsEffectState::Unchanged),
+                failure.error().effect_state()
+            );
         }
         let failure = adapter.keep().expect_err("non-owned source rejects keep");
         assert_eq!(expected, failure.state());
         assert_eq!(FsOperation::KeepTemp, failure.error().operation());
-        assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+        assert_eq!(
+            Some(FsEffectState::Unchanged),
+            failure.error().effect_state()
+        );
     }
 
     /// Cleanup source authority does not erase known partial effects or turn
@@ -897,17 +1012,26 @@ mod tests {
         ] {
             for map_error in [file_cleanup_error, directory_cleanup_error] {
                 let partial = map_error(
-                    LocalFileError::new(LocalFileErrorKind::PublicationIncomplete, LocalFileOperation::Cleanup),
+                    LocalFileError::new(
+                        LocalFileErrorKind::PublicationIncomplete,
+                        LocalFileOperation::Cleanup,
+                    ),
                     source,
                     "cleanup-test",
                 );
-                assert_eq!(Some(FsEffectState::PartiallyApplied), partial.effect_state());
+                assert_eq!(
+                    Some(FsEffectState::PartiallyApplied),
+                    partial.effect_state()
+                );
                 assert_eq!(
                     source == LocalTempSourceState::Indeterminate,
                     partial.has_indeterminate_effect()
                 );
                 let ordinary = map_error(
-                    LocalFileError::new(LocalFileErrorKind::PermissionDenied, LocalFileOperation::Cleanup),
+                    LocalFileError::new(
+                        LocalFileErrorKind::PermissionDenied,
+                        LocalFileOperation::Cleanup,
+                    ),
                     source,
                     "cleanup-test",
                 );
@@ -996,7 +1120,10 @@ mod tests {
         }
 
         let error = file_cleanup_error(
-            LocalFileError::new(LocalFileErrorKind::PermissionDenied, LocalFileOperation::Cleanup),
+            LocalFileError::new(
+                LocalFileErrorKind::PermissionDenied,
+                LocalFileOperation::Cleanup,
+            ),
             Source::Owned,
             "local-test-provider",
         );
