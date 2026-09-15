@@ -15,7 +15,6 @@ use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
-use qubit_fs::read::PrefixReadTermination;
 use qubit_fs_local::LocalCopyResourceLimits;
 use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalFileSystems;
@@ -115,6 +114,7 @@ fn test_logical_parent_components_keep_portable_path_semantics() {
     use std::os::unix::fs::symlink;
 
     use qubit_fs::read::ReadOptions;
+    use qubit_fs::read::PrefixReadTermination;
 
     let root = tempfile::tempdir().expect("isolated logical-path fixture");
     fs::create_dir(root.path().join("a")).expect("logical parent");
