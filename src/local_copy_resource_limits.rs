@@ -86,35 +86,30 @@ impl LocalCopyResourceLimits {
 
     /// Returns the maximum recursive depth.
     #[must_use]
-    #[inline(always)]
     pub const fn max_depth(self) -> usize {
         self.max_depth
     }
 
     /// Returns the maximum number of traversed entries.
     #[must_use]
-    #[inline(always)]
     pub const fn max_entries(self) -> usize {
         self.max_entries
     }
 
     /// Returns the maximum copied bytes.
     #[must_use]
-    #[inline(always)]
     pub const fn max_bytes(self) -> u64 {
         self.max_bytes
     }
 
     /// Returns the maximum concurrently open directories.
     #[must_use]
-    #[inline(always)]
     pub const fn max_open_directories(self) -> usize {
         self.max_open_directories
     }
 
     /// Returns the recursive operation deadline.
     #[must_use]
-    #[inline(always)]
     pub const fn deadline(self) -> Duration {
         self.deadline
     }
