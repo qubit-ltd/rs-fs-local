@@ -32,10 +32,10 @@ fn path(value: &str) -> Path {
 }
 
 fn bounded_policy() -> LocalResourcePolicy {
-    let list =
-        LocalListResourceLimits::new(8, 64, 255, 4, Duration::from_secs(5)).expect("list policy should be valid");
-    let copy =
-        LocalCopyResourceLimits::new(8, 64, 1024, 4, Duration::from_secs(5)).expect("copy policy should be valid");
+    let list = LocalListResourceLimits::new(8, 64, 255, 4, Duration::from_secs(5))
+        .expect("list policy should be valid");
+    let copy = LocalCopyResourceLimits::new(8, 64, 1024, 4, Duration::from_secs(5))
+        .expect("copy policy should be valid");
     let delete = LocalDeleteResourceLimits::new(8, 64, 1024, Duration::from_secs(5));
     LocalResourcePolicy::bounded(list, copy, delete)
 }
@@ -45,8 +45,8 @@ fn test_caller_list_entry_budget_is_enforced_with_local_policy() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     std::fs::write(root.path().join("one"), b"1").expect("first fixture should be written");
     std::fs::write(root.path().join("two"), b"2").expect("second fixture should be written");
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), bounded_policy()).expect("rooted filesystem should construct");
+    let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy())
+        .expect("rooted filesystem should construct");
     let mut stream = filesystem
         .list(
             &ListScope::Path((Path::root()).clone()),
@@ -68,8 +68,8 @@ fn test_caller_list_entry_budget_is_enforced_with_local_policy() {
 fn test_caller_copy_byte_budget_is_forwarded_to_native_copy() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     std::fs::write(root.path().join("source"), b"four").expect("source should be written");
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), bounded_policy()).expect("rooted filesystem should construct");
+    let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy())
+        .expect("rooted filesystem should construct");
 
     let failure = filesystem
         .copy(
@@ -109,7 +109,10 @@ fn test_local_execution_policy_builders_preserve_all_native_controls() {
 
     assert_eq!(Some(timeout), policy.open_retry_timeout());
     assert_eq!(Some(attempts), policy.temp_max_attempts());
-    assert_eq!(LocalDirectoryReopenPolicy::Fail, policy.directory_reopen_policy());
+    assert_eq!(
+        LocalDirectoryReopenPolicy::Fail,
+        policy.directory_reopen_policy()
+    );
 }
 
 /// Deletion requests cannot discard the provider's recursive resource ceiling.
@@ -123,12 +126,9 @@ fn test_recursive_delete_cannot_bypass_provider_resource_limits() {
         let tree = root.path().join("tree");
         std::fs::create_dir(&tree).expect("tree should exist");
         std::fs::write(tree.join("child"), b"data").expect("child should exist");
-        let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(LocalDeleteResourceLimits::new(
-            8,
-            1,
-            4096,
-            Duration::from_secs(60),
-        )));
+        let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(
+            LocalDeleteResourceLimits::new(8, 1, 4096, Duration::from_secs(60)),
+        ));
         let filesystem = if rooted {
             LocalFileSystems::rooted(root.path(), policy)
         } else {
@@ -158,10 +158,12 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
         let policy = LocalResourcePolicy::bounded(
             LocalListResourceLimits::new(8, 1, 4096, 4, Duration::from_secs(60))
                 .expect("listing limits should be valid"),
-            LocalCopyResourceLimits::new(8, 10, 1, 4, Duration::from_secs(60)).expect("copy limits should be valid"),
+            LocalCopyResourceLimits::new(8, 10, 1, 4, Duration::from_secs(60))
+                .expect("copy limits should be valid"),
             LocalDeleteResourceLimits::new(8, 10, 4096, Duration::from_secs(60)),
         );
-        let filesystem = LocalFileSystems::rooted(root.path(), policy).expect("filesystem should open");
+        let filesystem =
+            LocalFileSystems::rooted(root.path(), policy).expect("filesystem should open");
         let mut stream = filesystem
             .list(
                 &ListScope::Path((Path::root()).clone()),
@@ -194,7 +196,8 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
 fn test_list_request_tightens_provider_deadline() {
     let root = tempfile::tempdir().expect("fixture should exist");
     std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
-    let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy()).expect("filesystem should open");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), bounded_policy()).expect("filesystem should open");
     let mut stream = filesystem
         .list(
             &ListScope::Path((Path::root()).clone()),
@@ -226,15 +229,15 @@ fn test_recursive_delete_preserves_budget_cause_and_partial_effect() {
         std::fs::create_dir_all(&branch).expect("branch should exist");
         std::fs::write(branch.join("payload"), b"data").expect("payload should exist");
     }
-    let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(LocalDeleteResourceLimits::new(
-        8,
-        4,
-        4096,
-        Duration::from_secs(60),
-    )));
+    let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(
+        LocalDeleteResourceLimits::new(8, 4, 4096, Duration::from_secs(60)),
+    ));
     let filesystem = LocalFileSystems::rooted(root.path(), policy).expect("filesystem should open");
     let error = filesystem
-        .delete_directory(&path("/tree"), DeleteOptions::default().with_recursive(true))
+        .delete_directory(
+            &path("/tree"),
+            DeleteOptions::default().with_recursive(true),
+        )
         .expect_err("second branch exceeds budget");
     assert_eq!(FsErrorKind::ResourceLimitExceeded, error.kind());
     assert_eq!(Some(FsEffectState::PartiallyApplied), error.effect_state());
@@ -243,7 +246,10 @@ fn test_recursive_delete_preserves_budget_cause_and_partial_effect() {
         .expect("native error should be retained")
         .downcast_ref::<LocalFileError>()
         .expect("native error should stay typed");
-    assert_eq!(Some(4), native.resource_limit_error().map(|error| error.limit()));
+    assert_eq!(
+        Some(4),
+        native.resource_limit_error().map(|error| error.limit())
+    );
 }
 
 /// An expired deletion deadline keeps both its category and partial effects.
@@ -257,16 +263,18 @@ fn test_delete_deadline_preserves_timeout_and_partial_effects() {
     let directory = tempfile::tempdir().expect("fixture should exist");
     std::fs::create_dir(directory.path().join("tree")).expect("tree should exist");
     std::fs::write(directory.path().join("tree/child"), b"data").expect("child should exist");
-    let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(LocalDeleteResourceLimits::new(
-        10,
-        10,
-        1024,
-        Duration::from_secs(60),
-    )));
-    let filesystem = LocalFileSystems::rooted(directory.path(), policy).expect("Rooted facade should open");
-    let _fault = install_test_fault("local-delete-deadline-8").expect("deadline fault should install");
+    let policy = LocalResourcePolicy::unbounded().with_delete_limits(Some(
+        LocalDeleteResourceLimits::new(10, 10, 1024, Duration::from_secs(60)),
+    ));
+    let filesystem =
+        LocalFileSystems::rooted(directory.path(), policy).expect("Rooted facade should open");
+    let _fault =
+        install_test_fault("local-delete-deadline-8").expect("deadline fault should install");
     let error = filesystem
-        .delete_directory(&path("/tree"), DeleteOptions::default().with_recursive(true))
+        .delete_directory(
+            &path("/tree"),
+            DeleteOptions::default().with_recursive(true),
+        )
         .expect_err("deadline should expire after child deletion");
     assert_eq!(FsErrorKind::Timeout, error.kind());
     assert_eq!(Some(FsEffectState::PartiallyApplied), error.effect_state());

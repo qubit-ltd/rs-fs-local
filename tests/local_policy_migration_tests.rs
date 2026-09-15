@@ -37,8 +37,10 @@ fn policy(list_entries: usize, copy_bytes: u64) -> LocalResourcePolicy {
 fn test_copy_request_and_provider_limits_intersect() {
     for (request_bytes, payload_size, succeeds) in [(100, 11, false), (5, 6, false), (5, 4, true)] {
         let root = tempfile::tempdir().expect("isolated fixture");
-        std::fs::write(root.path().join("source"), vec![b'x'; payload_size]).expect("source payload");
-        let filesystem = LocalFileSystems::rooted(root.path(), policy(100, 10)).expect("bounded filesystem");
+        std::fs::write(root.path().join("source"), vec![b'x'; payload_size])
+            .expect("source payload");
+        let filesystem =
+            LocalFileSystems::rooted(root.path(), policy(100, 10)).expect("bounded filesystem");
         let result = filesystem.copy(
             &Path::parse("/source").expect("source path"),
             &Path::parse("/target").expect("target path"),
@@ -47,12 +49,17 @@ fn test_copy_request_and_provider_limits_intersect() {
         if succeeds {
             let _ = result.expect("payload within both ceilings");
             assert_eq!(
-                std::fs::read(root.path().join("target")).expect("copied payload").len(),
+                std::fs::read(root.path().join("target"))
+                    .expect("copied payload")
+                    .len(),
                 payload_size
             );
         } else {
             assert_eq!(
-                result.expect_err("tighter ceiling must reject").error().kind(),
+                result
+                    .expect_err("tighter ceiling must reject")
+                    .error()
+                    .kind(),
                 FsErrorKind::ResourceLimitExceeded
             );
             assert!(!root.path().join("target").exists());
@@ -70,8 +77,8 @@ fn test_filtered_listing_keeps_distinct_counting_scopes() {
     let options = ListOptions::default()
         .with_max_entries(Some(1))
         .with_filter(Some(ListFilter::Subtree("matched/leaf".to_owned())));
-    let filesystem =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("unbounded provider");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("unbounded provider");
     let mut entries = filesystem
         .list(
             &ListScope::Path((Path::parse("/").expect("root path")).clone()),
@@ -115,7 +122,8 @@ fn test_logical_parent_components_keep_portable_path_semantics() {
     fs::write(root.path().join("a/config"), b"A").expect("logical target");
     fs::write(root.path().join("b/config"), b"B").expect("native target");
     symlink("../b/inner", root.path().join("a/link")).expect("link fixture");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted facade");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted facade");
     let path = Path::parse("/a/link/../config").expect("logical path");
     assert_eq!(path.as_str(), "/a/config");
     let outcome = filesystem
