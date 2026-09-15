@@ -1,0 +1,6 @@
+format = 1
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/local_resource_policy.rs"
+reason = "List and copy limits are the inseparable public components of one provider policy."
