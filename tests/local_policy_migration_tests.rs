@@ -113,8 +113,8 @@ fn test_logical_parent_components_keep_portable_path_semantics() {
     use std::fs;
     use std::os::unix::fs::symlink;
 
-    use qubit_fs::read::ReadOptions;
     use qubit_fs::read::PrefixReadTermination;
+    use qubit_fs::read::ReadOptions;
 
     let root = tempfile::tempdir().expect("isolated logical-path fixture");
     fs::create_dir(root.path().join("a")).expect("logical parent");
