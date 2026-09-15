@@ -24,28 +24,53 @@ fn test_bounded_policy_requires_all_recursive_resource_dimensions() {
         .expect("nonzero open-directory capacity should be valid");
     let delete = LocalDeleteResourceLimits::new(10, 11, 12, Duration::from_secs(13));
     let policy = LocalResourcePolicy::bounded(list, copy, delete);
-    assert_eq!(policy.list_limits(), Some(list));
-    assert_eq!(policy.copy_limits(), Some(copy));
-    assert_eq!(policy.delete_limits(), Some(delete));
-    assert_eq!(list.max_depth(), 1);
-    assert_eq!(list.max_entries(), 2);
-    assert_eq!(list.max_seen_name_bytes(), 3);
-    assert_eq!(list.max_open_directories(), 4);
-    assert_eq!(list.deadline(), Duration::from_secs(5));
-    assert_eq!(copy.max_depth(), 6);
-    assert_eq!(copy.max_entries(), 7);
-    assert_eq!(copy.max_bytes(), 8);
-    assert_eq!(copy.max_open_directories(), 9);
-    assert_eq!(copy.deadline(), Duration::from_secs(10));
+    // Keep const accessors as runtime calls so LLVM coverage records each API.
+    assert_eq!(
+        black_box(LocalResourcePolicy::list_limits)(policy),
+        Some(list)
+    );
+    assert_eq!(
+        black_box(LocalResourcePolicy::copy_limits)(policy),
+        Some(copy)
+    );
+    assert_eq!(
+        black_box(LocalResourcePolicy::delete_limits)(policy),
+        Some(delete)
+    );
+    assert_eq!(black_box(LocalListResourceLimits::max_depth)(list), 1);
+    assert_eq!(black_box(LocalListResourceLimits::max_entries)(list), 2);
+    assert_eq!(
+        black_box(LocalListResourceLimits::max_seen_name_bytes)(list),
+        3
+    );
+    assert_eq!(
+        black_box(LocalListResourceLimits::max_open_directories)(list),
+        4
+    );
+    assert_eq!(
+        black_box(LocalListResourceLimits::deadline)(list),
+        Duration::from_secs(5)
+    );
+    assert_eq!(black_box(LocalCopyResourceLimits::max_depth)(copy), 6);
+    assert_eq!(black_box(LocalCopyResourceLimits::max_entries)(copy), 7);
+    assert_eq!(black_box(LocalCopyResourceLimits::max_bytes)(copy), 8);
+    assert_eq!(
+        black_box(LocalCopyResourceLimits::max_open_directories)(copy),
+        9
+    );
+    assert_eq!(
+        black_box(LocalCopyResourceLimits::deadline)(copy),
+        Duration::from_secs(10)
+    );
     assert!(LocalListResourceLimits::new(1, 2, 3, 0, Duration::ZERO).is_err());
     assert!(LocalCopyResourceLimits::new(1, 2, 3, 0, Duration::ZERO).is_err());
 }
 
 #[test]
 fn test_unbounded_policy_is_an_explicit_empty_budget_selection() {
-    let policy = LocalResourcePolicy::unbounded();
-    assert_eq!(policy.list_limits(), None);
-    assert_eq!(policy.copy_limits(), None);
+    let policy = black_box(LocalResourcePolicy::unbounded as fn() -> LocalResourcePolicy)();
+    assert_eq!(black_box(LocalResourcePolicy::list_limits)(policy), None);
+    assert_eq!(black_box(LocalResourcePolicy::copy_limits)(policy), None);
 }
 
 #[test]
@@ -75,32 +100,56 @@ fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budge
     );
     assert_eq!(
         LocalDirectoryReopenPolicy::Fail,
-        policy.directory_reopen_policy()
+        black_box(LocalResourcePolicy::directory_reopen_policy)(policy)
     );
-    assert_eq!(None, policy.list_limits());
-    assert_eq!(None, policy.copy_limits());
+    assert_eq!(None, black_box(LocalResourcePolicy::list_limits)(policy));
+    assert_eq!(None, black_box(LocalResourcePolicy::copy_limits)(policy));
 }
 
 /// Deletion ceilings can be explicitly cleared after policy construction.
 #[test]
 fn test_delete_limits_can_be_explicitly_cleared() {
     let limits = LocalDeleteResourceLimits::new(1, 2, 3, Duration::from_secs(4));
-    assert_eq!(1, limits.max_depth());
-    assert_eq!(2, limits.max_entries());
-    assert_eq!(3, limits.max_pending_path_bytes());
-    assert_eq!(Duration::from_secs(4), limits.deadline());
+    assert_eq!(1, black_box(LocalDeleteResourceLimits::max_depth)(limits));
+    assert_eq!(2, black_box(LocalDeleteResourceLimits::max_entries)(limits));
+    assert_eq!(
+        3,
+        black_box(LocalDeleteResourceLimits::max_pending_path_bytes)(limits)
+    );
+    assert_eq!(
+        Duration::from_secs(4),
+        black_box(LocalDeleteResourceLimits::deadline)(limits)
+    );
     let list = LocalListResourceLimits::new(2, 3, 4096, 4, Duration::from_secs(5)).expect("list");
     let copy = LocalCopyResourceLimits::new(6, 7, 8192, 8, Duration::from_secs(9)).expect("copy");
     let policy = LocalResourcePolicy::bounded(list, copy, limits);
 
-    assert_eq!(Some(list), policy.list_limits());
-    assert_eq!(Some(copy), policy.copy_limits());
-    assert_eq!(Some(limits), policy.delete_limits());
-    assert_eq!(None, policy.open_retry_timeout());
-    assert_eq!(None, policy.temp_max_attempts());
+    assert_eq!(
+        Some(list),
+        black_box(LocalResourcePolicy::list_limits)(policy)
+    );
+    assert_eq!(
+        Some(copy),
+        black_box(LocalResourcePolicy::copy_limits)(policy)
+    );
+    assert_eq!(
+        Some(limits),
+        black_box(LocalResourcePolicy::delete_limits)(policy)
+    );
+    assert_eq!(
+        None,
+        black_box(LocalResourcePolicy::open_retry_timeout)(policy)
+    );
+    assert_eq!(
+        None,
+        black_box(LocalResourcePolicy::temp_max_attempts)(policy)
+    );
     assert_eq!(
         LocalDirectoryReopenPolicy::Reopen,
-        policy.directory_reopen_policy()
+        black_box(LocalResourcePolicy::directory_reopen_policy)(policy)
     );
-    assert_eq!(None, policy.with_delete_limits(None).delete_limits());
+    assert_eq!(
+        None,
+        black_box(LocalResourcePolicy::delete_limits)(policy.with_delete_limits(None))
+    );
 }
