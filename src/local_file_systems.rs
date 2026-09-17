@@ -95,8 +95,7 @@ impl LocalFileSystems {
                 std::process::id(),
                 ROOTED_COUNTER.fetch_add(1, Ordering::Relaxed)
             );
-            FileSystemId::new(&value)
-                .expect("process id and monotonic counter form a valid filesystem id")
+            FileSystemId::new(&value).expect("process id and monotonic counter form a valid filesystem id")
         };
         Self::rooted_with_id(id, root, policy)
     }
@@ -120,11 +119,7 @@ impl LocalFileSystems {
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id`.
     #[inline(always)]
-    pub fn rooted_with_id(
-        id: FileSystemId,
-        root: &Path,
-        policy: LocalResourcePolicy,
-    ) -> FsResult<FileSystem> {
+    pub fn rooted_with_id(id: FileSystemId, root: &Path, policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root, policy)?)
     }
 

@@ -73,10 +73,7 @@ fn test_local_execution_controls_are_explicit_and_independent_of_recursion_budge
         Some(attempts),
         black_box(LocalResourcePolicy::temp_max_attempts)(policy)
     );
-    assert_eq!(
-        LocalDirectoryReopenPolicy::Fail,
-        policy.directory_reopen_policy()
-    );
+    assert_eq!(LocalDirectoryReopenPolicy::Fail, policy.directory_reopen_policy());
     assert_eq!(None, policy.list_limits());
     assert_eq!(None, policy.copy_limits());
 }
@@ -98,9 +95,6 @@ fn test_delete_limits_can_be_explicitly_cleared() {
     assert_eq!(Some(limits), policy.delete_limits());
     assert_eq!(None, policy.open_retry_timeout());
     assert_eq!(None, policy.temp_max_attempts());
-    assert_eq!(
-        LocalDirectoryReopenPolicy::Reopen,
-        policy.directory_reopen_policy()
-    );
+    assert_eq!(LocalDirectoryReopenPolicy::Reopen, policy.directory_reopen_policy());
     assert_eq!(None, policy.with_delete_limits(None).delete_limits());
 }

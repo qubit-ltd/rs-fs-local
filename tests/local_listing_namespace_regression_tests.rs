@@ -22,8 +22,8 @@ fn test_host_alias_listing_stays_inside_requested_logical_root() {
     std::fs::write(root.join("real/item"), b"x").expect("fixture entry should exist");
     symlink(root.join("real"), root.join("alias")).expect("alias should exist");
 
-    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem should construct");
+    let filesystem =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should construct");
     let request = host_path_to_logical(&root.join("alias")).expect("request should convert");
     let expected = host_path_to_logical(&root.join("alias/item")).expect("entry should convert");
     let mut stream = filesystem
@@ -38,10 +38,5 @@ fn test_host_alias_listing_stays_inside_requested_logical_root() {
             .expect("entry should exist")
             .path
     );
-    assert!(
-        stream
-            .next_entry()
-            .expect("listing should finish")
-            .is_none()
-    );
+    assert!(stream.next_entry().expect("listing should finish").is_none());
 }

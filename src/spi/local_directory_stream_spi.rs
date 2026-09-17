@@ -129,10 +129,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                 continue;
             }
             let path = local_path_mapper::logical(scope, entry.path(), FsOperation::List)?;
-            let mut result = DirEntry::new(
-                path,
-                local_outcome_mapper::file_kind(entry.metadata().kind()),
-            );
+            let mut result = DirEntry::new(path, local_outcome_mapper::file_kind(entry.metadata().kind()));
             if options.include_metadata() {
                 result.metadata = Some(local_outcome_mapper::metadata(entry.metadata().clone()));
             }
@@ -153,12 +150,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 /// A facade listing error with local provider context.
 #[inline(always)]
 fn entry_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
-    error_mapper::map_without_path(
-        error,
-        FsOperation::List,
-        "native directory walk failed",
-        provider_id,
-    )
+    error_mapper::map_without_path(error, FsOperation::List, "native directory walk failed", provider_id)
 }
 
 #[cfg(test)]
