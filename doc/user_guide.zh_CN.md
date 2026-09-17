@@ -4,7 +4,7 @@
 
 ## 手册目标与读者
 
-本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
+本手册面向需要使用本地主机提供同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
 `qubit-fs-local` 0.9.0 版本（包版本 `0.9.0`）：直接创建 host/rooted 门面，以及可选的
 registry provider。本版本集成 `qubit-fs` 0.2 与 `qubit-local-files` 0.4。
 
@@ -22,8 +22,8 @@ registry provider。本版本集成 `qubit-fs` 0.2 与 `qubit-local-files` 0.4�
 门面接受绝对、层级化的 `qubit_fs::Path`。rooted 门面保留一个原生根目录，并使用其下的
 逻辑路径。`rooted` 创建进程本地 ID；`rooted_with_id` 使用给定的 `FileSystemId`。
 
-启用 `registry` feature 后，`LocalFileSystemProvider` 会为支持的 `file:` 配置创建 provider
-factory。成功的 registry resolution 会给出已配置的文件系统、provider 解码的逻辑路径和
+启用 `registry` feature 后，`LocalFileSystemProvider` 会为符合要求的 `file:` 配置创建
+provider 工厂。解析成功后，registry 会返回已配置的文件系统、provider 解码后的逻辑路径和
 canonical URI。
 
 ## 实战场景
@@ -75,23 +75,26 @@ let metadata = fs.stat(&report)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-所有构造函数都需要 `LocalResourcePolicy`；普通递归工作流应传入完整的 bounded
-list/copy/delete limits，只有明确接受无界递归资源使用时才用 `unbounded()`。只有当进程主机命名空间就是预期 authority 时才选择
-`host(policy)`。当文件系统标识需要由应用提供时使用 `rooted_with_id`；进程内唯一标识足够时
-使用 `rooted`。
+所有构造函数都需要 `LocalResourcePolicy`；普通递归工作流应传入完整的列表、复制和删除上限，
+只有明确接受无界递归资源使用时才使用 `unbounded()`。只有当进程主机命名空间就是预期的
+authority 时才选择 `host(policy)`。当文件系统标识需要由应用提供时使用 `rooted_with_id`；
+进程内唯一标识足够时使用 `rooted`。
+
+示例打印出的 metadata 表明逻辑路径已通过保留的本地 authority 解析成功。接下来可以继续
+阅读资源上限，或在应用接收 `file:` URI 时改用 registry 工作流。
 
 ## Provider 资源上限
 
-原生 `LocalFileSystem` 默认 Options 是可被替换的便利配置；本适配层将
+原生 `LocalFileSystem` 的默认 `Options` 只是可替换的便捷配置；本适配层将
 `LocalResourcePolicy` 作为每次请求的强制上限。list/copy 请求预算与 provider 预算
 取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
 
-适配层先从完整请求构造操作行为，再调用原生 `tighten_resource_limits` 收紧预算。
+适配层先根据完整请求构造操作行为，再调用原生 `tighten_resource_limits` 收紧预算。
 provider 上限不会开启递归、忽略缺失目标、创建父目录或改变覆盖策略。writer 显式使用
 原生 `PreserveExisting`，可移植 API 不增加原生元数据策略开关。临时资源发布把
 命名空间绝对目标传给 `persist_with`。门面仍遵循 `qubit_fs::Path` 的逻辑规范化契约；
 原生 Host 对 `link/..` 的保留不改变逻辑路径语法，也不会恢复已由可移植层折叠的组件。
-需要原生点组件遍历时，直接使用 `qubit-local-files`。
+如果需要原生的点组件遍历，应直接使用 `qubit-local-files`。
 
 `LocalResourcePolicy::bounded(list, copy, delete)` 为三类普通递归操作设置彼此独立的上限。
 删除请求选择递归或忽略缺失时仍保留这些
@@ -138,8 +141,8 @@ let file_system = LocalFileSystems::host(policy)?;
 逻辑路径文本上限报告为 `Unknown`，因为原生 component 上限无法涵盖百分号展开和非 UTF-8
 文件名。绝对原生主机路径应使用 `host_path_to_logical` 转换；已经是 rooted 逻辑文本时使用
 `qubit_fs::Path::parse`。临时资源 cleanup、Drop 和原生发布清理属于独立生命周期范围，不继承
-普通删除上限。显式 cleanup 会报告自身错误；Drop 是 best effort。local provider 会接管所有
-它能够表达的 copy，不会 Declined 到门面 fallback；原生工作开始后的失败保留状态和部分统计。
+普通删除上限。显式 cleanup 会报告自身错误；Drop 采用尽力而为策略。local provider 会接管所有
+它能够表达的 copy，不会以 `Declined` 退回门面 fallback；原生工作开始后的失败会保留状态和部分统计。
 
 adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 `IsDirectory`，通过
 `delete_directory` 删除普通文件或最终符号链接返回 `NotDirectory`，且不会删除该 entry。
@@ -167,7 +170,7 @@ writer 和临时会话的打开遵循 `qubit-fs` 0.2 的 `OpenFailure` 契约。
 
 ## 进阶用法
 
-在应用组装阶段注册本地 provider，以解析经过校验的 `file:` URI：
+在应用组装阶段注册本地 provider，解析经过校验的 `file:` URI：
 
 ```rust
 use qubit_fs::path::ConnectionUri;
@@ -232,9 +235,9 @@ assert_ne!(
 
 两个 resolution 的 canonical URI 都是 `file:///reports/summary.csv`：其中只有 provider
 解码后的逻辑路径，不携带 rooted 原生 authority。因此，单独使用 canonical URI 无法恢复
-rooted provider 或 filesystem identity。若要持久化或 replay rooted resolution，必须将
+rooted provider 或 filesystem identity。若要持久化或重放 rooted resolution，必须将
 provider selection/descriptor 和 filesystem identity 一并保存。只把 canonical URI 交给 host
-provider replay 时，会得到相同的 URI 和逻辑路径，但文件系统会变成 `local-host`，不会回到
+provider 重放时，会得到相同的 URI 和逻辑路径，但文件系统会变成 `local-host`，不会回到
 原来的任一 rooted filesystem。
 
 ## 错误与诊断

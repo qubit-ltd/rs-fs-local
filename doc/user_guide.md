@@ -77,16 +77,21 @@ let fs = LocalFileSystems::rooted_with_id(
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
+println!("{metadata:?}");
 # let _ = metadata;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+The printed metadata confirms that the logical report path resolves through the
+retained local authority. From here, continue with the resource-ceiling choices
+below, or use the registry workflow when the application receives `file:` URIs.
+
 Every constructor requires `LocalResourcePolicy`; pass complete bounded list,
 copy, and delete limits for ordinary recursive workflows. Use `unbounded()` only
-after explicitly accepting unbounded recursive resource use. Choose `host(policy)` only when the intended authority is the process host
-namespace. Use `rooted_with_id` when the filesystem identity must be supplied
-by the application; use `rooted` when a distinct process-local identity is
-sufficient.
+after explicitly accepting unbounded recursive resource use. Choose `host(policy)`
+only when the intended authority is the process host namespace. Use
+`rooted_with_id` when the filesystem identity must be supplied by the
+application; use `rooted` when a distinct process-local identity is sufficient.
 
 ## Provider resource ceilings
 
