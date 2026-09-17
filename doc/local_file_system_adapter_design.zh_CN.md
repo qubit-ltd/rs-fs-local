@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter 设计
 
 > 状态：已批准的目标设计，已按最终版 `qubit-fs` 与
-> `qubit-local-files` 0.3 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
+> `qubit-local-files` 0.4 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
 > 适用于 `qubit-fs-local` 0.9.0（包版本 `0.9.0`）与 `qubit-fs` 0.2 · [English design](local_file_system_adapter_design.md) ·
@@ -576,7 +576,7 @@ src/
 不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
 上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
 
-writer 和临时会话的打开遵循核心 0.6 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+writer 和临时会话的打开遵循 `qubit-fs` 0.2 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
