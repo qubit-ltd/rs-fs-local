@@ -8,13 +8,13 @@
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
 `qubit-fs-local` 为 `qubit-fs` 应用提供同步的本地 `file:` 后端。当应用需要访问进程
-主机文件系统，或将一个原生目录保留为 rooted 文件系统 authority，同时不希望在应用代码中
-处理 URI 解析和原生路径转换时，可使用本 crate。
+主机文件系统，或希望把一个原生目录固定为 rooted 文件系统的 authority，同时不想在业务代码中
+重复处理 URI 解析和原生路径转换时，可以使用本 crate。
 
 本文档适用于 `qubit-fs-local` 0.9.0（包版本 `0.9.0`）。
 
-本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不覆盖请求行为；
-writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
+本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不改变请求行为；
+writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 
 ## 安装
@@ -23,7 +23,7 @@ writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可�
 cargo add qubit-fs@0.2 qubit-fs-local@0.9
 ```
 
-仅当需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才启用 registry 集成：
+只有需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才需要启用 registry 集成：
 
 ```bash
 cargo add qubit-fs-registry@0.6
@@ -54,10 +54,10 @@ println!("{metadata:?}");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-进程主机命名空间使用 `LocalFileSystems::host(policy)`；`rooted(root, policy)` 生成进程内
-标识；若标识必须在进程外保持稳定，使用 `rooted_with_id(id, root, policy)`。所有构造函数都需要
-显式传入 `LocalResourcePolicy`，通常优先使用 `standard()`；需要分别指定列举、复制与删除
-上限时使用 `LocalResourcePolicy::bounded(list, copy, delete)`。
+访问进程主机命名空间时使用 `LocalFileSystems::host(policy)`；`rooted(root, policy)` 生成进程内
+唯一标识；若标识必须在进程外保持稳定，则使用 `rooted_with_id(id, root, policy)`。所有构造函数都必须
+显式传入 `LocalResourcePolicy`，通常优先使用 `standard()`；需要分别指定列举、复制和删除
+上限时，再使用 `LocalResourcePolicy::bounded(list, copy, delete)`。
 
 当原生主机路径来自 `std::env::current_dir` 等 API 时，应先使用
 `host_path_to_logical` 转换，再传给门面。这样可以保留百分号转义和 Unix 非 UTF-8 文件名。
@@ -76,7 +76,7 @@ assert!(prefix.bytes().len() <= 4096);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-provider 上限、发布恢复、registry fallback，以及列举与范围读契约详见
+provider 上限、发布恢复、registry fallback，以及列举和范围读取契约详见
 [用户手册](doc/user_guide.zh_CN.md)。
 
 ## 为什么需要本项目
