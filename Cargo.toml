@@ -49,7 +49,7 @@ name = "local_filesystem_facade"
 harness = false
 
 [dependencies]
-qubit-fs = { version = "0.2", path = "../rs-fs", default-features = false }
+qubit-fs = { version = "0.2", default-features = false }
 qubit-local-files = "0.4"
 qubit-io = "0.17"
 qubit-fs-registry = { version = "0.6", path = "../rs-fs-registry", optional = true }
