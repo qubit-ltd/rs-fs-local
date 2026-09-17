@@ -7,7 +7,7 @@
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
 0.9.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.9.0`). This release integrates `qubit-fs` 0.8 and
+(package version `0.9.0`). This release integrates `qubit-fs` 0.2 and
 `qubit-local-files` 0.3.
 
 ## Conceptual Model
@@ -39,7 +39,7 @@ one rooted facade.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.8 qubit-fs-local@0.9
+cargo add qubit-fs@0.2 qubit-fs-local@0.9
 ```
 
 For registry use, enable the feature and add the registry crate in the
