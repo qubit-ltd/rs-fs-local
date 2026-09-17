@@ -78,6 +78,14 @@ impl LocalResourcePolicy {
 
     /// Replaces listing ceilings; `None` explicitly leaves listing unbounded.
     /// Other operation limits and lifecycle cleanup semantics are unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Replacement listing ceilings, or `None` for no ceilings.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement listing ceilings.
     #[must_use]
     pub const fn with_list_limits(mut self, limits: Option<LocalListResourceLimits>) -> Self {
         self.list = limits;
@@ -86,6 +94,14 @@ impl LocalResourcePolicy {
 
     /// Replaces copying ceilings; `None` explicitly leaves copying unbounded.
     /// Other operation limits and lifecycle cleanup semantics are unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Replacement copy ceilings, or `None` for no ceilings.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement copy ceilings.
     #[must_use]
     pub const fn with_copy_limits(mut self, limits: Option<LocalCopyResourceLimits>) -> Self {
         self.copy = limits;
@@ -185,6 +201,14 @@ impl LocalResourcePolicy {
     ///
     /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
     /// not use these ceilings.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Replacement deletion ceilings, or `None` for no ceilings.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement deletion ceilings.
     #[must_use]
     pub const fn with_delete_limits(mut self, limits: Option<LocalDeleteResourceLimits>) -> Self {
         self.delete = limits;
@@ -218,6 +242,14 @@ impl LocalResourcePolicy {
     }
 
     /// Sets the local open retry timeout used for readers and writers.
+    ///
+    /// # Parameters
+    ///
+    /// - `timeout`: Retry interval, or `None` to use native defaults.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement retry timeout.
     #[must_use]
     pub const fn with_open_retry_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.open_retry_timeout = timeout;
@@ -225,6 +257,14 @@ impl LocalResourcePolicy {
     }
 
     /// Sets the maximum number of temporary-name attempts.
+    ///
+    /// # Parameters
+    ///
+    /// - `max_attempts`: Attempt limit, or `None` to use native defaults.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement temporary-name limit.
     #[must_use]
     pub const fn with_temp_max_attempts(mut self, max_attempts: Option<NonZeroUsize>) -> Self {
         self.temp_max_attempts = max_attempts;
@@ -232,6 +272,14 @@ impl LocalResourcePolicy {
     }
 
     /// Sets the directory reopen behavior used by recursive walkers.
+    ///
+    /// # Parameters
+    ///
+    /// - `policy`: Reopen behavior to use for recursive walkers.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement directory reopen behavior.
     #[must_use]
     pub const fn with_directory_reopen_policy(mut self, policy: LocalDirectoryReopenPolicy) -> Self {
         self.directory_reopen_policy = policy;

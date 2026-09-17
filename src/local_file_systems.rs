@@ -60,7 +60,6 @@ impl LocalFileSystems {
     ///
     /// Returns an error if the static host SPI cannot be assembled into a
     /// concrete filesystem.
-    #[inline(always)]
     pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::new(policy)?)
     }
@@ -118,7 +117,6 @@ impl LocalFileSystems {
     ///
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id`.
-    #[inline(always)]
     pub fn rooted_with_id(id: FileSystemId, root: &Path, policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root, policy)?)
     }
@@ -167,6 +165,15 @@ impl LocalFileSystems {
 /// implicitly resolved against the caller's current working directory, and a
 /// rooted logical path must be parsed separately rather than by passing a
 /// host root prefix here.
+///
+/// # Returns
+///
+/// The canonical absolute logical path corresponding to `path`.
+///
+/// # Errors
+///
+/// Returns a path-conversion error when `path` is not absolute or cannot be
+/// represented by the logical path format.
 ///
 /// # Examples
 ///
