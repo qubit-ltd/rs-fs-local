@@ -55,6 +55,10 @@ impl LocalListResourceLimits {
     ///
     /// Returns an invalid-options error when `max_open_directories` is zero.
     ///
+    /// # Returns
+    ///
+    /// The validated recursive listing limits.
+    ///
     /// # Examples
     ///
     /// ```
