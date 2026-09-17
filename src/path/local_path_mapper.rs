@@ -34,16 +34,11 @@ use qubit_local_files as native_files;
 /// Returns `InvalidPath` when `path` is relative or a component cannot be
 /// represented by the native path layer.
 #[inline]
-pub(crate) fn native(
-    scope: native_files::path::LocalFileSystemScope,
-    path: &Path,
-) -> FsResult<PathBuf> {
+pub(crate) fn native(scope: native_files::path::LocalFileSystemScope, path: &Path) -> FsResult<PathBuf> {
     require_absolute(path)?;
     let paths = match scope {
         native_files::path::LocalFileSystemScope::Host => native_files::path::LocalPaths::host(),
-        native_files::path::LocalFileSystemScope::Rooted => {
-            native_files::path::LocalPaths::rooted()
-        }
+        native_files::path::LocalFileSystemScope::Rooted => native_files::path::LocalPaths::rooted(),
     };
     paths
         .from_canonical_components(path.components())
@@ -73,9 +68,7 @@ pub(crate) fn logical(
 ) -> FsResult<Path> {
     let paths = match scope {
         native_files::path::LocalFileSystemScope::Host => native_files::path::LocalPaths::host(),
-        native_files::path::LocalFileSystemScope::Rooted => {
-            native_files::path::LocalPaths::rooted()
-        }
+        native_files::path::LocalFileSystemScope::Rooted => native_files::path::LocalPaths::rooted(),
     };
     let components = paths
         .to_canonical_components(path)
@@ -200,12 +193,8 @@ mod tests {
         let mut native_path = PathBuf::from(std::path::MAIN_SEPARATOR_STR);
         native_path.push(OsString::from_vec(vec![b'r', b'a', b'w', 0xff]));
 
-        let logical_path = logical(
-            LocalFileSystemScope::Host,
-            &native_path,
-            FsOperation::ParsePath,
-        )
-        .expect("absolute non-UTF-8 host path must convert");
+        let logical_path = logical(LocalFileSystemScope::Host, &native_path, FsOperation::ParsePath)
+            .expect("absolute non-UTF-8 host path must convert");
 
         assert_eq!("/raw%FF", logical_path.as_str());
     }

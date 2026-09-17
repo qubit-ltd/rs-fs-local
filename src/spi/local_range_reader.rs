@@ -44,11 +44,7 @@ impl LocalRangeReader {
     /// # Errors
     ///
     /// Propagates native seek failures for nonzero offsets inside range.
-    pub(crate) fn new(
-        mut reader: LocalFileReader,
-        offset: u64,
-        length: Option<u64>,
-    ) -> io::Result<Self> {
+    pub(crate) fn new(mut reader: LocalFileReader, offset: u64, length: Option<u64>) -> io::Result<Self> {
         let beyond_native_range = offset > i64::MAX as u64 && offset >= reader.metadata().len();
         let length = if length == Some(0) || beyond_native_range {
             0
