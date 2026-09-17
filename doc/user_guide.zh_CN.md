@@ -6,7 +6,7 @@
 
 本手册面向需要由本地主机支撑同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
 `qubit-fs-local` 0.9.0 版本（包版本 `0.9.0`）：直接创建 host/rooted 门面，以及可选的
-registry provider。本版本集成 `qubit-fs` 0.8 与 `qubit-local-files` 0.3。
+registry provider。本版本集成 `qubit-fs` 0.2 与 `qubit-local-files` 0.3。
 
 ## 概念模型
 
@@ -34,7 +34,7 @@ canonical URI。
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.8 qubit-fs-local@0.9
+cargo add qubit-fs@0.2 qubit-fs-local@0.9
 ```
 
 如需 registry，请启用 feature，并在应用中添加 registry crate：

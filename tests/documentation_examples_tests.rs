@@ -155,7 +155,7 @@ fn test_dependency_spec_resolves_path_only_sibling_version() {
     let spec = dependency_spec(root, &manifest["dependencies"]["qubit-fs"]);
     let rendered: toml::Value = toml::from_str(&format!("dependency = {spec}")).expect("parse dependency");
 
-    assert_eq!(rendered["dependency"]["version"].as_str(), Some("0.8.0"));
+    assert_eq!(rendered["dependency"]["version"].as_str(), Some("0.2.0"));
     assert!(rendered["dependency"]["path"].as_str().is_some());
 }
 
