@@ -86,7 +86,7 @@ pub(crate) fn map_without_path(
 /// # Returns
 ///
 /// A copy failure with unchanged namespace state and empty statistics.
-#[inline(always)]
+#[inline]
 pub(crate) fn copy_path_error(error: FsError) -> SpiCopyFailure {
     SpiCopyFailure::new(error, CopyFailureState::Unchanged, CopyStats::default())
 }
@@ -243,7 +243,7 @@ fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
 /// # Returns
 ///
 /// A rename failure with unchanged namespace state.
-#[inline(always)]
+#[inline]
 pub(crate) fn rename_path_error(error: FsError) -> SpiRenameFailure {
     SpiRenameFailure::new(error, RenameFailureState::Unchanged)
 }

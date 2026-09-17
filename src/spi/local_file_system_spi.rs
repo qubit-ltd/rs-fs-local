@@ -119,7 +119,6 @@ impl LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns a provider error when portable properties cannot be assembled.
-    #[inline(always)]
     pub fn new(resource_policy: LocalResourcePolicy) -> FsResult<Self> {
         let native = native_files::LocalFileSystem::host().map_err(|error| {
             error_mapper::map_without_path(
@@ -415,7 +414,7 @@ impl LocalFileSystemSpi {
     /// # Returns
     ///
     /// `true` when this SPI retains a descriptor-backed rooted authority.
-    #[inline(always)]
+    #[inline]
     fn is_rooted(&self) -> bool {
         matches!(self.native.scope(), native_files::path::LocalFileSystemScope::Rooted)
     }
@@ -429,7 +428,7 @@ impl LocalFileSystemSpi {
     /// # Returns
     ///
     /// Opened-file information containing the host filesystem identity.
-    #[inline(always)]
+    #[inline]
     fn info(&self, path: Path) -> OpenedFileInfo {
         OpenedFileInfo::new(self.properties.info().id().clone(), path)
     }
@@ -445,7 +444,7 @@ impl LocalFileSystemSpi {
     /// # Returns
     ///
     /// A facade error with translated kind and local provider context.
-    #[inline(always)]
+    #[inline]
     fn map(&self, error: native_files::LocalFileError, operation: FsOperation, path: &Path) -> FsError {
         error_mapper::map(error, operation, path, None, &self.provider_id)
     }
@@ -457,7 +456,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// # Returns
     ///
     /// A snapshot of host identity, capabilities, limits, and path rules.
-    #[inline(always)]
+    #[inline]
     fn properties(&self) -> ProviderProperties {
         self.properties.clone()
     }

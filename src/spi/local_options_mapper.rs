@@ -40,7 +40,7 @@ use qubit_local_files as native_files;
 /// # Returns
 ///
 /// Default native local read options.
-#[inline(always)]
+#[inline]
 pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::options::LocalReadOptions {
     native_files::options::LocalReadOptions::new()
 }
@@ -399,7 +399,7 @@ const fn durability(value: DurabilityRequirement) -> native_files::policy::Local
 /// # Returns
 ///
 /// A `RequirementNotMet` error scoped to `operation`.
-#[inline(always)]
+#[inline]
 fn unsupported(operation: FsOperation) -> FsError {
     FsError::new(
         FsErrorKind::RequirementNotMet,

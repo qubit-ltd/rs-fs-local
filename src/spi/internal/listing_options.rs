@@ -43,7 +43,7 @@ impl ListingOptions {
     /// # Returns
     ///
     /// `true` when each entry should retain its observed metadata snapshot.
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub(in crate::spi) const fn include_metadata(&self) -> bool {
         self.include_metadata

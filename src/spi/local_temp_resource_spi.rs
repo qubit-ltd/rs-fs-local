@@ -85,7 +85,7 @@ impl LocalTempResourceSpi {
     /// # Returns
     ///
     /// An active temporary-file lifecycle adapter.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn file(
         value: LocalTempFile,
         rooted: bool,
@@ -112,7 +112,7 @@ impl LocalTempResourceSpi {
     /// # Returns
     ///
     /// An active temporary-directory lifecycle adapter.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn directory(
         value: LocalTempDirectory,
         rooted: bool,
@@ -300,7 +300,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
 /// # Returns
 ///
 /// Native persistence options reflecting overwrite and parent-creation policy.
-#[inline(always)]
+#[inline]
 fn persist_options(options: &PersistOptions) -> LocalPersistOptions {
     let mut native = LocalPersistOptions::new();
     if options.overwrite() {
@@ -582,7 +582,7 @@ const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
 /// # Returns
 ///
 /// An `InvalidState` failure preserving the released source state.
-#[inline(always)]
+#[inline]
 fn terminal_persist_error() -> SpiPersistFailure {
     SpiPersistFailure::new(
         FsError::new(
@@ -603,7 +603,7 @@ fn terminal_persist_error() -> SpiPersistFailure {
 /// # Returns
 ///
 /// A persistence failure with `NotPublished` state.
-#[inline(always)]
+#[inline]
 fn persist_path_error(error: FsError) -> SpiPersistFailure {
     SpiPersistFailure::new(error, PersistFailureState::NotPublished)
 }
@@ -618,7 +618,6 @@ fn persist_path_error(error: FsError) -> SpiPersistFailure {
 ///
 /// A failure retaining confirmed publication and released source ownership,
 /// with `Applied` effect even though its logical target cannot be represented.
-#[inline(always)]
 fn logical_persist_error(error: FsError) -> SpiPersistFailure {
     SpiPersistFailure::new(
         error.with_effect_state(FsEffectState::Applied),
@@ -637,7 +636,6 @@ fn logical_persist_error(error: FsError) -> SpiPersistFailure {
 /// # Returns
 ///
 /// A facade cleanup error.
-#[inline(always)]
 fn cleanup_error(
     error: LocalFileError,
     source: LocalTempSourceState,
@@ -688,7 +686,7 @@ fn terminal_cleanup_error() -> FsError {
 /// # Returns
 ///
 /// A facade cleanup error identifying temporary-file cleanup.
-#[inline(always)]
+#[inline]
 fn file_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provider_id: &str) -> FsError {
     cleanup_error(error, source, "temporary file cleanup failed", provider_id)
 }
@@ -703,7 +701,7 @@ fn file_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provi
 /// # Returns
 ///
 /// A facade cleanup error identifying temporary-directory cleanup.
-#[inline(always)]
+#[inline]
 fn directory_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provider_id: &str) -> FsError {
     if source != LocalTempSourceState::Indeterminate && error.kind() == LocalFileErrorKind::InvalidPath {
         return FsError::with_source(
