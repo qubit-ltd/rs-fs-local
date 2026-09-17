@@ -74,7 +74,11 @@ pub(crate) fn map_without_path(
 ) -> FsError {
     let kind = error_kind(&error);
     let effect_state = native_effect_state(&error);
-    attach_native_effect(FsError::with_source(kind, operation, message, error), effect_state).with_provider(provider_id)
+    attach_native_effect(
+        FsError::with_source(kind, operation, message, error),
+        effect_state,
+    )
+    .with_provider(provider_id)
 }
 
 /// Wraps a path-conversion error before native copy starts.
@@ -163,10 +167,16 @@ fn attach_native_effect(error: FsError, effect_state: Option<FsEffectState>) -> 
 #[inline]
 fn native_effect_state(error: &native_files::LocalFileError) -> Option<FsEffectState> {
     match error.effect_state() {
-        Some(native_files::error::LocalFileEffectState::Unchanged) => Some(FsEffectState::Unchanged),
-        Some(native_files::error::LocalFileEffectState::PartiallyApplied) => Some(FsEffectState::PartiallyApplied),
+        Some(native_files::error::LocalFileEffectState::Unchanged) => {
+            Some(FsEffectState::Unchanged)
+        }
+        Some(native_files::error::LocalFileEffectState::PartiallyApplied) => {
+            Some(FsEffectState::PartiallyApplied)
+        }
         Some(native_files::error::LocalFileEffectState::Applied) => Some(FsEffectState::Applied),
-        Some(native_files::error::LocalFileEffectState::Indeterminate) => Some(FsEffectState::Indeterminate),
+        Some(native_files::error::LocalFileEffectState::Indeterminate) => {
+            Some(FsEffectState::Indeterminate)
+        }
         None => None,
         _ => None,
     }
@@ -270,8 +280,12 @@ fn native_kind(kind: native_files::error::LocalFileErrorKind) -> FsErrorKind {
         native_files::error::LocalFileErrorKind::TypeConflict => FsErrorKind::Conflict,
         native_files::error::LocalFileErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
         native_files::error::LocalFileErrorKind::Unsupported => FsErrorKind::UnsupportedOperation,
-        native_files::error::LocalFileErrorKind::RequirementNotMet => FsErrorKind::RequirementNotMet,
-        native_files::error::LocalFileErrorKind::ResourceLimit => FsErrorKind::ResourceLimitExceeded,
+        native_files::error::LocalFileErrorKind::RequirementNotMet => {
+            FsErrorKind::RequirementNotMet
+        }
+        native_files::error::LocalFileErrorKind::ResourceLimit => {
+            FsErrorKind::ResourceLimitExceeded
+        }
         native_files::error::LocalFileErrorKind::DataCorruption => FsErrorKind::DataCorruption,
         native_files::error::LocalFileErrorKind::PublicationIncomplete => FsErrorKind::Io,
         native_files::error::LocalFileErrorKind::Indeterminate => FsErrorKind::Indeterminate,
@@ -301,7 +315,9 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
         std::io::ErrorKind::TimedOut => FsErrorKind::Timeout,
         std::io::ErrorKind::Unsupported => FsErrorKind::UnsupportedOperation,
         std::io::ErrorKind::OutOfMemory => FsErrorKind::ResourceLimitExceeded,
-        std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded => FsErrorKind::QuotaExceeded,
+        std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded => {
+            FsErrorKind::QuotaExceeded
+        }
         _ => FsErrorKind::Io,
     }
 }
@@ -331,20 +347,52 @@ mod tests {
         let path = Path::parse("/source").expect("valid test path");
         let target = Path::parse("/target").expect("valid test target");
         for (native, expected, effect) in [
-            (LocalFileErrorKind::InvalidPath, FsErrorKind::InvalidPath, None),
-            (LocalFileErrorKind::InvalidOptions, FsErrorKind::InvalidOptions, None),
-            (LocalFileErrorKind::InvalidState, FsErrorKind::InvalidState, None),
+            (
+                LocalFileErrorKind::InvalidPath,
+                FsErrorKind::InvalidPath,
+                None,
+            ),
+            (
+                LocalFileErrorKind::InvalidOptions,
+                FsErrorKind::InvalidOptions,
+                None,
+            ),
+            (
+                LocalFileErrorKind::InvalidState,
+                FsErrorKind::InvalidState,
+                None,
+            ),
             (LocalFileErrorKind::NotFound, FsErrorKind::NotFound, None),
-            (LocalFileErrorKind::AlreadyExists, FsErrorKind::AlreadyExists, None),
-            (LocalFileErrorKind::NotDirectory, FsErrorKind::NotDirectory, None),
-            (LocalFileErrorKind::IsDirectory, FsErrorKind::IsDirectory, None),
-            (LocalFileErrorKind::TypeConflict, FsErrorKind::Conflict, None),
+            (
+                LocalFileErrorKind::AlreadyExists,
+                FsErrorKind::AlreadyExists,
+                None,
+            ),
+            (
+                LocalFileErrorKind::NotDirectory,
+                FsErrorKind::NotDirectory,
+                None,
+            ),
+            (
+                LocalFileErrorKind::IsDirectory,
+                FsErrorKind::IsDirectory,
+                None,
+            ),
+            (
+                LocalFileErrorKind::TypeConflict,
+                FsErrorKind::Conflict,
+                None,
+            ),
             (
                 LocalFileErrorKind::PermissionDenied,
                 FsErrorKind::PermissionDenied,
                 None,
             ),
-            (LocalFileErrorKind::Unsupported, FsErrorKind::UnsupportedOperation, None),
+            (
+                LocalFileErrorKind::Unsupported,
+                FsErrorKind::UnsupportedOperation,
+                None,
+            ),
             (
                 LocalFileErrorKind::RequirementNotMet,
                 FsErrorKind::RequirementNotMet,
@@ -355,7 +403,11 @@ mod tests {
                 FsErrorKind::ResourceLimitExceeded,
                 None,
             ),
-            (LocalFileErrorKind::DataCorruption, FsErrorKind::DataCorruption, None),
+            (
+                LocalFileErrorKind::DataCorruption,
+                FsErrorKind::DataCorruption,
+                None,
+            ),
             (
                 LocalFileErrorKind::PublicationIncomplete,
                 FsErrorKind::Io,
@@ -407,7 +459,10 @@ mod tests {
     #[test]
     fn test_explicit_native_cause_precedes_a_coarser_io_source() {
         let path = Path::parse("/source").expect("valid test path");
-        let native = LocalFileError::new(LocalFileErrorKind::TypeConflict, LocalFileOperation::DeleteDirectory);
+        let native = LocalFileError::new(
+            LocalFileErrorKind::TypeConflict,
+            LocalFileOperation::DeleteDirectory,
+        );
 
         let error = map(native, FsOperation::Delete, &path, None, "local-file");
 
@@ -431,9 +486,19 @@ mod tests {
             (IoErrorKind::Unsupported, FsErrorKind::UnsupportedOperation),
             (IoErrorKind::Other, FsErrorKind::Io),
         ] {
-            let native =
-                LocalFileError::from_io(LocalFileOperation::Metadata, None, None, std::io::Error::from(io_kind));
-            let error = map(native, FsOperation::Copy, &path, Some(&target), "local-file");
+            let native = LocalFileError::from_io(
+                LocalFileOperation::Metadata,
+                None,
+                None,
+                std::io::Error::from(io_kind),
+            );
+            let error = map(
+                native,
+                FsOperation::Copy,
+                &path,
+                Some(&target),
+                "local-file",
+            );
             assert_eq!(expected, error.kind(), "unexpected mapping for {io_kind:?}");
             assert_eq!(FsOperation::Copy, error.operation());
             assert_eq!(Some(&path), error.path());
@@ -452,16 +517,25 @@ mod tests {
     fn test_maps_typed_copy_and_rename_failure_states() {
         for (state, expected) in [
             (CopyFailureState::Unchanged, FsEffectState::Unchanged),
-            (CopyFailureState::PartiallyPublished, FsEffectState::PartiallyApplied),
+            (
+                CopyFailureState::PartiallyPublished,
+                FsEffectState::PartiallyApplied,
+            ),
             (CopyFailureState::Published, FsEffectState::Applied),
-            (CopyFailureState::Indeterminate, FsEffectState::Indeterminate),
+            (
+                CopyFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
         ] {
             assert_eq!(expected, copy_effect_state(state));
         }
         for (state, expected) in [
             (RenameFailureState::Unchanged, FsEffectState::Unchanged),
             (RenameFailureState::Renamed, FsEffectState::Applied),
-            (RenameFailureState::Indeterminate, FsEffectState::Indeterminate),
+            (
+                RenameFailureState::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
         ] {
             assert_eq!(expected, rename_effect_state(state));
         }
@@ -474,12 +548,18 @@ mod tests {
                 LocalFileErrorKind::PublicationIncomplete,
                 FsEffectState::PartiallyApplied,
             ),
-            (LocalFileErrorKind::Indeterminate, FsEffectState::Indeterminate),
+            (
+                LocalFileErrorKind::Indeterminate,
+                FsEffectState::Indeterminate,
+            ),
         ] {
             let native = LocalFileError::new(kind, LocalFileOperation::Metadata);
             assert_eq!(Some(expected), native_effect_state(&native));
         }
-        let unchanged = LocalFileError::new(LocalFileErrorKind::PermissionDenied, LocalFileOperation::Metadata);
+        let unchanged = LocalFileError::new(
+            LocalFileErrorKind::PermissionDenied,
+            LocalFileOperation::Metadata,
+        );
         assert_eq!(None, native_effect_state(&unchanged));
     }
 }

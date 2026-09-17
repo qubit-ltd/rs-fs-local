@@ -65,7 +65,12 @@ impl LocalDeleteResourceLimits {
     /// assert_eq!(limits.max_entries(), 1_000);
     /// ```
     #[must_use]
-    pub const fn new(max_depth: usize, max_entries: usize, max_pending_path_bytes: usize, deadline: Duration) -> Self {
+    pub const fn new(
+        max_depth: usize,
+        max_entries: usize,
+        max_pending_path_bytes: usize,
+        deadline: Duration,
+    ) -> Self {
         Self {
             max_depth,
             max_entries,
