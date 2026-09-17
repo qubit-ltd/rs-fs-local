@@ -94,13 +94,7 @@ mod tests {
             filter: Some(ListFilter::LiteralPrefix("report".to_owned())),
         };
 
-        assert!(
-            options.matches(
-                &Path::parse("/reports/annual.txt").expect("matching relative logical path"),
-            )
-        );
-        assert!(!options.matches(
-            &Path::parse("/archive/report.txt").expect("non-matching relative logical path"),
-        ));
+        assert!(options.matches(&Path::parse("/reports/annual.txt").expect("matching relative logical path"),));
+        assert!(!options.matches(&Path::parse("/archive/report.txt").expect("non-matching relative logical path"),));
     }
 }

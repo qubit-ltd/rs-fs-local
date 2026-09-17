@@ -20,8 +20,7 @@ use qubit_fs_registry::FileSystemRegistryError;
 #[test]
 fn test_rooted_provider_decodes_literal_percent_path_segment() {
     let root = tempfile::tempdir().expect("provider root must be created");
-    std::fs::write(root.path().join("progress%100.txt"), b"payload")
-        .expect("percent-path fixture must be written");
+    std::fs::write(root.path().join("progress%100.txt"), b"payload").expect("percent-path fixture must be written");
     let id = FileSystemId::new("provider-percent-path-root").expect("test identity must be valid");
     let registry = FileSystemRegistry::default();
     registry
@@ -58,12 +57,7 @@ fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
     #[cfg(not(windows))]
     let uris = ["file:///parent%2Fchild", "file:///name%00"].as_slice();
     #[cfg(windows)]
-    let uris = [
-        "file:///parent%2Fchild",
-        "file:///parent%5Cchild",
-        "file:///name%00",
-    ]
-    .as_slice();
+    let uris = ["file:///parent%2Fchild", "file:///parent%5Cchild", "file:///name%00"].as_slice();
     for uri in uris {
         let error = registry
             .resolve_config(&FileSystemConfig::new(
@@ -86,14 +80,12 @@ fn test_rooted_provider_rejects_unsafe_encoded_path_components() {
 #[test]
 fn test_rooted_provider_round_trips_encoded_unix_backslash() {
     let root = tempfile::tempdir().expect("provider root must be created");
-    std::fs::write(root.path().join("parent\\child"), b"payload")
-        .expect("backslash-path fixture must be written");
+    std::fs::write(root.path().join("parent\\child"), b"payload").expect("backslash-path fixture must be written");
     let registry = FileSystemRegistry::default();
     registry
         .register(
             LocalFileSystemProvider::rooted(
-                FileSystemId::new("provider-backslash-path-root")
-                    .expect("test identity must be valid"),
+                FileSystemId::new("provider-backslash-path-root").expect("test identity must be valid"),
                 root.path(),
                 LocalResourcePolicy::unbounded(),
             )
@@ -107,10 +99,7 @@ fn test_rooted_provider_round_trips_encoded_unix_backslash() {
         ))
         .expect("encoded Unix backslash must resolve");
 
-    assert_eq!(
-        "file:///parent%5Cchild",
-        resolution.canonical_uri().as_str(),
-    );
+    assert_eq!("file:///parent%5Cchild", resolution.canonical_uri().as_str(),);
     resolution
         .file_system()
         .stat(resolution.path())
