@@ -72,7 +72,6 @@ impl LocalFileSystemProvider {
     /// # #[cfg(feature = "registry")]
     /// let _ = provider;
     /// ```
-    #[inline(always)]
     pub const fn host(policy: LocalResourcePolicy) -> Self {
         Self {
             mode: LocalProviderMode::Host,
@@ -254,7 +253,7 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
 ///
 /// An invalid-configuration failure carrying an `InvalidOptions` filesystem
 /// error.
-#[inline(always)]
+#[inline]
 fn invalid_options(message: &'static str) -> ProviderFailure<FsError> {
     ProviderFailure::invalid_configuration(FsError::new(
         FsErrorKind::InvalidOptions,
@@ -273,7 +272,7 @@ fn invalid_options(message: &'static str) -> ProviderFailure<FsError> {
 ///
 /// An unsupported failure carrying an `UnsupportedOperation` filesystem
 /// error, allowing an `OnAbsence` provider chain to continue.
-#[inline(always)]
+#[inline]
 fn unsupported_scheme(message: &'static str) -> ProviderFailure<FsError> {
     ProviderFailure::unsupported(FsError::new(
         FsErrorKind::UnsupportedOperation,
@@ -292,7 +291,7 @@ fn unsupported_scheme(message: &'static str) -> ProviderFailure<FsError> {
 ///
 /// An invalid-configuration failure carrying an `InvalidPath` filesystem
 /// error.
-#[inline(always)]
+#[inline]
 pub(super) fn invalid_path(message: &'static str) -> ProviderFailure<FsError> {
     ProviderFailure::invalid_configuration(FsError::new(FsErrorKind::InvalidPath, FsOperation::Provider, message))
 }

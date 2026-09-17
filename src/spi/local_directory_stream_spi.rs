@@ -148,7 +148,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 /// # Returns
 ///
 /// A facade listing error with local provider context.
-#[inline(always)]
+#[inline]
 fn entry_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     error_mapper::map_without_path(error, FsOperation::List, "native directory walk failed", provider_id)
 }

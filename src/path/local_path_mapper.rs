@@ -130,7 +130,7 @@ fn logical_components(components: &[String]) -> FsResult<Path> {
 /// # Returns
 ///
 /// An `InvalidPath` facade error retaining `path` and the native source.
-#[inline(always)]
+#[inline]
 fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation) -> FsError {
     map_native(error, operation).with_path(path.clone())
 }
@@ -145,7 +145,7 @@ fn map(error: native_files::LocalFileError, path: &Path, operation: FsOperation)
 /// # Returns
 ///
 /// An `InvalidPath` facade error retaining the native source.
-#[inline(always)]
+#[inline]
 fn map_native(error: native_files::LocalFileError, operation: FsOperation) -> FsError {
     FsError::with_source(
         FsErrorKind::InvalidPath,

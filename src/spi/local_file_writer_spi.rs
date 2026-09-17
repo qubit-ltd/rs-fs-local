@@ -51,7 +51,7 @@ impl LocalFileWriterSpi {
     /// # Returns
     ///
     /// An active facade writer session.
-    #[inline(always)]
+    #[inline]
     pub(crate) fn new(writer: native_files::LocalFileWriter, provider_id: String) -> Self {
         Self {
             writer: Some(writer),
@@ -107,7 +107,6 @@ impl Output for LocalFileWriterSpi {
     ///
     /// The caller must ensure that `index..index + count` is a valid range
     /// within `input`, as required by [`Output::write_unchecked`].
-    #[inline(always)]
     unsafe fn write_unchecked(&mut self, input: &[u8], index: usize, count: usize) -> IoResult<usize> {
         Write::write(self.writer_mut()?, &input[index..index + count])
     }
@@ -122,7 +121,6 @@ impl Output for LocalFileWriterSpi {
     ///
     /// Returns an I/O error when the session is terminal or the native flush
     /// fails.
-    #[inline(always)]
     fn flush(&mut self) -> IoResult<()> {
         Write::flush(self.writer_mut()?)
     }
@@ -317,7 +315,7 @@ fn write_failure_state(state: native_files::outcome::LocalWriteFailureState, ret
 /// # Returns
 ///
 /// A facade abort error with local provider context.
-#[inline(always)]
+#[inline]
 fn abort_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     error_mapper::map_without_path(
         error,
