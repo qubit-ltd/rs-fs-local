@@ -68,24 +68,11 @@ impl LocalResourcePolicy {
     /// A policy with finite listing, copying and deletion limits.
     #[must_use]
     pub fn standard() -> Self {
-        let list = LocalListResourceLimits::new(
-            64,
-            100_000,
-            16 * 1024 * 1024,
-            32,
-            Duration::from_secs(30),
-        )
-        .expect("standard directory budget is positive");
-        let copy = LocalCopyResourceLimits::new(
-            64,
-            100_000,
-            1024 * 1024 * 1024,
-            32,
-            Duration::from_secs(30),
-        )
-        .expect("standard directory budget is positive");
-        let delete =
-            LocalDeleteResourceLimits::new(64, 100_000, 16 * 1024 * 1024, Duration::from_secs(30));
+        let list = LocalListResourceLimits::new(64, 100_000, 16 * 1024 * 1024, 32, Duration::from_secs(30))
+            .expect("standard directory budget is positive");
+        let copy = LocalCopyResourceLimits::new(64, 100_000, 1024 * 1024 * 1024, 32, Duration::from_secs(30))
+            .expect("standard directory budget is positive");
+        let delete = LocalDeleteResourceLimits::new(64, 100_000, 16 * 1024 * 1024, Duration::from_secs(30));
         Self::bounded(list, copy, delete)
     }
 
@@ -246,10 +233,7 @@ impl LocalResourcePolicy {
 
     /// Sets the directory reopen behavior used by recursive walkers.
     #[must_use]
-    pub const fn with_directory_reopen_policy(
-        mut self,
-        policy: LocalDirectoryReopenPolicy,
-    ) -> Self {
+    pub const fn with_directory_reopen_policy(mut self, policy: LocalDirectoryReopenPolicy) -> Self {
         self.directory_reopen_policy = policy;
         self
     }
@@ -261,12 +245,8 @@ impl LocalResourcePolicy {
             None => native_files::options::LocalListOptions::new(),
         };
         options.with_reopen_policy(match self.directory_reopen_policy {
-            LocalDirectoryReopenPolicy::Fail => {
-                native_files::options::LocalDirectoryReopenPolicy::Fail
-            }
-            LocalDirectoryReopenPolicy::Reopen => {
-                native_files::options::LocalDirectoryReopenPolicy::Reopen
-            }
+            LocalDirectoryReopenPolicy::Fail => native_files::options::LocalDirectoryReopenPolicy::Fail,
+            LocalDirectoryReopenPolicy::Reopen => native_files::options::LocalDirectoryReopenPolicy::Reopen,
         })
     }
 

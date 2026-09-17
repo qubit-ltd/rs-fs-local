@@ -34,18 +34,13 @@ use qubit_local_files::test_support::install_test_fault;
 #[test]
 fn test_publication_incomplete_retains_partial_effect_and_native_source() {
     let root = tempfile::tempdir().expect("fixture root should exist");
-    let target = host_path_to_logical(&root.path().join("first/second"))
-        .expect("target should be representable");
-    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem should construct");
-    let _fault = install_test_fault("host-create-directory-component-second")
-        .expect("fault controller should install");
+    let target = host_path_to_logical(&root.path().join("first/second")).expect("target should be representable");
+    let filesystem =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should construct");
+    let _fault = install_test_fault("host-create-directory-component-second").expect("fault controller should install");
 
     let error = filesystem
-        .create_directory(
-            &target,
-            CreateDirectoryOptions::default().with_recursive(true),
-        )
+        .create_directory(&target, CreateDirectoryOptions::default().with_recursive(true))
         .expect_err("second component fault should interrupt publication");
 
     assert_eq!(FsErrorKind::Io, error.kind());
@@ -74,10 +69,7 @@ fn test_typed_copy_failure_exposes_unchanged_effect_and_request_context() {
         .expect_err("missing source should fail");
 
     assert_eq!(CopyFailureState::Unchanged, failure.state());
-    assert_eq!(
-        Some(FsEffectState::Unchanged),
-        failure.error().effect_state()
-    );
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
     assert_eq!(Some(&source), failure.error().path());
     assert_eq!(Some(&target), failure.error().target());
     assert!(failure.error().source().is_some());
@@ -96,10 +88,7 @@ fn test_typed_rename_failure_exposes_unchanged_effect_and_request_context() {
         .expect_err("missing source should fail");
 
     assert_eq!(RenameFailureState::Unchanged, failure.state());
-    assert_eq!(
-        Some(FsEffectState::Unchanged),
-        failure.error().effect_state()
-    );
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
     assert_eq!(Some(&source), failure.error().path());
     assert_eq!(Some(&target), failure.error().target());
     assert_eq!(Some("local-file"), failure.error().provider());
@@ -119,20 +108,14 @@ fn test_writer_conflict_retains_unchanged_effect_and_native_source() {
         )
         .expect("writer should open before the conflict");
     Output::write_fully(&mut writer, b"staged").expect("writer should accept bytes");
-    std::fs::write(root.path().join("target"), b"concurrent")
-        .expect("concurrent target should be installed");
+    std::fs::write(root.path().join("target"), b"concurrent").expect("concurrent target should be installed");
 
-    let failure = writer
-        .commit()
-        .expect_err("concurrent target should conflict");
+    let failure = writer.commit().expect_err("concurrent target should conflict");
     #[cfg(not(windows))]
     assert_eq!(WriteFailureState::NotPublished, failure.state());
     #[cfg(windows)]
     assert_eq!(WriteFailureState::RetryableNotPublished, failure.state());
-    assert_eq!(
-        Some(FsEffectState::Unchanged),
-        failure.error().effect_state()
-    );
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
     assert!(
         failure
             .error()
@@ -159,10 +142,9 @@ fn test_partial_delete_mapping_retains_native_failure_path_and_effect() {
     std::fs::write(native_target.join("first"), b"first").expect("first entry should exist");
     std::fs::write(native_target.join("second"), b"second").expect("second entry should exist");
     let target = host_path_to_logical(&native_target).expect("target should be representable");
-    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host filesystem should construct");
-    let _fault = install_test_fault("host-delete-directory-entry-second")
-        .expect("fault controller should install");
+    let filesystem =
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should construct");
+    let _fault = install_test_fault("host-delete-directory-entry-second").expect("fault controller should install");
 
     let error = filesystem
         .delete_directory(&target, DeleteOptions::default().with_recursive(true))
@@ -176,9 +158,7 @@ fn test_partial_delete_mapping_retains_native_failure_path_and_effect() {
         .and_then(|source| source.downcast_ref::<LocalFileError>())
         .expect("mapped error should retain the native source");
     assert_eq!(LocalFileErrorKind::PublicationIncomplete, native.kind());
-    let native_path = native
-        .path()
-        .expect("native failure path should be retained");
+    let native_path = native.path().expect("native failure path should be retained");
     assert_eq!(Some(native_target.as_path()), native_path.parent());
 }
 

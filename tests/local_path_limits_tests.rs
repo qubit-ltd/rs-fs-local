@@ -24,10 +24,8 @@ use qubit_fs_local::host_path_to_logical;
 fn test_rooted_paths_accept_expanded_percent_components() {
     let root = tempfile::tempdir().expect("fixture root");
     let native_name = "%".repeat(100);
-    std::fs::write(root.path().join(&native_name), b"before")
-        .expect("native filename must be valid");
-    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted facade");
+    std::fs::write(root.path().join(&native_name), b"before").expect("native filename must be valid");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted facade");
     let path = Path::parse(&format!("/{}", "%25".repeat(100))).expect("canonical path");
     assert_eq!(Some(6), fs.stat(&path).expect("stat escaped name").len());
     assert_eq!(
@@ -45,19 +43,9 @@ fn test_rooted_paths_accept_expanded_percent_components() {
             .as_slice()
     );
     let mut stream = fs
-        .list(
-            &ListScope::Path((Path::root()).clone()),
-            ListOptions::default(),
-        )
+        .list(&ListScope::Path((Path::root()).clone()), ListOptions::default())
         .expect("open list");
-    assert_eq!(
-        path,
-        stream
-            .next_entry()
-            .expect("valid entry")
-            .expect("entry")
-            .path
-    );
+    assert_eq!(path, stream.next_entry().expect("valid entry").expect("entry").path);
     assert!(stream.next_entry().expect("end of list").is_none());
 }
 
@@ -66,13 +54,9 @@ fn test_rooted_paths_accept_expanded_percent_components() {
 fn test_local_properties_do_not_claim_native_limits_are_text_limits() {
     let root = tempfile::tempdir().expect("fixture root");
     let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
-    let rooted =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let rooted = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     for fs in [host, rooted] {
-        assert_eq!(
-            FileSystemLimit::Unknown,
-            fs.properties().limits().max_path_text_bytes()
-        );
+        assert_eq!(FileSystemLimit::Unknown, fs.properties().limits().max_path_text_bytes());
         assert_eq!(
             FileSystemLimit::Unknown,
             fs.properties().limits().max_component_text_bytes()
@@ -90,8 +74,7 @@ fn test_rooted_paths_preserve_long_non_utf8_components() {
     let root = tempfile::tempdir().expect("fixture root");
     let name = OsString::from_vec(vec![0xff; 100]);
     let native_creation = std::fs::write(root.path().join(name), b"raw");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let path = Path::parse(&format!("/{}", "%FF".repeat(100))).expect("logical bytes");
     if !native_bytes_are_supported(native_creation, &fs, &path) {
         return;
@@ -103,19 +86,9 @@ fn test_rooted_paths_preserve_long_non_utf8_components() {
             .as_slice()
     );
     let mut stream = fs
-        .list(
-            &ListScope::Path((Path::root()).clone()),
-            ListOptions::default(),
-        )
+        .list(&ListScope::Path((Path::root()).clone()), ListOptions::default())
         .expect("list");
-    assert_eq!(
-        path,
-        stream
-            .next_entry()
-            .expect("valid raw entry")
-            .expect("entry")
-            .path
-    );
+    assert_eq!(path, stream.next_entry().expect("valid raw entry").expect("entry").path);
     assert!(stream.next_entry().expect("end").is_none());
 }
 
@@ -130,8 +103,7 @@ fn test_absolute_host_paths_preserve_non_utf8_components() {
     let name = OsString::from_vec(vec![b'r', b'a', b'w', 0xff]);
     let native = directory.path().join(name);
     let native_creation = std::fs::write(&native, b"host");
-    let logical =
-        host_path_to_logical(&native).expect("absolute host path must convert without lossy text");
+    let logical = host_path_to_logical(&native).expect("absolute host path must convert without lossy text");
     let fs = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host");
 
     assert!(logical.as_str().ends_with("/raw%FF"));
@@ -149,20 +121,12 @@ fn test_absolute_host_paths_preserve_non_utf8_components() {
 /// Tests successful raw-name I/O where supported, and preserves macOS's
 /// native EILSEQ rejection where the filesystem requires valid UTF-8 names.
 #[cfg(target_os = "macos")]
-fn native_bytes_are_supported(
-    result: std::io::Result<()>,
-    filesystem: &FileSystem,
-    path: &Path,
-) -> bool {
+fn native_bytes_are_supported(result: std::io::Result<()>, filesystem: &FileSystem, path: &Path) -> bool {
     match result {
         Ok(()) => true,
         Err(error) => {
             const EILSEQ: i32 = 92;
-            assert_eq!(
-                error.raw_os_error(),
-                Some(EILSEQ),
-                "unexpected native fixture failure"
-            );
+            assert_eq!(error.raw_os_error(), Some(EILSEQ), "unexpected native fixture failure");
             let failure = filesystem
                 .write_all(path, b"rejected", Default::default())
                 .expect_err("the adapter must preserve native filename rejection");
@@ -175,11 +139,7 @@ fn native_bytes_are_supported(
 
 /// Other tested Unix filesystems must support the raw-name I/O fixture.
 #[cfg(all(unix, not(target_os = "macos")))]
-fn native_bytes_are_supported(
-    result: std::io::Result<()>,
-    _filesystem: &FileSystem,
-    _path: &Path,
-) -> bool {
+fn native_bytes_are_supported(result: std::io::Result<()>, _filesystem: &FileSystem, _path: &Path) -> bool {
     result.expect("native raw-name fixture must be created");
     true
 }
@@ -201,8 +161,7 @@ fn test_rooted_paths_accept_expanded_total_path_text() {
     let path = Path::parse(&format!("/{}", components.join("/"))).expect("logical path");
     assert!(path.as_str().len() > 4096);
     assert!(components.iter().all(|component| component.len() <= 255));
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     assert_eq!(
         b"deep",
         fs.read_all(&path, Default::default(), 8)
@@ -215,27 +174,20 @@ fn test_rooted_paths_accept_expanded_total_path_text() {
 #[test]
 fn test_unknown_text_limits_do_not_accept_invalid_native_components() {
     let root = tempfile::tempdir().expect("fixture root");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let invalid = Path::parse("/bad%00name").expect("logical spelling");
     assert!(fs.stat(&invalid).is_err());
-    let oversized = Path::parse(&format!("/{}", "x".repeat(65536)))
-        .expect("logical text has no provider-native size semantics");
+    let oversized =
+        Path::parse(&format!("/{}", "x".repeat(65536))).expect("logical text has no provider-native size semantics");
     assert!(fs.stat(&oversized).is_err());
-    assert_eq!(
-        0,
-        std::fs::read_dir(root.path())
-            .expect("unchanged root")
-            .count()
-    );
+    assert_eq!(0, std::fs::read_dir(root.path()).expect("unchanged root").count());
 }
 
 /// Relative logical paths fail validation before a rooted target is created.
 #[test]
 fn test_rooted_relative_logical_path_fails_before_io() {
     let root = tempfile::tempdir().expect("fixture root");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let relative = Path::parse("relative-target").expect("relative path text");
 
     let error = fs
@@ -250,19 +202,14 @@ fn test_rooted_relative_logical_path_fails_before_io() {
 #[test]
 fn test_rooted_dot_components_fail_before_io() {
     let root = tempfile::tempdir().expect("fixture root");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
 
     for text in ["/%2E/target", "/%2E%2E/target"] {
         let path = Path::parse(text).expect("escaped dot path text");
         let error = fs
             .write_all(&path, b"payload", WriteOptions::default())
             .expect_err("dot traversal components must be rejected");
-        assert_eq!(
-            FsErrorKind::InvalidPath,
-            error.error().kind(),
-            "path: {text}",
-        );
+        assert_eq!(FsErrorKind::InvalidPath, error.error().kind(), "path: {text}",);
         assert_eq!(Some(&path), error.error().path(), "path: {text}");
     }
     assert!(!root.path().join("target").exists());
@@ -272,8 +219,7 @@ fn test_rooted_dot_components_fail_before_io() {
 #[test]
 fn test_rooted_nul_component_fails_before_io() {
     let root = tempfile::tempdir().expect("fixture root");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let path = Path::parse("/invalid%00target").expect("escaped NUL text");
 
     let error = fs
@@ -283,10 +229,5 @@ fn test_rooted_nul_component_fails_before_io() {
     assert_eq!(FsErrorKind::InvalidPath, error.error().kind());
     assert_eq!(Some(&path), error.error().path());
     assert!(!root.path().join("invalid\0target").exists());
-    assert_eq!(
-        0,
-        std::fs::read_dir(root.path())
-            .expect("unchanged root")
-            .count(),
-    );
+    assert_eq!(0, std::fs::read_dir(root.path()).expect("unchanged root").count(),);
 }

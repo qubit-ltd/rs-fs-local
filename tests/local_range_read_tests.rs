@@ -29,8 +29,7 @@ fn test_local_range_window_and_metadata() {
     for rooted in [false, true] {
         let (fs, path) = if rooted {
             (
-                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard())
-                    .expect("rooted"),
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted"),
                 Path::parse("/窗口.txt").expect("logical path"),
             )
         } else {
@@ -40,9 +39,7 @@ fn test_local_range_window_and_metadata() {
             )
         };
         assert_eq!(
-            fs.properties()
-                .capabilities()
-                .support(FileSystemCapability::RangeRead),
+            fs.properties().capabilities().support(FileSystemCapability::RangeRead),
             FileSystemCapabilitySupport::Conditional
         );
         for (offset, length, expected) in [
@@ -59,9 +56,7 @@ fn test_local_range_window_and_metadata() {
             let mut reader = fs
                 .open_reader(
                     &path,
-                    ReadOptions::default()
-                        .with_offset(Some(offset))
-                        .with_length(length),
+                    ReadOptions::default().with_offset(Some(offset)).with_length(length),
                 )
                 .expect("range");
             assert_eq!(reader.info().metadata().expect("metadata").len(), Some(10));
@@ -77,8 +72,7 @@ fn test_local_range_window_and_metadata() {
 #[test]
 fn test_local_empty_range_checks_existence_and_path() {
     let root = tempfile::tempdir().expect("root");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
     let error = fs
         .open_reader(
             &Path::parse("/missing").expect("path"),
@@ -102,14 +96,11 @@ fn test_local_range_does_not_reopen_path() {
     let root = tempfile::tempdir().expect("root");
     let source = root.path().join("file");
     std::fs::write(&source, b"original").expect("seed");
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
     let mut reader = fs
         .open_reader(
             &Path::parse("/file").expect("path"),
-            ReadOptions::default()
-                .with_offset(Some(1))
-                .with_length(Some(3)),
+            ReadOptions::default().with_offset(Some(1)).with_length(Some(3)),
         )
         .expect("range");
     std::fs::rename(&source, root.path().join("old")).expect("rename");
@@ -129,8 +120,7 @@ fn test_local_range_preserves_native_seek_result() {
     let offset = i64::MAX as u64;
     let mut native_reader = std::fs::File::open(&native).expect("native reader");
     let native_result = native_reader.seek(SeekFrom::Start(offset));
-    let fs =
-        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
     let path = Path::parse("/file").expect("path");
     let result = fs.open_reader(&path, ReadOptions::default().with_offset(Some(offset)));
     match native_result {
@@ -148,10 +138,7 @@ fn test_local_range_preserves_native_seek_result() {
             assert_eq!(source.raw_os_error(), native_error.raw_os_error());
         }
         Ok(position) => {
-            assert_eq!(
-                position, offset,
-                "native seek must reach the requested offset"
-            );
+            assert_eq!(position, offset, "native seek must reach the requested offset");
             let mut reader = result.expect("native seek supported");
             // A successful seek need not make the next native read valid at
             // extreme offsets. Preserve the read result as well as seek errors.
@@ -162,10 +149,7 @@ fn test_local_range_preserves_native_seek_result() {
             match native_read {
                 Ok(native_count) => {
                     let count = read.expect("native read supported");
-                    assert_eq!(
-                        count, native_count,
-                        "range read must preserve the native byte count"
-                    );
+                    assert_eq!(count, native_count, "range read must preserve the native byte count");
                     assert_eq!(&bytes[..count], &native_bytes[..native_count]);
                 }
                 Err(native_error) => {
