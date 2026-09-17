@@ -104,6 +104,24 @@ fn test_readme_and_user_guide_examples_compile() {
         .status()
         .expect("compile document examples");
     assert!(status.success(), "document examples must compile");
+    for (document_index, document) in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let binary = format!("doc_{document_index}_0");
+        let status = Command::new(env!("CARGO"))
+            .args(["run", "--locked", "--quiet", "--bin", &binary])
+            .current_dir(workspace.path())
+            .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+            .status()
+            .expect("run first document example");
+        assert!(status.success(), "{document} first example must run");
+    }
 }
 
 /// Renders a dependency from its declaration or sibling package version while
@@ -145,18 +163,29 @@ fn dependency_spec(root: &Path, value: &toml::Value) -> String {
 /// Path-only development dependencies inherit the sibling package release.
 #[test]
 fn test_dependency_spec_resolves_path_only_sibling_version() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let source = fs::read_to_string(root.join("Cargo.toml")).expect("read manifest");
-    let mut manifest: toml::Value = toml::from_str(&source).expect("parse manifest");
-    manifest["dependencies"]["qubit-fs"]
-        .as_table_mut()
-        .expect("filesystem dependency table")
-        .remove("version");
-    let spec = dependency_spec(root, &manifest["dependencies"]["qubit-fs"]);
+    let workspace = tempfile::tempdir().expect("isolated path dependency fixture");
+    let root = workspace.path().join("consumer");
+    let sibling = workspace.path().join("path-only-fixture");
+    fs::create_dir_all(&root).expect("consumer directory");
+    fs::create_dir_all(&sibling).expect("sibling directory");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = 'consumer'\nversion = '0.1.0'\n",
+    )
+    .expect("consumer manifest");
+    fs::write(
+        sibling.join("Cargo.toml"),
+        "[package]\nname = 'qubit-fs'\nversion = '0.2.0'\n",
+    )
+    .expect("sibling manifest");
+    let input: toml::Value =
+        toml::from_str("dependency = { path = '../path-only-fixture' }").expect("path-only dependency");
+    let spec = dependency_spec(&root, &input["dependency"]);
     let rendered: toml::Value = toml::from_str(&format!("dependency = {spec}")).expect("parse dependency");
 
     assert_eq!(rendered["dependency"]["version"].as_str(), Some("0.2.0"));
-    assert!(rendered["dependency"]["path"].as_str().is_some());
+    let resolved = Path::new(rendered["dependency"]["path"].as_str().expect("resolved path"));
+    assert!(resolved.join("Cargo.toml").is_file());
 }
 
 /// Cargo must see the same symlink spelling in direct and transitive
@@ -280,7 +309,7 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         ];
         assert!(
             stale_local_versions.iter().all(|token| !text.contains(token)),
-            "{document} must describe the 0.4 API"
+            "{document} must not describe an obsolete API version"
         );
     }
     for document in ["README.md", "README.zh_CN.md"] {
@@ -296,6 +325,25 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         assert!(
             !text.contains("rooted_with_id(id, root)`"),
             "{document} must not retain the old two-argument rooted_with_id signature"
+        );
+    }
+    let native_version = manifest["dependencies"]["qubit-local-files"]
+        .as_str()
+        .expect("native dependency version");
+    let marker = format!("`qubit-local-files` {native_version}");
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+        "doc/local_file_system_adapter_design.md",
+        "doc/local_file_system_adapter_design.zh_CN.md",
+    ] {
+        let text = fs::read_to_string(root.join(document)).expect("document should be readable");
+        assert!(text.contains(&marker), "{document} must name current native version");
+        assert!(
+            !text.contains("core 0.8") && !text.contains("核心 0.8") && !text.contains("Version 0.8"),
+            "{document} retains obsolete version"
         );
     }
 }

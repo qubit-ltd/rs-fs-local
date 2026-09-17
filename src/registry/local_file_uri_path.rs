@@ -261,6 +261,8 @@ mod tests {
     use proptest::sample::select;
     use proptest::strategy::Just;
     use proptest::strategy::Strategy;
+    use proptest::test_runner::Config;
+    use proptest::test_runner::RngSeed;
     use qubit_fs::error::FsErrorKind;
     use qubit_fs::path::Path;
     use qubit_spi::error::ProviderFailureKind;
@@ -294,9 +296,9 @@ mod tests {
     }
 
     proptest! {
-        #![proptest_config(proptest::test_runner::Config {
-            rng_seed: proptest::test_runner::RngSeed::Fixed(1),
-            ..proptest::test_runner::Config::default()
+        #![proptest_config(Config {
+            rng_seed: RngSeed::Fixed(1),
+            ..Config::default()
         })]
         #[test]
         fn test_decode_canonical_uri_round_trips_safe_paths(
