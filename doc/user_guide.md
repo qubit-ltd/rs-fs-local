@@ -8,7 +8,7 @@ This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
 0.9.0 release: direct host/rooted facades and the optional registry provider
 (package version `0.9.0`). This release integrates `qubit-fs` 0.2 and
-`qubit-local-files` 0.3.
+`qubit-local-files` 0.4.
 
 ## Conceptual Model
 
@@ -53,7 +53,6 @@ cargo add qubit-fs-local@0.9 --features registry
 ## Core Workflow
 
 ```rust
-use std::path::Path;
 use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
@@ -63,6 +62,9 @@ use qubit_fs_local::{
     LocalListResourceLimits, LocalResourcePolicy,
 };
 
+let root = std::env::current_dir()?.join("target/local-fs-guide");
+std::fs::create_dir_all(root.join("reports"))?;
+std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let policy = LocalResourcePolicy::bounded(
     LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
     LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
@@ -70,7 +72,7 @@ let policy = LocalResourcePolicy::bounded(
 );
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    Path::new("/srv/app-data"),
+    root.as_path(),
     policy,
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
@@ -183,7 +185,7 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the core 0.8 `OpenFailure` contract.
+Opening writer or temporary sessions follows the `qubit-fs` 0.2 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
 

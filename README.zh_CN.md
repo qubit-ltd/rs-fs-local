@@ -13,7 +13,7 @@
 
 本文档适用于 `qubit-fs-local` 0.9.0（包版本 `0.9.0`）。
 
-本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.3。provider 上限只收紧资源预算，不覆盖请求行为；
+本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不覆盖请求行为；
 writer 保留旧目标元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 
@@ -36,16 +36,17 @@ cargo add qubit-fs-local@0.9 --features registry
 门面，并在该 authority 内使用绝对逻辑路径：
 
 ```rust
-use std::path::Path;
-
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let policy = LocalResourcePolicy::standard();
+let root = std::env::current_dir()?.join("target/local-fs-guide");
+std::fs::create_dir_all(root.join("reports"))?;
+std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    Path::new("/srv/app-data"),
+    root.as_path(),
     policy,
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;

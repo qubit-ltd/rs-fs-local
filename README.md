@@ -14,7 +14,7 @@ parsing and native-path conversion part of application code.
 
 This README documents `qubit-fs-local` 0.9.0 (package version `0.9.0`).
 
-This version uses `qubit-fs` 0.2 and `qubit-local-files` 0.3. Provider ceilings tighten resources
+This version uses `qubit-fs` 0.2 and `qubit-local-files` 0.4. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
@@ -40,16 +40,17 @@ rooted facade with the application's stable filesystem identity, then use
 absolute logical paths inside that authority:
 
 ```rust
-use std::path::Path;
-
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let policy = LocalResourcePolicy::standard();
+let root = std::env::current_dir()?.join("target/local-fs-guide");
+std::fs::create_dir_all(root.join("reports"))?;
+std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    Path::new("/srv/app-data"),
+    root.as_path(),
     policy,
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
