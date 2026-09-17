@@ -110,8 +110,9 @@ mod tests {
     /// Keep output must remain under the captured native creation parent.
     #[test]
     fn test_projection_rejects_foreign_keep_parent() {
-        let projection = LocalTempPathProjection::new(Path::new("alias"), Path::new("real/sandbox-test/file"))
-            .expect("native sandbox layout");
+        let projection =
+            LocalTempPathProjection::new(Path::new("alias"), Path::new("real/sandbox-test/file"))
+                .expect("native sandbox layout");
         let error = projection
             .project(Path::new("foreign/kept"), FsOperation::KeepTemp)
             .expect_err("foreign output must be rejected");

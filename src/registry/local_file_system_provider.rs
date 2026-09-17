@@ -100,7 +100,11 @@ impl LocalFileSystemProvider {
     /// authority. No provider is returned in that case, so it cannot be
     /// registered or considered by a later fallback resolution.
     #[inline]
-    pub fn rooted(id: FileSystemId, root: &Path, policy: LocalResourcePolicy) -> Result<Self, FsError> {
+    pub fn rooted(
+        id: FileSystemId,
+        root: &Path,
+        policy: LocalResourcePolicy,
+    ) -> Result<Self, FsError> {
         Self::rooted_with_descriptor(default_descriptor(), id, root, policy)
     }
 
@@ -133,11 +137,13 @@ impl LocalFileSystemProvider {
         root: &Path,
         policy: LocalResourcePolicy,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root, policy).map(|file_system| Self {
-            mode: LocalProviderMode::Rooted { file_system },
-            descriptor: Some(descriptor),
-            policy,
-        })
+        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root, policy).map(
+            |file_system| Self {
+                mode: LocalProviderMode::Rooted { file_system },
+                descriptor: Some(descriptor),
+                policy,
+            },
+        )
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -166,12 +172,18 @@ impl LocalFileSystemProvider {
             .uri()
             .try_to_uri()
             .map_err(ProviderFailure::invalid_configuration)?;
-        if !config.options().is_empty() || !config.metadata().is_empty() || config.credential().is_some() {
+        if !config.options().is_empty()
+            || !config.metadata().is_empty()
+            || config.credential().is_some()
+        {
             return Err(invalid_options(
                 "local filesystem provider does not support provider options, metadata, or credentials",
             ));
         }
-        if uri.authority().is_some_and(|authority| !authority.is_empty()) {
+        if uri
+            .authority()
+            .is_some_and(|authority| !authority.is_empty())
+        {
             return Err(invalid_options(
                 "local filesystem provider does not support remote URI authorities",
             ));
@@ -212,9 +224,11 @@ impl ProviderMetadata for LocalFileSystemProvider {
 /// The static `local-file` descriptor with the `file` URI alias.
 #[inline]
 fn default_descriptor() -> ProviderDescriptor {
-    ProviderDescriptor::new(ProviderId::new(LOCAL_PROVIDER_ID).expect("static provider identity is valid"))
-        .with_aliases([FILE_SCHEME])
-        .expect("static provider alias is valid")
+    ProviderDescriptor::new(
+        ProviderId::new(LOCAL_PROVIDER_ID).expect("static provider identity is valid"),
+    )
+    .with_aliases([FILE_SCHEME])
+    .expect("static provider alias is valid")
 }
 
 impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
@@ -233,14 +247,18 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     /// Returns an invalid-configuration failure for unsupported configuration
     /// shapes or an initialization failure when the selected local filesystem
     /// cannot be opened or assembled.
-    fn create_configured(&self, config: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
+    fn create_configured(
+        &self,
+        config: &FileSystemConfig,
+    ) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => LocalFileSystems::host(self.policy),
             LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
         }
         .map_err(ProviderFailure::initialization_failed)?;
-        FileSystemResolution::try_new(file_system, path, uri).map_err(ProviderFailure::initialization_failed)
+        FileSystemResolution::try_new(file_system, path, uri)
+            .map_err(ProviderFailure::initialization_failed)
     }
 }
 
@@ -294,5 +312,9 @@ fn unsupported_scheme(message: &'static str) -> ProviderFailure<FsError> {
 /// error.
 #[inline(always)]
 pub(super) fn invalid_path(message: &'static str) -> ProviderFailure<FsError> {
-    ProviderFailure::invalid_configuration(FsError::new(FsErrorKind::InvalidPath, FsOperation::Provider, message))
+    ProviderFailure::invalid_configuration(FsError::new(
+        FsErrorKind::InvalidPath,
+        FsOperation::Provider,
+        message,
+    ))
 }

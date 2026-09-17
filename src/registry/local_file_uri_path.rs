@@ -88,7 +88,8 @@ pub(super) fn canonical_uri(path: &Path) -> Result<Uri, ProviderFailure<FsError>
         }
         index += scalar.len_utf8();
     }
-    Uri::parse(&format!("file://{encoded}")).map_err(|_| invalid_path("local file URI path cannot be canonicalized"))
+    Uri::parse(&format!("file://{encoded}"))
+        .map_err(|_| invalid_path("local file URI path cannot be canonicalized"))
 }
 
 /// Returns whether a scalar can appear unescaped in a URI path segment.
@@ -96,7 +97,21 @@ fn is_uri_pchar(scalar: char) -> bool {
     scalar.is_ascii_alphanumeric()
         || matches!(
             scalar,
-            '-' | '.' | '_' | '~' | '!' | '$' | '&' | '\'' | '(' | ')' | '*' | '+' | ',' | ';' | ':' | '@'
+            '-' | '.'
+                | '_'
+                | '~'
+                | '!'
+                | '$'
+                | '&'
+                | '\''
+                | '('
+                | ')'
+                | '*'
+                | '+'
+                | ','
+                | ';'
+                | ':'
+                | '@'
         )
 }
 
@@ -118,7 +133,9 @@ fn decode_component(component: &str) -> Result<String, ProviderFailure<FsError>>
     let canonical = canonicalize_uri_bytes(&decode_uri_bytes(component)?);
     let bytes = canonical.as_bytes();
     if bytes.contains(&b'/') || cfg!(windows) && bytes.contains(&b'\\') {
-        return Err(invalid_path("local file URI path must not encode a path separator"));
+        return Err(invalid_path(
+            "local file URI path must not encode a path separator",
+        ));
     }
     Ok(canonical)
 }
@@ -150,12 +167,16 @@ fn decode_uri_bytes(component: &str) -> Result<Vec<u8>, ProviderFailure<FsError>
             .get(index + 1)
             .copied()
             .and_then(hex_value)
-            .ok_or_else(|| invalid_path("local file URI path contains an invalid encoded component"))?;
+            .ok_or_else(|| {
+                invalid_path("local file URI path contains an invalid encoded component")
+            })?;
         let low = bytes
             .get(index + 2)
             .copied()
             .and_then(hex_value)
-            .ok_or_else(|| invalid_path("local file URI path contains an invalid encoded component"))?;
+            .ok_or_else(|| {
+                invalid_path("local file URI path contains an invalid encoded component")
+            })?;
         decoded.push((high << 4) | low);
         index += 3;
     }
@@ -206,7 +227,8 @@ fn canonicalize_uri_bytes(bytes: &[u8]) -> String {
             }
             Err(error) => {
                 let valid_end = error.valid_up_to();
-                let valid = std::str::from_utf8(&remaining[..valid_end]).expect("valid UTF-8 prefix must decode");
+                let valid = std::str::from_utf8(&remaining[..valid_end])
+                    .expect("valid UTF-8 prefix must decode");
                 push_uri_scalars(&mut canonical, valid);
                 let invalid_len = error.error_len().unwrap_or(1);
                 for byte in &remaining[valid_end..valid_end + invalid_len] {
@@ -292,7 +314,8 @@ mod tests {
             .iter()
             .map(|segment| segment.replace('%', "%25"))
             .collect::<Vec<_>>();
-        Path::parse(&format!("/{}", components.join("/"))).expect("generated canonical path must parse")
+        Path::parse(&format!("/{}", components.join("/")))
+            .expect("generated canonical path must parse")
     }
 
     proptest! {

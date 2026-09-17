@@ -29,9 +29,10 @@ use qubit_local_files::test_support::install_test_fault;
 #[test]
 fn test_host_required_writer_preserves_published_state_after_parent_sync_failure() {
     let root = tempfile::tempdir().expect("fixture root should exist");
-    let target = host_path_to_logical(&root.path().join("one/two/payload")).expect("target should be representable");
-    let filesystem =
-        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should construct");
+    let target = host_path_to_logical(&root.path().join("one/two/payload"))
+        .expect("target should be representable");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        .expect("host filesystem should construct");
     let mut writer = filesystem
         .open_writer(
             &target,
@@ -42,7 +43,8 @@ fn test_host_required_writer_preserves_published_state_after_parent_sync_failure
         )
         .expect("writer should open");
     Output::write_fully(&mut writer, b"payload").expect("writer should accept payload");
-    let _fault = install_test_fault("atomic-writer-created-parent-sync").expect("fault controller should install");
+    let _fault = install_test_fault("atomic-writer-created-parent-sync")
+        .expect("fault controller should install");
 
     let failure = writer
         .commit()
@@ -62,8 +64,11 @@ fn test_rooted_copy_budget_rejects_second_entry_without_partial_files() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     std::fs::create_dir(root.path().join("source")).expect("source should exist");
     for index in 0..100 {
-        std::fs::write(root.path().join("source").join(format!("entry-{index}")), b"x")
-            .expect("source entry should exist");
+        std::fs::write(
+            root.path().join("source").join(format!("entry-{index}")),
+            b"x",
+        )
+        .expect("source entry should exist");
     }
     let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
         .expect("rooted filesystem should construct");
