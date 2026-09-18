@@ -573,6 +573,8 @@ dependencies = [
 [[package]]
 name = "qubit-fs-testkit"
 version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27981fcf0f317b7f7322372b52927a39637d5fb058c5cdc086aaf32ce1875fa6"
 dependencies = [
  "qubit-fs",
  "qubit-io",
