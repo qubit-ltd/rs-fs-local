@@ -52,7 +52,7 @@ harness = false
 qubit-fs = { version = "0.2", default-features = false }
 qubit-local-files = "0.4"
 qubit-io = "0.17"
-qubit-fs-registry = { version = "0.6", path = "../rs-fs-registry", optional = true }
+qubit-fs-registry = { version = "0.6", optional = true }
 qubit-spi = { version = "0.12", optional = true }
 
 [features]

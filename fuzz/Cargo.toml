@@ -12,7 +12,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 qubit-fs-local = { path = "..", features = ["registry"] }
 qubit-fs = "0.2"
-qubit-fs-registry = { path = "../../rs-fs-registry", version = "0.6" }
+qubit-fs-registry = "0.6"
 
 [[bin]]
 name = "registry_uri_resolution"
