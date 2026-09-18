@@ -360,7 +360,7 @@ cleanup remains separate from ordinary deletion budgets.
 
 Opening writer or temporary sessions follows the `qubit-fs` 0.2 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
-[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery-in-06).
+[core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery).
 
 This provider advertises Conditional `RangeRead` for native regular-file windows.
 The adapter seeks and reads through the same opened native handle, retaining full

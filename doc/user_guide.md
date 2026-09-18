@@ -31,10 +31,11 @@ the configured filesystem, provider-decoded logical path, and a canonical URI.
 
 ## Scenario
 
-An application stores generated reports beneath `/srv/app-data` and must not
-treat that native root as an application path on every operation. The success
-condition is that `/reports/summary.csv` is addressed as a logical path through
-one rooted facade.
+An application stores generated reports beneath a stable native root such as
+`/srv/app-data` and must not treat that native root as an application path on
+every operation. The success condition is that `/reports/summary.csv` is
+addressed as a logical path through one rooted facade. The runnable example
+uses a temporary project-local root so it does not require elevated access.
 
 ## Installation and Minimal Configuration
 

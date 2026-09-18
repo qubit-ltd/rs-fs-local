@@ -35,9 +35,10 @@ cargo add qubit-fs-local@0.9 --features registry
 
 ## Quick Start
 
-For an application that must keep reports below `/srv/app-data`, create a
-rooted facade with the application's stable filesystem identity, then use
-absolute logical paths inside that authority:
+For an application that must keep reports below a stable native root such as
+`/srv/app-data`, create a rooted facade with the application's stable filesystem
+identity, then use absolute logical paths inside that authority. The example
+uses a temporary project-local root so it can be run without elevated access:
 
 ```rust
 use qubit_fs::Path as LogicalPath;
