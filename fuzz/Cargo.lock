@@ -209,6 +209,8 @@ dependencies = [
 [[package]]
 name = "qubit-fs-registry"
 version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "779b1e2730d243c16fa4e5e6560f776805811430ee4b9a445fd5e8802a415400"
 dependencies = [
  "qubit-fs",
  "qubit-redact",
