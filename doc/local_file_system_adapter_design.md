@@ -1,6 +1,6 @@
 # Qubit FS Local Adapter Design
 
-> Approved target design for `qubit-fs-local` 0.9.0 (package version `0.9.0`), reviewed against the public
+> Approved target design for `qubit-fs-local` 0.10.0 (package version `0.10.0`), reviewed against the public
 > `qubit-fs` 0.2 and `qubit-local-files` 0.4 boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
@@ -258,7 +258,7 @@ conservatively to `Indeterminate`.
 
 ## 11. Async boundary
 
-Version 0.9.0 implements synchronous `FileSystemSpi` only: no
+Version 0.10.0 implements synchronous `FileSystemSpi` only: no
 `AsyncFileSystemSpi`, boxed futures, runtime tasks, or automatic async registry
 provider around blocking I/O. Async copy is verified by providers implementing
 the async SPI.
@@ -286,6 +286,12 @@ caller descriptor and aliases. Rooted authority and `FileSystemId` are absent
 from canonical URIs, so replay must persist them with provider selection.
 Named selection chooses one provider; fallback requires an explicit chain, auto
 selection, or registry default selection.
+
+The opt-in `registry` feature also submits one process-host provider to the
+synchronous filesystem inventory. Its factory selects the finite
+`LocalResourcePolicy::standard()` limits. Rooted providers retain caller-owned
+authority and remain explicit registrations. Applications must link this crate
+to include its inventory submission in the final binary.
 
 ## 14. Platform boundary
 

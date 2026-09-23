@@ -1,6 +1,6 @@
 [package]
 name = "qubit-fs-local"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -44,6 +44,11 @@ name = "local_provider_mode_tests"
 path = "tests/local_provider_mode_tests.rs"
 required-features = ["registry"]
 
+[[test]]
+name = "local_inventory_tests"
+path = "tests/local_inventory_tests.rs"
+required-features = ["registry"]
+
 [[bench]]
 name = "local_filesystem_facade"
 harness = false
@@ -52,12 +57,12 @@ harness = false
 qubit-fs = { version = "0.2", default-features = false }
 qubit-local-files = "0.4"
 qubit-io = "0.17"
-qubit-fs-registry = { version = "0.6", optional = true }
-qubit-spi = { version = "0.12", optional = true }
+qubit-fs-registry = { version = "0.7", optional = true }
+qubit-spi = { version = "0.13", optional = true }
 
 [features]
 default = []
-registry = ["dep:qubit-fs-registry", "dep:qubit-spi"]
+registry = ["dep:qubit-fs-registry", "dep:qubit-spi", "qubit-fs-registry/inventory", "qubit-spi/inventory"]
 
 [dev-dependencies]
 proptest = "^1.11"

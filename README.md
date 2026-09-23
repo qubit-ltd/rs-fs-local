@@ -12,7 +12,7 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
-This README documents `qubit-fs-local` 0.9.0 (package version `0.9.0`).
+This README documents `qubit-fs-local` 0.10.0 (package version `0.10.0`).
 
 This version uses `qubit-fs` 0.2 and `qubit-local-files` 0.4. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
@@ -22,15 +22,15 @@ facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
 ## Installation
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-local@0.9
+cargo add qubit-fs@0.2 qubit-fs-local@0.10
 ```
 
 Enable registry integration only when registering the optional `file`
 provider with `qubit-fs-registry`:
 
 ```bash
-cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.9 --features registry
+cargo add qubit-fs-registry@0.7
+cargo add qubit-fs-local@0.10 --features registry
 ```
 
 ## Quick Start
@@ -112,6 +112,10 @@ asynchronous local `FileSystem` facade.
 - Optional `LocalFileSystemProvider` registration behind the `registry`
   feature; it resolves supported `file:` configurations to a filesystem, path,
   and canonical URI.
+- The `registry` feature submits one host provider with the finite
+  `LocalResourcePolicy::standard()` limits to the linked provider inventory.
+  Applications must link this crate (for example, `use qubit_fs_local as _;`)
+  before calling `FileSystemRegistry::from_inventory()`.
 - The provider accepts absolute `file:` URIs only. It rejects a remote
   authority, query, relative path, non-`file` scheme, and configuration options
   or credentials.

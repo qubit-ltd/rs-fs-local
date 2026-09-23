@@ -11,7 +11,7 @@
 主机文件系统，或希望把一个原生目录固定为 rooted 文件系统的 authority，同时不想在业务代码中
 重复处理 URI 解析和原生路径转换时，可以使用本 crate。
 
-本文档适用于 `qubit-fs-local` 0.9.0（包版本 `0.9.0`）。
+本文档适用于 `qubit-fs-local` 0.10.0（包版本 `0.10.0`）。
 
 本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不改变请求行为；
 writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
@@ -20,14 +20,14 @@ writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵�
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-local@0.9
+cargo add qubit-fs@0.2 qubit-fs-local@0.10
 ```
 
 只有需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才需要启用 registry 集成：
 
 ```bash
-cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.9 --features registry
+cargo add qubit-fs-registry@0.7
+cargo add qubit-fs-local@0.10 --features registry
 ```
 
 ## 快速开始
@@ -94,6 +94,9 @@ URI 解码、provider 规则和资源上限。`qubit-fs-local` 承担这一角�
 - 通过 host 和 rooted 构造路径提供本地文件的具体同步 `FileSystem` 门面。
 - 可选的 `LocalFileSystemProvider` 位于 `registry` feature 后；它将支持的 `file:` 配置
   解析为文件系统、路径和 canonical URI。
+- `registry` feature 会向链接期 inventory 提交一个采用有限
+  `LocalResourcePolicy::standard()` 上限的 host provider。应用需显式链接本 crate
+  （例如 `use qubit_fs_local as _;`），再调用 `FileSystemRegistry::from_inventory()`。
 - provider 仅接受绝对 `file:` URI；会拒绝远程 authority、query、相对路径、非 `file`
   scheme，以及配置 options 或 credentials。
 - rooted provider 会在构造阶段打开原生 authority。打开失败时构造函数返回错误，不会产生可

@@ -291,10 +291,10 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "{document} must identify the manifest's current major/minor version"
         );
         let stale_local_versions = [
-            "qubit-fs-local@0.1",
+            "qubit-fs-local@0.1.",
             "qubit-fs-local@0.2",
             "qubit-fs-local@0.3",
-            "qubit-fs-local 0.1",
+            "qubit-fs-local 0.1.",
             "qubit-fs-local 0.2",
             "qubit-fs-local 0.3",
             "qubit-fs-local = \"0.1",
@@ -303,7 +303,7 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
             "`qubit-fs-local` = \"0.1",
             "`qubit-fs-local` = \"0.2",
             "`qubit-fs-local` = \"0.3",
-            "`qubit-fs-local` 0.1",
+            "`qubit-fs-local` 0.1.",
             "`qubit-fs-local` 0.2",
             "`qubit-fs-local` 0.3",
         ];
