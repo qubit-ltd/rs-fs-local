@@ -8,6 +8,7 @@
 //! Optional registry integration for the local filesystem adapter.
 
 mod internal;
+mod inventory;
 mod local_file_system_provider;
 mod local_file_uri_path;
 

@@ -6,8 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.9.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.9.0`). This release integrates `qubit-fs` 0.2 and
+0.10.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.10.0`). This release integrates `qubit-fs` 0.2 and
 `qubit-local-files` 0.4.
 
 ## Conceptual Model
@@ -40,15 +40,15 @@ uses a temporary project-local root so it does not require elevated access.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-local@0.9
+cargo add qubit-fs@0.2 qubit-fs-local@0.10
 ```
 
 For registry use, enable the feature and add the registry crate in the
 application:
 
 ```bash
-cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.9 --features registry
+cargo add qubit-fs-registry@0.7
+cargo add qubit-fs-local@0.10 --features registry
 ```
 
 ## Core Workflow
@@ -196,6 +196,23 @@ Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
 
 ## Advanced Usage
+
+For an application that links this crate, the `registry` feature submits a
+host provider with `LocalResourcePolicy::standard()` to the synchronous
+filesystem inventory. A Cargo dependency declaration alone does not ensure
+the provider crate is linked into the final binary:
+
+```rust
+use qubit_fs_local as _;
+use qubit_fs_registry::FileSystemRegistry;
+
+let registry = FileSystemRegistry::from_inventory()?;
+assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Rooted providers retain an opened native authority and must be constructed
+and registered explicitly with the application's root and policy.
 
 Register a local provider to resolve a validated `file:` URI at application
 assembly time:

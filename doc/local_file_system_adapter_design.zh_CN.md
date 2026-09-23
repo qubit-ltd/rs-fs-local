@@ -4,7 +4,7 @@
 > `qubit-local-files` 0.4 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
-> 适用于 `qubit-fs-local` 0.9.0（包版本 `0.9.0`）与 `qubit-fs` 0.2 · [English design](local_file_system_adapter_design.md) ·
+> 适用于 `qubit-fs-local` 0.10.0（包版本 `0.10.0`）与 `qubit-fs` 0.2 · [English design](local_file_system_adapter_design.md) ·
 > [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
@@ -493,6 +493,9 @@ rooted authority 或 filesystem identity。
 identity，不能回到原来的 rooted filesystem。
 
 Registry feature 只增加配置/解析适配，不把 registry 依赖带入默认 native 使用路径。
+它还会向同步文件系统 inventory 提交一个进程 host provider，工厂使用有限的
+`LocalResourcePolicy::standard()` 上限。rooted provider 持有应用提供的 authority，仍须显式
+注册。应用必须链接本 crate，才能在最终二进制中包含其 inventory 提交。
 
 ## 14. 平台边界
 

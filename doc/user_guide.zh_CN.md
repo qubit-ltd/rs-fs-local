@@ -5,7 +5,7 @@
 ## 手册目标与读者
 
 本手册面向需要使用本地主机提供同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.9.0 版本（包版本 `0.9.0`）：直接创建 host/rooted 门面，以及可选的
+`qubit-fs-local` 0.10.0 版本（包版本 `0.10.0`）：直接创建 host/rooted 门面，以及可选的
 registry provider。本版本集成 `qubit-fs` 0.2 与 `qubit-local-files` 0.4。
 
 ## 概念模型
@@ -35,14 +35,14 @@ canonical URI。
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-local@0.9
+cargo add qubit-fs@0.2 qubit-fs-local@0.10
 ```
 
 如需 registry，请启用 feature，并在应用中添加 registry crate：
 
 ```bash
-cargo add qubit-fs-registry@0.6
-cargo add qubit-fs-local@0.9 --features registry
+cargo add qubit-fs-registry@0.7
+cargo add qubit-fs-local@0.10 --features registry
 ```
 
 ## 核心工作流
@@ -170,6 +170,21 @@ writer 和临时会话的打开遵循 `qubit-fs` 0.2 的 `OpenFailure` 契约。
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 ## 进阶用法
+
+应用链接本 crate 后，`registry` feature 会向同步文件系统 inventory 提交一个采用
+`LocalResourcePolicy::standard()` 有限资源上限的 host provider。仅在 Cargo 中声明依赖
+不能保证 provider crate 进入最终二进制，需要显式链接：
+
+```rust
+use qubit_fs_local as _;
+use qubit_fs_registry::FileSystemRegistry;
+
+let registry = FileSystemRegistry::from_inventory()?;
+assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+rooted provider 持有已打开的原生 authority，必须由应用传入 root 和 policy 显式构造并注册。
 
 在应用组装阶段注册本地 provider，解析经过校验的 `file:` URI：
 
