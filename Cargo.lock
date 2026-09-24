@@ -337,6 +337,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -563,9 +572,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-registry"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "779b1e2730d243c16fa4e5e6560f776805811430ee4b9a445fd5e8802a415400"
+checksum = "1425d6158dea08ecf8292fdb0a8179dd3aa194adf1bfa42caaf09e255bc97c13"
 dependencies = [
  "qubit-fs",
  "qubit-redact",
@@ -1180,12 +1189,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[package]]
-name = "inventory"
-version = "0.3.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
-dependencies = [
- "rustversion",
-]
