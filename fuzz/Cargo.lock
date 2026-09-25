@@ -196,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "qubit-fs",
  "qubit-fs-registry",
