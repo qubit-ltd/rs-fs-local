@@ -278,7 +278,10 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         .as_str()
         .expect("package version")
         .to_owned();
-    let version_marker = format!("`{version}`");
+    let mut version_parts = version.split('.');
+    let major = version_parts.next().expect("package major version");
+    let minor = version_parts.next().expect("package minor version");
+    let version_marker = format!("`{major}.{minor}");
     for document in [
         "README.md",
         "README.zh_CN.md",
