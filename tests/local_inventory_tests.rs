@@ -38,8 +38,7 @@ fn test_inventory_host_provider_has_standard_resource_limits() {
         nested.push("d");
         std::fs::create_dir(&nested).expect("nested directory");
     }
-    let path = qubit_fs_local::host_path_to_logical(root.path())
-        .expect("host path must convert to logical path");
+    let path = qubit_fs_local::host_path_to_logical(root.path()).expect("host path must convert to logical path");
     let uri = format!("file://{path}");
     let registry = FileSystemRegistry::from_inventory().expect("linked provider registry");
     let resolution = registry
