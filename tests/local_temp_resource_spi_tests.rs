@@ -118,10 +118,12 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
         std::fs::write(source.join("second"), b"second").expect("second source child must be written");
         let source_logical = host_path_to_logical(&source).expect("source path must convert to logical path");
         let target_logical = host_path_to_logical(&target).expect("target path must convert to logical path");
-        let failed_source_logical =
-            host_path_to_logical(&source.join("second")).expect("failed source path must convert to logical path");
-        let failed_target_logical =
-            host_path_to_logical(&target.join("second")).expect("failed target path must convert to logical path");
+        let source_children = ["first", "second"].map(|name| {
+            host_path_to_logical(&source.join(name)).expect("source child path must convert to logical path")
+        });
+        let target_children = ["first", "second"].map(|name| {
+            host_path_to_logical(&target.join(name)).expect("target child path must convert to logical path")
+        });
 
         let failure = LocalFileSystems::host(LocalResourcePolicy::unbounded())
             .expect("host filesystem must be created")
@@ -130,8 +132,13 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
 
         assert_eq!(Some(&source_logical), failure.error().path());
         assert_eq!(Some(&target_logical), failure.error().target());
-        assert_eq!(Some(&failed_source_logical), failure.error().failure_path());
-        assert_eq!(Some(&failed_target_logical), failure.error().failure_target(),);
+        let failed_source = failure.error().failure_path().expect("failed child source path");
+        let failed_target = failure.error().failure_target().expect("failed child target path");
+        let failed_child_index = source_children
+            .iter()
+            .position(|path| path == failed_source)
+            .expect("failure path must identify one of the source children");
+        assert_eq!(Some(&target_children[failed_child_index]), Some(failed_target));
     });
 }
 
