@@ -134,7 +134,8 @@ struct RootedFixture {
 impl RootedFixture {
     /// Creates a fresh descriptor-rooted local facade.
     fn new() -> Self {
-        let root = tempfile::tempdir().expect("fixture root must be created");
+        let current_directory = std::env::current_dir().expect("working directory must be available");
+        let root = tempfile::tempdir_in(current_directory).expect("fixture root must be created");
         std::fs::create_dir(root.path().join("fixture")).expect("fixture directory must be created");
         let id = FileSystemId::new("local-contract-root").expect("fixture filesystem identity must be valid");
         let file_system = LocalFileSystems::rooted_with_id(id, root.path(), LocalResourcePolicy::unbounded())
@@ -252,7 +253,8 @@ struct HostFixture {
 impl HostFixture {
     /// Creates a fresh host facade rooted at an isolated native directory.
     fn new() -> Self {
-        let root = tempfile::tempdir().expect("fixture root must be created");
+        let current_directory = std::env::current_dir().expect("working directory must be available");
+        let root = tempfile::tempdir_in(current_directory).expect("fixture root must be created");
         let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
         Self { root, file_system }
     }
