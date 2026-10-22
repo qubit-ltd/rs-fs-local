@@ -531,6 +531,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-budget"
+version = "0.9.1"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "qubit-collections"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -541,17 +548,17 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "fluent-uri",
- "qubit-budget",
+ "qubit-budget 0.9.1",
  "qubit-io",
- "qubit-redact",
+ "qubit-redact 0.10.0",
 ]
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -568,16 +575,16 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-registry"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "qubit-fs",
- "qubit-redact",
+ "qubit-redact 0.10.0",
  "qubit-spi",
 ]
 
 [[package]]
 name = "qubit-fs-testkit"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "qubit-fs",
  "qubit-io",
@@ -596,9 +603,8 @@ version = "0.5.0"
 dependencies = [
  "getrandom 0.4.3",
  "libc",
- "qubit-budget",
- "qubit-io",
- "qubit-redact",
+ "qubit-budget 0.7.1",
+ "qubit-redact 0.9.0",
  "rustix",
  "windows-sys",
 ]
@@ -607,8 +613,15 @@ dependencies = [
 name = "qubit-redact"
 version = "0.9.0"
 dependencies = [
+ "qubit-budget 0.7.1",
+]
+
+[[package]]
+name = "qubit-redact"
+version = "0.10.0"
+dependencies = [
  "fluent-uri",
- "qubit-budget",
+ "qubit-budget 0.9.1",
 ]
 
 [[package]]
@@ -1176,3 +1189,87 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[patch.unused]]
+name = "qubit-codec"
+version = "0.16.2"
+
+[[patch.unused]]
+name = "qubit-command"
+version = "0.11.0"
+
+[[patch.unused]]
+name = "qubit-config"
+version = "0.15.0"
+
+[[patch.unused]]
+name = "qubit-datatype"
+version = "0.15.0"
+
+[[patch.unused]]
+name = "qubit-event-bus"
+version = "0.20.1"
+
+[[patch.unused]]
+name = "qubit-event-bus-redis"
+version = "0.7.0"
+
+[[patch.unused]]
+name = "qubit-http"
+version = "0.16.0"
+
+[[patch.unused]]
+name = "qubit-ioc"
+version = "0.4.0"
+
+[[patch.unused]]
+name = "qubit-json"
+version = "0.12.0"
+
+[[patch.unused]]
+name = "qubit-local-files"
+version = "0.5.0"
+
+[[patch.unused]]
+name = "qubit-magika"
+version = "0.17.0"
+
+[[patch.unused]]
+name = "qubit-metadata"
+version = "0.7.0"
+
+[[patch.unused]]
+name = "qubit-mime"
+version = "0.20.0"
+
+[[patch.unused]]
+name = "qubit-model-metadata"
+version = "0.2.0"
+
+[[patch.unused]]
+name = "qubit-reflect"
+version = "0.2.1"
+
+[[patch.unused]]
+name = "qubit-task"
+version = "0.11.0"
+
+[[patch.unused]]
+name = "qubit-validation-rules"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "qubit-validator"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "qubit-value"
+version = "0.13.0"
+
+[[patch.unused]]
+name = "qubit-web"
+version = "0.3.0"
+
+[[patch.unused]]
+name = "qubit-websocket"
+version = "0.2.0"

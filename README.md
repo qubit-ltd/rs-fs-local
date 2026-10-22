@@ -12,9 +12,9 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
-This README documents `qubit-fs-local` 0.10.0 (package version `0.10.0`).
+This README documents `qubit-fs-local` 0.11.0 (package version `0.11.0`).
 
-This version uses `qubit-fs` 0.2 and `qubit-local-files` 0.5. Provider ceilings tighten resources
+This version uses `qubit-fs` 0.3 and `qubit-local-files` 0.4. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
@@ -22,15 +22,15 @@ facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
 ## Installation
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-local@0.10
+cargo add qubit-fs@0.3 qubit-fs-local@0.11
 ```
 
 Enable registry integration only when registering the optional `file`
 provider with `qubit-fs-registry`:
 
 ```bash
-cargo add qubit-fs-registry@0.7
-cargo add qubit-fs-local@0.10 --features registry
+cargo add qubit-fs-registry@0.8
+cargo add qubit-fs-local@0.11 --features registry
 ```
 
 ## Quick Start

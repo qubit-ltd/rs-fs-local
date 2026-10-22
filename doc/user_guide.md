@@ -6,9 +6,9 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.10.0 release: direct host/rooted facades and the optional registry provider
-(package version `0.10.0`). This release integrates `qubit-fs` 0.2 and
-`qubit-local-files` 0.5.
+0.11.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.11.0`). This release integrates `qubit-fs` 0.3 and
+`qubit-local-files` 0.4.
 
 ## Conceptual Model
 
@@ -40,15 +40,15 @@ uses a temporary project-local root so it does not require elevated access.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.2 qubit-fs-local@0.10
+cargo add qubit-fs@0.3 qubit-fs-local@0.11
 ```
 
 For registry use, enable the feature and add the registry crate in the
 application:
 
 ```bash
-cargo add qubit-fs-registry@0.7
-cargo add qubit-fs-local@0.10 --features registry
+cargo add qubit-fs-registry@0.8
+cargo add qubit-fs-local@0.11 --features registry
 ```
 
 ## Core Workflow
@@ -191,7 +191,7 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the `qubit-fs` 0.2 `OpenFailure` contract.
+Opening writer or temporary sessions follows the `qubit-fs` 0.3 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
 

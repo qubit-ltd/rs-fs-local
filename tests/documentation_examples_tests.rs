@@ -54,6 +54,26 @@ fn test_readme_and_user_guide_examples_compile() {
         "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\nqubit-spi = {spi}\n",
         toml_path(root),
     );
+    let sibling_root = root.parent().expect("candidate checkout has a parent");
+    let mut manifest = manifest;
+    let mut patches = Vec::new();
+    for (package, sibling) in [
+        ("qubit-fs", "rs-fs"),
+        ("qubit-fs-registry", "rs-fs-registry"),
+        ("qubit-redact", "rs-redact"),
+        ("qubit-io", "rs-io"),
+        ("qubit-spi", "rs-spi"),
+    ] {
+        let path = sibling_root.join(sibling);
+        if path.join("Cargo.toml").is_file() {
+            patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
+        }
+    }
+    if !patches.is_empty() {
+        manifest.push_str("\n[patch.crates-io]\n");
+        manifest.push_str(&patches.join("\n"));
+        manifest.push('\n');
+    }
     fs::write(workspace.path().join("Cargo.toml"), manifest).expect("manifest should be written");
 
     for (document_index, document) in [
