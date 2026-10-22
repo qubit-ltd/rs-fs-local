@@ -13,7 +13,7 @@
 
 本文档适用于 `qubit-fs-local` 0.10.0（包版本 `0.10.0`）。
 
-本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.4。provider 上限只收紧资源预算，不改变请求行为；
+本版本使用 `qubit-fs` 0.2 和 `qubit-local-files` 0.5。provider 上限只收紧资源预算，不改变请求行为；
 writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 

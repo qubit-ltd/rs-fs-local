@@ -13,12 +13,14 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Take;
 
+use qubit_io::Input;
+use qubit_io::StdRead;
 use qubit_local_files::LocalFileReader;
 
 /// Retains one native handle and limits consumption without reopening its path.
 pub(crate) struct LocalRangeReader {
     /// Native reader with a decreasing byte allowance.
-    inner: Take<LocalFileReader>,
+    inner: Take<StdRead<LocalFileReader>>,
 }
 
 impl LocalRangeReader {
@@ -44,7 +46,11 @@ impl LocalRangeReader {
     /// # Errors
     ///
     /// Propagates native seek failures for nonzero offsets inside range.
-    pub(crate) fn new(mut reader: LocalFileReader, offset: u64, length: Option<u64>) -> io::Result<Self> {
+    pub(crate) fn new(
+        mut reader: LocalFileReader,
+        offset: u64,
+        length: Option<u64>,
+    ) -> io::Result<Self> {
         let beyond_native_range = offset > i64::MAX as u64 && offset >= reader.metadata().len();
         let length = if length == Some(0) || beyond_native_range {
             0
@@ -55,7 +61,7 @@ impl LocalRangeReader {
             length.unwrap_or(u64::MAX)
         };
         Ok(Self {
-            inner: reader.take(length),
+            inner: reader.into_std_read().take(length),
         })
     }
 }
@@ -75,6 +81,6 @@ impl Read for LocalRangeReader {
     ///
     /// Propagates native read failures from the underlying handle.
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(output)
+        Read::read(&mut self.inner, output)
     }
 }
