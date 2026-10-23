@@ -725,7 +725,10 @@ fn verify_file_replacement(rooted: bool, keep: bool, cleanup_first: bool, missin
     assert_eq!(source_failure, retry.state());
     assert_eq!(FsErrorKind::InvalidState, retry.error().kind());
     assert_eq!(source_failure, temporary.keep().expect_err("keep retry").state());
-    temporary.cleanup().expect_err("uncertain source cannot be cleaned");
+    let cleanup_error = temporary.cleanup().expect_err("uncertain source cannot be cleaned");
+    assert_eq!(FsErrorKind::InvalidState, cleanup_error.kind());
+    assert_eq!(FsOperation::CleanupTemp, cleanup_error.operation());
+    assert_eq!(None, cleanup_error.effect_state());
     assert_eq!(TempResourceState::Indeterminate, temporary.state());
     assert_eq!(
         source_failure,
@@ -808,7 +811,10 @@ fn verify_directory_replacement(rooted: bool, keep: bool, cleanup_first: bool, m
     assert_eq!(source_failure, retry.state());
     assert_eq!(FsErrorKind::InvalidState, retry.error().kind());
     assert_eq!(source_failure, temporary.keep().expect_err("keep retry").state());
-    temporary.cleanup().expect_err("uncertain source cannot be cleaned");
+    let cleanup_error = temporary.cleanup().expect_err("uncertain source cannot be cleaned");
+    assert_eq!(FsErrorKind::InvalidState, cleanup_error.kind());
+    assert_eq!(FsOperation::CleanupTemp, cleanup_error.operation());
+    assert_eq!(None, cleanup_error.effect_state());
     assert_eq!(TempResourceState::Indeterminate, temporary.state());
     assert_eq!(
         source_failure,

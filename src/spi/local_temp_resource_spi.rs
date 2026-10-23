@@ -814,7 +814,10 @@ mod tests {
             .expect_err("replacement rejection");
         let mut adapter = LocalTempResourceSpi::file(error.into_parts().resource, false, "test".to_owned(), None);
         assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceIndeterminate);
-        adapter.cleanup().expect_err("uncertain source cannot be cleaned");
+        let cleanup_error = adapter.cleanup().expect_err("uncertain source cannot be cleaned");
+        assert_eq!(FsErrorKind::Indeterminate, cleanup_error.kind());
+        assert_eq!(FsOperation::CleanupTemp, cleanup_error.operation());
+        assert_eq!(Some(FsEffectState::Unchanged), cleanup_error.effect_state());
         assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceIndeterminate);
         drop(adapter);
         assert_eq!(
