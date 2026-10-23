@@ -525,7 +525,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-budget"
-version = "0.9.0"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac4f70174f2710e72f5b14ad20157c6b31255be0057dee76cf3b55af07708b34"
 dependencies = [
  "thiserror",
 ]
@@ -603,7 +605,8 @@ version = "0.5.0"
 dependencies = [
  "getrandom 0.4.3",
  "libc",
- "qubit-budget 0.7.1",
+ "qubit-budget 0.9.1",
+ "qubit-io",
  "qubit-redact 0.9.0",
  "rustix",
  "windows-sys",
@@ -612,8 +615,10 @@ dependencies = [
 [[package]]
 name = "qubit-redact"
 version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "240e7d45b9e8bd72ed7653b02c4fb16ea116b09feeaa07a4aa15a6475da5e2ec"
 dependencies = [
- "qubit-budget 0.7.1",
+ "qubit-budget 0.7.3",
 ]
 
 [[package]]
@@ -1227,12 +1232,8 @@ name = "qubit-json"
 version = "0.12.0"
 
 [[patch.unused]]
-name = "qubit-local-files"
-version = "0.5.0"
-
-[[patch.unused]]
 name = "qubit-magika"
-version = "0.17.0"
+version = "0.18.0"
 
 [[patch.unused]]
 name = "qubit-metadata"
@@ -1240,7 +1241,7 @@ version = "0.7.0"
 
 [[patch.unused]]
 name = "qubit-mime"
-version = "0.20.0"
+version = "0.21.0"
 
 [[patch.unused]]
 name = "qubit-model-metadata"

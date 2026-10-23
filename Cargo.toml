@@ -55,7 +55,7 @@ harness = false
 
 [dependencies]
 qubit-fs = { version = "0.3", default-features = false }
-qubit-local-files = "0.4"
+qubit-local-files = "0.5"
 qubit-io = "0.19"
 qubit-fs-registry = { version = "0.8", optional = true }
 qubit-spi = { version = "0.13", optional = true }
@@ -72,7 +72,7 @@ criterion = "^0.8"
 tempfile = "^3.27"
 qubit-io = "0.19"
 qubit-fs-testkit = "0.8"
-qubit-local-files = { version = "0.4", features = ["test-support"] }
+qubit-local-files = { version = "0.5", features = ["test-support"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
