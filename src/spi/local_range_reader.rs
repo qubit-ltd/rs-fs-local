@@ -63,6 +63,7 @@ impl LocalRangeReader {
 impl Input for LocalRangeReader {
     type Item = u8;
 
+    /// Reports whether the wrapped reader can serve bytes from its buffer.
     #[inline]
     fn is_buffered(&self) -> bool {
         self.inner.is_buffered()

@@ -571,6 +571,7 @@ dependencies = [
  "qubit-fs-testkit",
  "qubit-io",
  "qubit-local-files",
+ "qubit-redact 0.10.0",
  "qubit-spi",
  "serde_json",
  "tempfile",

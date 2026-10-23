@@ -76,38 +76,6 @@ impl LocalResourcePolicy {
         Self::bounded(list, copy, delete)
     }
 
-    /// Replaces listing ceilings; `None` explicitly leaves listing unbounded.
-    /// Other operation limits and lifecycle cleanup semantics are unchanged.
-    ///
-    /// # Parameters
-    ///
-    /// - `limits`: Replacement listing ceilings, or `None` for no ceilings.
-    ///
-    /// # Returns
-    ///
-    /// This policy with the replacement listing ceilings.
-    #[must_use]
-    pub const fn with_list_limits(mut self, limits: Option<LocalListResourceLimits>) -> Self {
-        self.list = limits;
-        self
-    }
-
-    /// Replaces copying ceilings; `None` explicitly leaves copying unbounded.
-    /// Other operation limits and lifecycle cleanup semantics are unchanged.
-    ///
-    /// # Parameters
-    ///
-    /// - `limits`: Replacement copy ceilings, or `None` for no ceilings.
-    ///
-    /// # Returns
-    ///
-    /// This policy with the replacement copy ceilings.
-    #[must_use]
-    pub const fn with_copy_limits(mut self, limits: Option<LocalCopyResourceLimits>) -> Self {
-        self.copy = limits;
-        self
-    }
-
     /// Sets finite per-request ceilings for listing, copying, and deletion.
     ///
     /// This does not enable recursive operation modes. Temporary-resource
@@ -140,6 +108,7 @@ impl LocalResourcePolicy {
     /// # Ok::<(), qubit_fs::error::FsError>(())
     /// ```
     #[must_use]
+    #[inline]
     pub const fn bounded(
         list: LocalListResourceLimits,
         copy: LocalCopyResourceLimits,
@@ -164,6 +133,7 @@ impl LocalResourcePolicy {
     /// assert!(LocalResourcePolicy::unbounded().list_limits().is_none());
     /// ```
     #[must_use]
+    #[inline]
     pub const fn unbounded() -> Self {
         Self {
             list: None,
@@ -176,13 +146,13 @@ impl LocalResourcePolicy {
     }
 
     /// Returns the listing limits, if recursive listing is bounded.
-    #[must_use]
+    #[inline]
     pub const fn list_limits(self) -> Option<LocalListResourceLimits> {
         self.list
     }
 
     /// Returns the copy limits, if recursive copying is bounded.
-    #[must_use]
+    #[inline]
     pub const fn copy_limits(self) -> Option<LocalCopyResourceLimits> {
         self.copy
     }
@@ -191,9 +161,62 @@ impl LocalResourcePolicy {
     ///
     /// Temporary-resource cleanup, `Drop`, and native publication cleanup do
     /// not use these ceilings.
-    #[must_use]
+    #[inline]
     pub const fn delete_limits(self) -> Option<LocalDeleteResourceLimits> {
         self.delete
+    }
+
+    /// Returns the local open retry timeout used for readers and writers.
+    #[inline]
+    pub const fn open_retry_timeout(self) -> Option<Duration> {
+        self.open_retry_timeout
+    }
+
+    /// Returns the maximum number of temporary-name attempts.
+    #[inline]
+    pub const fn temp_max_attempts(self) -> Option<NonZeroUsize> {
+        self.temp_max_attempts
+    }
+
+    /// Returns the directory reopen behavior used by recursive walkers.
+    #[must_use]
+    #[inline]
+    pub const fn directory_reopen_policy(self) -> LocalDirectoryReopenPolicy {
+        self.directory_reopen_policy
+    }
+
+    /// Replaces listing ceilings; `None` explicitly leaves listing unbounded.
+    /// Other operation limits and lifecycle cleanup semantics are unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Replacement listing ceilings, or `None` for no ceilings.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement listing ceilings.
+    #[must_use]
+    #[inline]
+    pub const fn with_list_limits(mut self, limits: Option<LocalListResourceLimits>) -> Self {
+        self.list = limits;
+        self
+    }
+
+    /// Replaces copying ceilings; `None` explicitly leaves copying unbounded.
+    /// Other operation limits and lifecycle cleanup semantics are unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Replacement copy ceilings, or `None` for no ceilings.
+    ///
+    /// # Returns
+    ///
+    /// This policy with the replacement copy ceilings.
+    #[must_use]
+    #[inline]
+    pub const fn with_copy_limits(mut self, limits: Option<LocalCopyResourceLimits>) -> Self {
+        self.copy = limits;
+        self
     }
 
     /// Selects ordinary recursive deletion ceilings; `None` explicitly leaves
@@ -210,35 +233,10 @@ impl LocalResourcePolicy {
     ///
     /// This policy with the replacement deletion ceilings.
     #[must_use]
+    #[inline]
     pub const fn with_delete_limits(mut self, limits: Option<LocalDeleteResourceLimits>) -> Self {
         self.delete = limits;
         self
-    }
-
-    /// Converts deletion ceilings without enabling recursive deletion itself.
-    pub(crate) const fn delete_options(self) -> native_files::options::LocalDeleteOptions {
-        match self.delete {
-            Some(limits) => limits.native_options(),
-            None => native_files::options::LocalDeleteOptions::new(),
-        }
-    }
-
-    /// Returns the local open retry timeout used for readers and writers.
-    #[must_use]
-    pub const fn open_retry_timeout(self) -> Option<Duration> {
-        self.open_retry_timeout
-    }
-
-    /// Returns the maximum number of temporary-name attempts.
-    #[must_use]
-    pub const fn temp_max_attempts(self) -> Option<NonZeroUsize> {
-        self.temp_max_attempts
-    }
-
-    /// Returns the directory reopen behavior used by recursive walkers.
-    #[must_use]
-    pub const fn directory_reopen_policy(self) -> LocalDirectoryReopenPolicy {
-        self.directory_reopen_policy
     }
 
     /// Sets the local open retry timeout used for readers and writers.
@@ -251,6 +249,7 @@ impl LocalResourcePolicy {
     ///
     /// This policy with the replacement retry timeout.
     #[must_use]
+    #[inline]
     pub const fn with_open_retry_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.open_retry_timeout = timeout;
         self
@@ -266,6 +265,7 @@ impl LocalResourcePolicy {
     ///
     /// This policy with the replacement temporary-name limit.
     #[must_use]
+    #[inline]
     pub const fn with_temp_max_attempts(mut self, max_attempts: Option<NonZeroUsize>) -> Self {
         self.temp_max_attempts = max_attempts;
         self
@@ -281,6 +281,7 @@ impl LocalResourcePolicy {
     ///
     /// This policy with the replacement directory reopen behavior.
     #[must_use]
+    #[inline]
     pub const fn with_directory_reopen_policy(mut self, policy: LocalDirectoryReopenPolicy) -> Self {
         self.directory_reopen_policy = policy;
         self
@@ -303,6 +304,14 @@ impl LocalResourcePolicy {
         match self.copy {
             Some(limits) => limits.native_options(),
             None => native_files::options::LocalCopyOptions::new(),
+        }
+    }
+
+    /// Converts deletion ceilings without enabling recursive deletion itself.
+    pub(crate) const fn delete_options(self) -> native_files::options::LocalDeleteOptions {
+        match self.delete {
+            Some(limits) => limits.native_options(),
+            None => native_files::options::LocalDeleteOptions::new(),
         }
     }
 }

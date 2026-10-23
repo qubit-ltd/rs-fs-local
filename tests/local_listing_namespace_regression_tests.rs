@@ -5,6 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+//! Regression coverage for local directory listings through aliased namespaces.
+
 #[cfg(unix)]
 #[test]
 fn test_host_alias_listing_stays_inside_requested_logical_root() {
@@ -27,7 +29,7 @@ fn test_host_alias_listing_stays_inside_requested_logical_root() {
     let request = host_path_to_logical(&root.join("alias")).expect("request should convert");
     let expected = host_path_to_logical(&root.join("alias/item")).expect("entry should convert");
     let mut stream = filesystem
-        .list(&ListScope::Path((request).clone()), ListOptions::default())
+        .list(&ListScope::Path(request.clone()), ListOptions::default())
         .expect("alias listing should open");
 
     assert_eq!(

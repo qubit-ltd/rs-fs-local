@@ -400,7 +400,7 @@ fn test_rooted_list_keeps_entry_paths_below_requested_root() {
 
     let mut stream = fixture
         .file_system()
-        .list(&ListScope::Path((requested_root).clone()), ListOptions::default())
+        .list(&ListScope::Path(requested_root.clone()), ListOptions::default())
         .expect("requested directory must be listed");
     let entry = stream
         .next_entry()
@@ -424,7 +424,7 @@ fn test_rooted_list_keeps_entry_paths_below_root_request() {
 
     let mut stream = fixture
         .file_system()
-        .list(&ListScope::Path((requested_root).clone()), ListOptions::default())
+        .list(&ListScope::Path(requested_root.clone()), ListOptions::default())
         .expect("root directory must be listed");
     let entry = stream
         .next_entry()
@@ -515,7 +515,7 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
     let mut stream = fixture
         .file_system()
         .list(
-            &ListScope::Path((root).clone()),
+            &ListScope::Path(root.clone()),
             ListOptions::default().with_prefix(Some("report%25name.txt".to_owned())),
         )
         .expect("local adapter must accept canonical prefixes");

@@ -215,6 +215,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
         }?;
         Ok(map_persist_outcome(result, request.target().clone()))
     }
+
     /// Publishes the native resource to its generated sibling target.
     ///
     /// # Returns
@@ -258,6 +259,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
         .map_err(logical_persist_error)?;
         Ok(map_persist_outcome(result, logical))
     }
+
     /// Removes the owned native resource through its creating authority.
     ///
     /// # Returns
@@ -350,6 +352,7 @@ fn map_persist_outcome(result: LocalPersistOutcome, logical: LogicalPath) -> Per
 /// - `target`: Authority-local native publication target.
 /// - `logical_target`: Caller-visible publication target retained on failure.
 /// - `options`: Native overwrite policy.
+/// - `provider_id`: Provider identity attached to the mapped failure.
 ///
 /// # Returns
 ///
@@ -397,6 +400,7 @@ fn persist_file(
 /// - `target`: Authority-local native publication target.
 /// - `logical_target`: Caller-visible publication target retained on failure.
 /// - `options`: Native overwrite policy.
+/// - `provider_id`: Provider identity attached to the mapped failure.
 ///
 /// # Returns
 ///
@@ -632,6 +636,7 @@ fn logical_persist_error(error: FsError) -> SpiPersistFailure {
 /// - `error`: Native cleanup failure, retained as the cause.
 /// - `source`: Retained resource authority after the failed cleanup.
 /// - `message`: Static context identifying the resource kind.
+/// - `provider_id`: Provider identity attached to the mapped error.
 ///
 /// # Returns
 ///
@@ -682,6 +687,7 @@ fn terminal_cleanup_error() -> FsError {
 ///
 /// - `error`: Native cleanup failure, retained as the cause.
 /// - `source`: Retained resource authority after the failed cleanup.
+/// - `provider_id`: Provider identity attached to the mapped error.
 ///
 /// # Returns
 ///
@@ -697,6 +703,7 @@ fn file_cleanup_error(error: LocalFileError, source: LocalTempSourceState, provi
 ///
 /// - `error`: Native cleanup failure, retained as the cause.
 /// - `source`: Retained resource authority after the failed cleanup.
+/// - `provider_id`: Provider identity attached to the mapped error.
 ///
 /// # Returns
 ///

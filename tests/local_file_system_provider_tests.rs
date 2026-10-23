@@ -80,7 +80,7 @@ fn test_local_resolution_lists_path_scope() {
     registry
         .register(
             LocalFileSystemProvider::rooted(
-                FileSystemId::new("listing-resolution").unwrap(),
+                FileSystemId::new("listing-resolution").expect("test identity must be valid"),
                 root.path(),
                 LocalResourcePolicy::unbounded(),
             )
@@ -88,7 +88,9 @@ fn test_local_resolution_lists_path_scope() {
         )
         .expect("register rooted provider");
     let resolution = registry
-        .resolve_config(&FileSystemConfig::new(ConnectionUri::parse("file:///").unwrap()))
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("file:///").expect("test URI must parse"),
+        ))
         .expect("resolve configured root");
     let scope = ListScope::Path(resolution.path().clone());
     let mut stream = resolution
@@ -154,10 +156,13 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
         .expect("the local provider descriptor must register");
     let unsupported_scheme =
         FileSystemConfig::new(ConnectionUri::parse("memory:///data").expect("test URI must parse"));
-    assert!(matches!(
-        registry.resolve_config(&unsupported_scheme),
-        Err(FileSystemRegistryError::Resolution(_))
-    ));
+    assert!(
+        matches!(
+            registry.resolve_config(&unsupported_scheme),
+            Err(FileSystemRegistryError::Resolution(_))
+        ),
+        "an unsupported scheme must fail during resolution"
+    );
 
     for config in [
         FileSystemConfig::new(ConnectionUri::parse("file:///data?cache=true").expect("test URI must parse")),
@@ -505,7 +510,10 @@ fn test_local_provider_rejects_embedded_secrets_without_panicking() {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| registry.resolve_config(&config)));
 
         let result = outcome.expect("embedded secrets must not panic");
-        assert!(matches!(result, Err(FileSystemRegistryError::Creation(_))));
+        assert!(
+            matches!(result, Err(FileSystemRegistryError::Creation(_))),
+            "embedded secrets must return a provider creation error"
+        );
     }
 }
 

@@ -7,6 +7,14 @@
 // =============================================================================
 //! Behavioral coverage for host and rooted local filesystem adapters.
 
+use std::fs;
+use std::io::ErrorKind;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
+use std::path::Path as NativePath;
+
 use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyFailureState;
@@ -44,10 +52,12 @@ use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
+use tempfile::TempDir;
+use tempfile::tempdir;
 
 /// Creates a rooted adapter whose native root is removed with the fixture.
-fn rooted_file_system() -> (tempfile::TempDir, FileSystem) {
-    let root = tempfile::tempdir().expect("test root must be created");
+fn rooted_file_system() -> (TempDir, FileSystem) {
+    let root = tempdir().expect("test root must be created");
     let file_system = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
         .expect("rooted local filesystem must be opened");
     (root, file_system)
@@ -99,7 +109,7 @@ fn test_rooted_writer_commit_rejects_repeated_terminal_operations() {
     assert_eq!(None, abort_error.effect_state());
     assert_eq!(
         b"committed",
-        std::fs::read(root.path().join("committed-terminal"))
+        fs::read(root.path().join("committed-terminal"))
             .expect("committed destination must remain unchanged")
             .as_slice(),
     );
@@ -141,7 +151,7 @@ fn test_rooted_writer_abort_rejects_repeated_terminal_operations() {
 /// for explicit facade cleanup without inventing a retryable native writer.
 #[test]
 fn test_host_commit_conflict_preserves_not_published_state() {
-    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let root = tempdir().expect("host fixture root must be created");
     let target = root.path().join("target");
     let logical = host_path_to_logical(&target).expect("host target path must be logical");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
@@ -152,7 +162,7 @@ fn test_host_commit_conflict_preserves_not_published_state() {
         )
         .expect("create-new writer must open before the conflict");
     Output::write_fully(&mut writer, b"staged").expect("writer must accept staged bytes");
-    std::fs::write(&target, b"concurrent").expect("concurrent destination must be installed");
+    fs::write(&target, b"concurrent").expect("concurrent destination must be installed");
 
     let failure = writer
         .commit()
@@ -172,7 +182,7 @@ fn test_host_commit_conflict_preserves_not_published_state() {
 /// abort performs native cleanup again instead of reporting false success.
 #[test]
 fn test_host_abort_failure_retains_writer_for_retry() {
-    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let root = tempdir().expect("host fixture root must be created");
     let target = root.path().join("target");
     let logical = host_path_to_logical(&target).expect("host target path must be logical");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
@@ -182,12 +192,12 @@ fn test_host_abort_failure_retains_writer_for_retry() {
             WriteOptions::default().with_disposition(WriteDisposition::CreateNew),
         )
         .expect("create-new writer must open");
-    let staging = std::fs::read_dir(root.path())
+    let staging = fs::read_dir(root.path())
         .expect("staging directory must be readable")
         .map(|entry| entry.expect("staging entry must be readable").path())
         .find(|path| path != &target)
         .expect("writer must create one staging entry");
-    std::fs::remove_file(staging).expect("external actor must remove the staging entry");
+    fs::remove_file(staging).expect("external actor must remove the staging entry");
 
     for _ in 0..2 {
         let error = writer
@@ -202,12 +212,10 @@ fn test_host_abort_failure_retains_writer_for_retry() {
 #[cfg(unix)]
 #[test]
 fn test_host_list_symlink_policy_controls_directory_traversal() {
-    use std::os::unix::fs::symlink;
-
-    let root = tempfile::tempdir().expect("listing root must be created");
-    let root_path = std::fs::canonicalize(root.path()).expect("listing fixture must avoid ambient parent aliases");
-    let outside = tempfile::tempdir().expect("listing target must be created");
-    std::fs::write(outside.path().join("child"), b"payload").expect("listing child must be written");
+    let root = tempdir().expect("listing root must be created");
+    let root_path = fs::canonicalize(root.path()).expect("listing fixture must avoid ambient parent aliases");
+    let outside = tempdir().expect("listing target must be created");
+    fs::write(outside.path().join("child"), b"payload").expect("listing child must be written");
     symlink(outside.path(), root.path().join("link")).expect("listing symlink must be created");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
     let logical_root = host_path_to_logical(&root_path).expect("listing root must be logical");
@@ -259,14 +267,12 @@ fn test_host_list_symlink_policy_controls_directory_traversal() {
 #[cfg(unix)]
 #[test]
 fn test_host_copy_symlink_policy_controls_directory_traversal() {
-    use std::os::unix::fs::symlink;
-
-    let root = tempfile::tempdir().expect("copy root must be created");
-    let root_path = std::fs::canonicalize(root.path()).expect("copy fixture must avoid ambient parent aliases");
-    let outside = tempfile::tempdir().expect("copy target must be created");
-    std::fs::write(outside.path().join("child"), b"payload").expect("copy child must be written");
+    let root = tempdir().expect("copy root must be created");
+    let root_path = fs::canonicalize(root.path()).expect("copy fixture must avoid ambient parent aliases");
+    let outside = tempdir().expect("copy target must be created");
+    fs::write(outside.path().join("child"), b"payload").expect("copy child must be written");
     let source = root_path.join("source");
-    std::fs::create_dir(&source).expect("copy source must be created");
+    fs::create_dir(&source).expect("copy source must be created");
     symlink(outside.path(), source.join("link")).expect("copy symlink must be created");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
     let source = host_path_to_logical(&source).expect("copy source must be logical");
@@ -280,7 +286,7 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
         )
         .expect("non-following tree copy must succeed");
     assert!(
-        std::fs::symlink_metadata(no_follow_target.join("link"))
+        fs::symlink_metadata(no_follow_target.join("link"))
             .expect("copied link must be present")
             .file_type()
             .is_symlink()
@@ -295,7 +301,7 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
         )
         .expect("following tree copy must succeed");
     assert_eq!(
-        std::fs::read(follow_target.join("link/child")).expect("followed copy child must be present"),
+        fs::read(follow_target.join("link/child")).expect("followed copy child must be present"),
         b"payload",
     );
 }
@@ -319,10 +325,10 @@ fn test_rooted_writer_commit_reports_atomic_rename_publication() {
 #[cfg(unix)]
 #[test]
 fn test_host_rename_supports_durable_operation() {
-    let root = tempfile::tempdir().expect("rename root must be created");
+    let root = tempdir().expect("rename root must be created");
     let source = root.path().join("source");
     let target = root.path().join("target");
-    std::fs::write(&source, b"payload").expect("rename source must be written");
+    fs::write(&source, b"payload").expect("rename source must be written");
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
 
     let outcome = file_system
@@ -343,7 +349,7 @@ fn test_host_rename_supports_durable_operation() {
 #[test]
 fn test_host_stat_preserves_character_device_kind() {
     let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
-    let path = host_path_to_logical(std::path::Path::new("/dev/null")).expect("null-device path must be logical");
+    let path = host_path_to_logical(NativePath::new("/dev/null")).expect("null-device path must be logical");
 
     let metadata = file_system.stat(&path).expect("null-device metadata must be readable");
 
@@ -354,11 +360,11 @@ fn test_host_stat_preserves_character_device_kind() {
 /// directory.
 #[test]
 fn test_stat_maps_not_a_directory_io_kind() {
-    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let root = tempdir().expect("host fixture root must be created");
     let file_system =
         LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let component = root.path().join("component");
-    std::fs::write(&component, b"payload").expect("file fixture must be written");
+    fs::write(&component, b"payload").expect("file fixture must be written");
     file_system
         .stat(&host_path_to_logical(&component).expect("component path must be logical"))
         .expect("file fixture metadata must be readable");
@@ -366,10 +372,10 @@ fn test_stat_maps_not_a_directory_io_kind() {
     let error = file_system
         .stat(&host_path_to_logical(&component.join("child")).expect("child path must be logical"))
         .expect_err("a child below a regular file must fail");
-    let native = std::fs::symlink_metadata(component.join("child")).expect_err("native child lookup must fail");
+    let native = fs::symlink_metadata(component.join("child")).expect_err("native child lookup must fail");
     let expected = match native.kind() {
-        std::io::ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
-        std::io::ErrorKind::NotFound => FsErrorKind::NotFound,
+        ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
+        ErrorKind::NotFound => FsErrorKind::NotFound,
         unexpected => panic!("unexpected native lookup category: {unexpected:?}"),
     };
     assert_eq!(error.kind(), expected);
@@ -578,9 +584,9 @@ fn test_rooted_operations_map_missing_entries() {
 /// Recursive directory deletion rejects a regular file without removing it.
 #[test]
 fn test_rooted_delete_directory_rejects_regular_file() {
-    let root = tempfile::tempdir().expect("rooted fixture root must exist");
+    let root = tempdir().expect("rooted fixture root must exist");
     let file = root.path().join("regular-file");
-    std::fs::write(&file, b"must survive").expect("regular fixture file must be written");
+    fs::write(&file, b"must survive").expect("regular fixture file must be written");
     let file_system = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
         .expect("rooted local filesystem must be opened");
 
@@ -589,10 +595,7 @@ fn test_rooted_delete_directory_rejects_regular_file() {
         .expect_err("a regular file is not a directory");
 
     assert_eq!(FsErrorKind::NotDirectory, error.kind());
-    assert_eq!(
-        b"must survive",
-        std::fs::read(&file).expect("file must remain").as_slice(),
-    );
+    assert_eq!(b"must survive", fs::read(&file).expect("file must remain").as_slice(),);
 }
 
 /// Relative logical paths are rejected before native filesystem operations.
@@ -626,7 +629,7 @@ fn path(value: &str) -> Path {
 
 /// Converts an isolated native fixture path into the host adapter namespace.
 #[cfg(unix)]
-fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
+fn host_path(root: &TempDir, relative: &str) -> Path {
     let native = root.path().join(relative);
     host_path_to_logical(&native).expect("test host logical path must be valid")
 }
@@ -635,7 +638,7 @@ fn host_path(root: &tempfile::TempDir, relative: &str) -> Path {
 #[cfg(unix)]
 #[test]
 fn test_host_operations_map_missing_native_entries() {
-    let root = tempfile::tempdir().expect("host fixture root must be created");
+    let root = tempdir().expect("host fixture root must be created");
     let file_system =
         LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let missing = host_path(&root, "missing");
@@ -677,7 +680,7 @@ fn test_host_operations_map_missing_native_entries() {
     assert_eq!(FsErrorKind::NotFound, writer.error().kind());
 
     let regular_file = root.path().join("regular-file");
-    std::fs::write(&regular_file, b"file").expect("regular fixture file must be written");
+    fs::write(&regular_file, b"file").expect("regular fixture file must be written");
     let create_directory = file_system
         .create_directory(&host_path(&root, "regular-file"), CreateDirectoryOptions::default())
         .expect_err("a file cannot be created as a directory");
@@ -701,9 +704,9 @@ fn test_host_operations_map_missing_native_entries() {
 #[cfg(unix)]
 #[test]
 fn test_host_delete_directory_rejects_regular_file() {
-    let root = tempfile::tempdir().expect("host fixture root must exist");
+    let root = tempdir().expect("host fixture root must exist");
     let file = root.path().join("regular-file");
-    std::fs::write(&file, b"must survive").expect("regular fixture file must be written");
+    fs::write(&file, b"must survive").expect("regular fixture file must be written");
     let file_system =
         LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
 
@@ -715,24 +718,19 @@ fn test_host_delete_directory_rejects_regular_file() {
         .expect_err("a regular file is not a directory");
 
     assert_eq!(FsErrorKind::NotDirectory, error.kind());
-    assert_eq!(
-        b"must survive",
-        std::fs::read(&file).expect("file must remain").as_slice(),
-    );
+    assert_eq!(b"must survive", fs::read(&file).expect("file must remain").as_slice(),);
 }
 
 /// Host metadata preserves a symbolic link's own entry kind.
 #[cfg(unix)]
 #[test]
 fn test_host_metadata_maps_symbolic_link_kind() {
-    use std::os::unix::fs::symlink;
-
-    let root = tempfile::tempdir().expect("host fixture root must exist");
+    let root = tempdir().expect("host fixture root must exist");
     let file_system =
         LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let referent = root.path().join("referent");
     let link = root.path().join("link");
-    std::fs::write(&referent, b"payload").expect("referent should be written");
+    fs::write(&referent, b"payload").expect("referent should be written");
     symlink(&referent, &link).expect("symbolic link should be created");
 
     let metadata = file_system
@@ -745,9 +743,7 @@ fn test_host_metadata_maps_symbolic_link_kind() {
 #[cfg(unix)]
 #[test]
 fn test_host_metadata_maps_unix_socket_kind() {
-    use std::os::unix::net::UnixListener;
-
-    let root = tempfile::tempdir().expect("host fixture root must exist");
+    let root = tempdir().expect("host fixture root must exist");
     let file_system =
         LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host local filesystem must be opened");
     let socket = root.path().join("socket");
@@ -756,7 +752,7 @@ fn test_host_metadata_maps_unix_socket_kind() {
         // Sandboxed Unix environments may deny AF_UNIX creation even though
         // they report a Unix target. The adapter contract cannot be exercised
         // without a socket fixture in that environment.
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+        Err(error) if error.kind() == ErrorKind::PermissionDenied => {
             return;
         }
         Err(error) => panic!("Unix-domain socket should be created: {error}"),
