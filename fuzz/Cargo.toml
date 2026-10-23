@@ -11,8 +11,14 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 qubit-fs-local = { path = "..", features = ["registry"] }
-qubit-fs = "0.2"
-qubit-fs-registry = "0.7"
+qubit-fs = { path = "../../rs-fs", version = "0.3" }
+qubit-fs-registry = { path = "../../rs-fs-registry", version = "0.8" }
+
+[patch.crates-io]
+qubit-fs = { path = "../../rs-fs" }
+qubit-local-files = { path = "../../rs-local-files" }
+qubit-io = { path = "../../rs-io" }
+qubit-redact = { path = "../../rs-redact" }
 
 [[bin]]
 name = "registry_uri_resolution"

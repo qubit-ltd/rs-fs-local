@@ -54,10 +54,10 @@ name = "local_filesystem_facade"
 harness = false
 
 [dependencies]
-qubit-fs = { version = "0.3", default-features = false }
-qubit-local-files = "0.5"
-qubit-io = "0.19"
-qubit-fs-registry = { version = "0.8", optional = true }
+qubit-fs = { path = "../rs-fs", version = "0.3", default-features = false }
+qubit-local-files = { path = "../rs-local-files", version = "0.5" }
+qubit-io = { path = "../rs-io", version = "0.19" }
+qubit-fs-registry = { path = "../rs-fs-registry", version = "0.8", optional = true }
 qubit-spi = { version = "0.13", optional = true }
 
 [features]
@@ -70,9 +70,16 @@ toml = "^0.9"
 serde_json = "^1.0"
 criterion = "^0.8"
 tempfile = "^3.27"
-qubit-io = "0.19"
-qubit-fs-testkit = "0.8"
-qubit-local-files = { version = "0.5", features = ["test-support"] }
+qubit-io = { path = "../rs-io", version = "0.19" }
+qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.8" }
+qubit-local-files = { path = "../rs-local-files", version = "0.5", features = ["test-support"] }
+
+[patch.crates-io]
+qubit-fs = { path = "../rs-fs" }
+qubit-local-files = { path = "../rs-local-files" }
+qubit-io = { path = "../rs-io" }
+qubit-redact = { path = "../rs-redact" }
+qubit-fs-testkit = { path = "../rs-fs-testkit" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
