@@ -49,6 +49,14 @@ name = "local_inventory_tests"
 path = "tests/local_inventory_tests.rs"
 required-features = ["registry"]
 
+[[test]]
+name = "local_range_read_tests"
+path = "tests/spi_tests/local_range_reader_tests.rs"
+
+[[test]]
+name = "local_path_mapper_tests"
+path = "tests/path_tests/local_path_mapper_tests.rs"
+
 [[bench]]
 name = "local_filesystem_facade"
 harness = false
