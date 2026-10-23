@@ -8,19 +8,17 @@
 //! Byte windows on an already-open native regular file.
 
 use std::io;
-use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::io::Take;
 
 use qubit_io::Input;
-use qubit_io::StdRead;
+use qubit_io::LimitInput;
 use qubit_local_files::LocalFileReader;
 
 /// Retains one native handle and limits consumption without reopening its path.
 pub(crate) struct LocalRangeReader {
     /// Native reader with a decreasing byte allowance.
-    inner: Take<StdRead<LocalFileReader>>,
+    inner: LimitInput<LocalFileReader>,
 }
 
 impl LocalRangeReader {
@@ -46,11 +44,7 @@ impl LocalRangeReader {
     /// # Errors
     ///
     /// Propagates native seek failures for nonzero offsets inside range.
-    pub(crate) fn new(
-        mut reader: LocalFileReader,
-        offset: u64,
-        length: Option<u64>,
-    ) -> io::Result<Self> {
+    pub(crate) fn new(mut reader: LocalFileReader, offset: u64, length: Option<u64>) -> io::Result<Self> {
         let beyond_native_range = offset > i64::MAX as u64 && offset >= reader.metadata().len();
         let length = if length == Some(0) || beyond_native_range {
             0
@@ -61,26 +55,81 @@ impl LocalRangeReader {
             length.unwrap_or(u64::MAX)
         };
         Ok(Self {
-            inner: reader.into_std_read().take(length),
+            inner: LimitInput::new(reader, length),
         })
     }
 }
 
-impl Read for LocalRangeReader {
-    /// Consumes at most the remaining window, propagating native read errors.
+impl Input for LocalRangeReader {
+    type Item = u8;
+
+    #[inline]
+    fn is_buffered(&self) -> bool {
+        self.inner.is_buffered()
+    }
+
+    /// Reads bytes from the remaining range into the requested output slice.
     ///
-    /// # Parameters
+    /// # Safety
     ///
-    /// - `output`: Destination buffer for bytes read from the window.
-    ///
-    /// # Returns
-    ///
-    /// The number of bytes copied into `output`, which may be zero at EOF.
-    ///
-    /// # Errors
-    ///
-    /// Propagates native read failures from the underlying handle.
-    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-        Read::read(&mut self.inner, output)
+    /// The caller must ensure `index..index + count` is a valid range in
+    /// `output`.
+    #[inline]
+    unsafe fn read_unchecked(&mut self, output: &mut [u8], index: usize, count: usize) -> io::Result<usize> {
+        // SAFETY: The caller guarantees the requested output range is valid.
+        unsafe { self.inner.read_unchecked(output, index, count) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Seek;
+
+    use qubit_io::Input;
+    use qubit_local_files::LocalFileSystem;
+
+    use super::LocalRangeReader;
+
+    #[test]
+    fn test_indexed_window_stops_without_consuming_suffix() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("source");
+        std::fs::write(&path, b"012345").expect("seed");
+        let file = LocalFileSystem::host()
+            .expect("host")
+            .open_reader(&path)
+            .expect("reader");
+        let mut reader = LocalRangeReader::new(file, 1, Some(3)).expect("range");
+        let mut bytes = [b'!'; 7];
+        // SAFETY: 2..5 is a valid output range.
+        let count = unsafe { reader.read_unchecked(&mut bytes, 2, 3) }.expect("read");
+        assert_eq!(count, 3);
+        assert_eq!(&bytes, b"!!123!!");
+        assert_eq!(reader.inner.remaining(), 0);
+        assert_eq!(reader.inner.inner_mut().stream_position().expect("position"), 4);
+        assert_eq!(reader.read(&mut [0; 1]).expect("window EOF"), 0);
+        assert_eq!(reader.inner.inner_mut().stream_position().expect("position"), 4);
+    }
+
+    #[test]
+    fn test_empty_window_does_not_seek_or_read() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("source");
+        std::fs::write(&path, b"012345").expect("seed");
+        let file = LocalFileSystem::host()
+            .expect("host")
+            .open_reader(&path)
+            .expect("reader");
+        let mut reader = LocalRangeReader::new(file, 5, Some(0)).expect("empty range");
+        assert_eq!(reader.inner.inner_mut().stream_position().expect("position"), 0);
+        let mut bytes = [b'!'; 2];
+        // SAFETY: 2..2 is an empty range at the end of the slice.
+        assert_eq!(
+            unsafe { reader.read_unchecked(&mut bytes, 2, 0) }.expect("empty read"),
+            0
+        );
+        assert_eq!(reader.read(&mut bytes).expect("window EOF"), 0);
+        assert_eq!(&bytes, b"!!");
+        assert_eq!(reader.inner.inner_mut().stream_position().expect("position"), 0);
     }
 }

@@ -146,7 +146,7 @@ fn test_local_range_preserves_native_seek_result() {
             // extreme offsets. Preserve the read result as well as seek errors.
             let mut native_bytes = [0; 1];
             let mut bytes = [0; 1];
-            let native_read = std::io::Read::read(&mut native_reader, &mut native_bytes);
+            let native_read = Input::read(&mut native_reader, &mut native_bytes);
             let read = reader.read(&mut bytes);
             match native_read {
                 Ok(native_count) => {
