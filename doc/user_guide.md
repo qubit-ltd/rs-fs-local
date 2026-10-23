@@ -8,7 +8,7 @@ This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
 0.11.0 release: direct host/rooted facades and the optional registry provider
 (package version `0.11.0`). This release integrates `qubit-fs` 0.3 and
-`qubit-local-files` 0.4.
+`qubit-local-files` 0.5.
 
 ## Conceptual Model
 
@@ -366,8 +366,9 @@ application-specific read-only reconciliation.
   for the configured hierarchical root. `ListScope::Namespace` is rejected before
   native I/O.
 - This provider advertises Conditional `RangeRead` for native regular-file windows.
-  The adapter seeks and reads through the same opened native handle, retaining full
-  resource metadata. Zero-length, EOF, and beyond-EOF windows are empty after checking
+  The adapter wraps the already opened `LocalFileReader` in `LimitInput`; it does
+  not reopen the path. It seeks and reads through the same native handle, retaining
+  full resource metadata. Zero-length, EOF, and beyond-EOF windows are empty after checking
   resource existence; missing paths still fail. This does not promise a snapshot
   under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
   range support, so local prefix reads continue to use bounded sequential consumption.

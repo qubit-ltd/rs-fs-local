@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter Design
 
-> Approved target design for `qubit-fs-local` 0.10.0 (package version `0.10.0`), reviewed against the public
-> `qubit-fs` 0.2 and `qubit-local-files` 0.5 boundaries. Implementation and regression
+> Approved target design for `qubit-fs-local` 0.11.0 (package version `0.11.0`), reviewed against the public
+> `qubit-fs` 0.3 and `qubit-local-files` 0.5 boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
 > [中文设计文档](local_file_system_adapter_design.zh_CN.md) · [User guide](user_guide.md)
@@ -258,7 +258,7 @@ conservatively to `Indeterminate`.
 
 ## 11. Async boundary
 
-Version 0.10.0 implements synchronous `FileSystemSpi` only: no
+Version 0.11.0 implements synchronous `FileSystemSpi` only: no
 `AsyncFileSystemSpi`, boxed futures, runtime tasks, or automatic async registry
 provider around blocking I/O. Async copy is verified by providers implementing
 the async SPI.
@@ -364,13 +364,14 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the `qubit-fs` 0.2 `OpenFailure` contract.
+Opening writer or temporary sessions follows the `qubit-fs` 0.3 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery).
 
 This provider advertises Conditional `RangeRead` for native regular-file windows.
-The adapter seeks and reads through the same opened native handle, retaining full
-resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
+The adapter wraps the already opened `LocalFileReader` in `LimitInput`; it does
+not reopen the path. It seeks and reads through the same native handle, retaining
+full resource metadata. Zero-length, EOF and beyond-EOF windows are empty after checking
 resource existence; missing paths still fail. This does not promise a snapshot
 under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
 range support, so local prefix reads continue to use bounded sequential consumption.

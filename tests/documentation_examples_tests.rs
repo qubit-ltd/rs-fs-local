@@ -59,6 +59,7 @@ fn test_readme_and_user_guide_examples_compile() {
     let mut patches = Vec::new();
     for (package, sibling) in [
         ("qubit-fs", "rs-fs"),
+        ("qubit-local-files", "rs-local-files"),
         ("qubit-fs-registry", "rs-fs-registry"),
         ("qubit-redact", "rs-redact"),
         ("qubit-io", "rs-io"),
@@ -116,6 +117,8 @@ fn test_readme_and_user_guide_examples_compile() {
         "qubit-fs",
         "qubit-fs-registry",
         "qubit-fs-local",
+        "qubit-local-files",
+        "qubit-io",
         "qubit-spi",
     ] {
         assert_eq!(

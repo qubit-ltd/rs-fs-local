@@ -6,7 +6,7 @@
 
 本手册面向需要使用本地主机提供同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
 `qubit-fs-local` 0.11.0 版本（包版本 `0.11.0`）：直接创建 host/rooted 门面，以及可选的
-registry provider。本版本集成 `qubit-fs` 0.3 与 `qubit-local-files` 0.4。
+registry provider。本版本集成 `qubit-fs` 0.3 与 `qubit-local-files` 0.5。
 
 ## 概念模型
 
@@ -314,6 +314,7 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
 - 列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
   `ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
 - 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
+  句柄上的 `LocalFileReader` 外层包装 `LimitInput`，不会重新打开路径。它在同一 native
   句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
   资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
   Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
