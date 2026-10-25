@@ -17,7 +17,6 @@ qubit-fs-registry = { path = "../../rs-fs-registry", version = "0.8" }
 [patch.crates-io]
 qubit-fs = { path = "../../rs-fs" }
 qubit-local-files = { path = "../../rs-local-files" }
-qubit-io = { path = "../../rs-io" }
 qubit-redact = { path = "../../rs-redact" }
 
 [[bin]]
