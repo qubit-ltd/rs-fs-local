@@ -100,8 +100,8 @@ operation SPI types.
 `properties()` returns immutable, I/O-free `ProviderProperties` containing
 `FileSystemInfo` (configured `FileSystemId`, provider ID, and
 `PathSemantics::Hierarchical`), host/rooted authority description, native
-`FileSystemCapabilities`, conservative `FileSystemLimits`, absolute
-`PathConstraints`, and safe diagnostics. Capabilities such as atomic
+`FileSystemCapabilities`, conservative `FileSystemLimits`, host-absolute or
+rooted-either-form `PathConstraints`, and safe diagnostics. Capabilities such as atomic
 rename/replace, atomic temporary persist, and durability are conditional on
 native evidence. `FileSystemLimits::unknown()` is retained where native units
 cannot represent logical UTF-8 text limits because of percent expansion and
@@ -134,9 +134,10 @@ form is `/<drive>:/...`, not a cross-drive global root.
 
 ### 7.3 Rooted filesystem
 
-Rooted logical `/` denotes the retained native authority. Remaining components
-are mapped in `Rooted` scope; containment, descriptors, symlinks, and race
-handling remain in the native service.
+Rooted logical `/` denotes the retained native authority. Absolute paths start
+there; relative paths resolve from the native virtual working directory, which
+starts at `/`. Components are mapped in `Rooted` scope; containment, descriptors,
+symlinks, and race handling remain in the native service.
 
 ### 7.4 Multiple and returned paths
 

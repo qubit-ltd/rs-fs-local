@@ -183,19 +183,23 @@ fn test_unknown_text_limits_do_not_accept_invalid_native_components() {
     assert_eq!(0, std::fs::read_dir(root.path()).expect("unchanged root").count());
 }
 
-/// Relative logical paths fail validation before a rooted target is created.
+/// Relative logical paths resolve from the rooted virtual working directory.
 #[test]
-fn test_rooted_relative_logical_path_fails_before_io() {
+fn test_rooted_relative_logical_path_resolves_from_virtual_working_directory() {
     let root = tempfile::tempdir().expect("fixture root");
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let relative = Path::parse("relative-target").expect("relative path text");
 
-    let error = fs
+    fs
         .write_all(&relative, b"payload", WriteOptions::default())
-        .expect_err("rooted filesystem requires absolute logical paths");
+        .expect("rooted relative path must resolve from the virtual working directory");
 
-    assert_eq!(FsErrorKind::InvalidPath, error.error().kind());
-    assert!(!root.path().join("relative-target").exists());
+    assert_eq!(
+        b"payload",
+        std::fs::read(root.path().join("relative-target"))
+            .expect("relative target must be created below the rooted authority")
+            .as_slice(),
+    );
 }
 
 /// Encoded dot components fail conversion before filesystem mutation.

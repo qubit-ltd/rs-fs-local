@@ -157,14 +157,15 @@ Capability 只声明当前平台和当前配置真正保证的语义。例如：
 将 native 限制乘以猜测常量写入逻辑属性。解码后的路径仍由 codec、native 校验和操作系统
 限制共同约束。
 
-两个 local configured filesystem 都使用 hierarchical、absolute logical path：
+Host 使用 hierarchical、absolute logical path；Rooted 使用 hierarchical path，支持绝对和相对形式：
 
 - host 使用 platform-defined canonical absolute form，不能依赖调用时 current
   working directory；Unix `/` 表示 native root，Windows 第一版使用
   `/<drive>:/...` 且不把 `/` 伪装成跨 drive 的全局 root；
-- rooted logical `/` 表示已打开的 native root authority；
-- relative logical path、dot component 等稳定限制由 `PathConstraints` 在 adapter
-  I/O 前拒绝；
+- rooted logical `/` 表示已打开的 native root authority；绝对路径从该 authority 根开始，
+  相对路径从初始为 `/` 的 native 虚拟工作目录解析；
+- Host 的 absolute 形式由 `PathConstraints` 在 adapter I/O 前校验；Rooted 的词法归一化和
+  越界拒绝委托 native resolver；
 - platform prefix/drive 与 canonical native text 的转换限制由
   `LocalPaths`/`LocalPathCodec` 在同一无副作用阶段执行；
 - 运行时 mount、device、symlink 或 reparse 状态不能伪装成静态
@@ -210,9 +211,10 @@ absolute path：
 
 ### 7.3 Rooted filesystem
 
-Rooted 模式去除逻辑 absolute root，把剩余 component 转为相对于 native root 的安全
-序列，交给 `native_files::path::LocalPaths::from_canonical_components`（`Rooted` scope），再调用
-已通过 `native_files::LocalFileSystem::rooted` 配置的统一 native service。
+Rooted 模式将绝对路径的逻辑 root 映射到 native root；相对路径保留相对形式交给 native
+resolver。组件 codec 仍交由 `native_files::path::LocalPaths::from_canonical_components`
+（`Rooted` scope），随后调用已通过 `native_files::LocalFileSystem::rooted` 配置的统一 native
+service。
 
 Adapter 只执行 provider representation 转换；symlink/reparse containment、descriptor
 traversal 和 race-sensitive 逻辑全部由 native 层完成。

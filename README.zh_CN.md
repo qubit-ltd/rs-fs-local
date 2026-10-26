@@ -33,8 +33,8 @@ cargo add qubit-fs-local@0.11 --features registry
 ## 快速开始
 
 如果应用必须将报表保留在 `/srv/app-data` 等稳定原生根目录下，请以应用的稳定文件系统标识
-创建 rooted 门面，并在该 authority 内使用绝对逻辑路径。示例使用项目内临时根目录，运行时
-无需提升权限：
+创建 rooted 门面，并在该 authority 内使用逻辑路径。Rooted 相对路径从初始为 `/` 的虚拟工作
+目录解析，也接受绝对逻辑路径。示例使用项目内临时根目录，运行时无需提升权限：
 
 ```rust
 use qubit_fs::Path as LogicalPath;

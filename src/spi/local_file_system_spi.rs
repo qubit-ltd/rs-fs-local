@@ -347,7 +347,10 @@ impl LocalFileSystemSpi {
             // lengths. Native validity and size limits remain enforced by
             // the native backend.
             FileSystemLimits::unknown(),
-            PathConstraints::absolute(),
+            match native.scope() {
+                native_files::path::LocalFileSystemScope::Host => PathConstraints::absolute(),
+                native_files::path::LocalFileSystemScope::Rooted => PathConstraints::either(),
+            },
             match native.symlink_policy() {
                 native_files::policy::LocalSymlinkPolicy::Reject => SymlinkPolicy::Reject,
                 native_files::policy::LocalSymlinkPolicy::FollowWithinScope
@@ -360,7 +363,7 @@ impl LocalFileSystemSpi {
     ///
     /// # Parameters
     ///
-    /// - `path`: Absolute logical path to convert.
+    /// - `path`: Logical path to convert; Rooted paths may be relative.
     ///
     /// # Returns
     ///
@@ -377,8 +380,8 @@ impl LocalFileSystemSpi {
     ///
     /// # Parameters
     ///
-    /// - `source`: Absolute logical source path.
-    /// - `target`: Absolute logical target path.
+    /// - `source`: Logical source path; Rooted paths may be relative.
+    /// - `target`: Logical target path; Rooted paths may be relative.
     ///
     /// # Returns
     ///
