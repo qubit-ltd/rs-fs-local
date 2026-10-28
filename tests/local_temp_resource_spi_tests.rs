@@ -211,6 +211,169 @@ where
     assert!(status.success(), "test fault child should pass");
 }
 
+fn generated_keep_target(parent: &Path, source: &Path) -> Path {
+    let name = source.file_name().expect("temporary resource has a final name");
+    Path::parse(&format!("{}/{name}", parent.as_str().trim_end_matches('/'))).expect("generated keep target")
+}
+
+/// Failed keep reports the generated target while retaining the native source.
+#[test]
+fn test_keep_failure_reports_generated_target() {
+    let root = tempfile::tempdir().expect("fixture root");
+    std::fs::create_dir(root.path().join("parent")).expect("keep parent");
+    let host_parent = host_path_to_logical(&root.path().join("parent")).expect("host parent");
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let rooted = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem");
+
+    for (filesystem, parent) in [
+        (host, host_parent),
+        (rooted, Path::parse("/parent").expect("rooted parent")),
+    ] {
+        let mut file = filesystem
+            .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+            .expect("temporary file");
+        let source = file.path().clone();
+        let expected = generated_keep_target(&parent, &source);
+        let native_target = root
+            .path()
+            .join("parent")
+            .join(expected.file_name().expect("target name"));
+        std::fs::write(&native_target, b"existing file").expect("conflicting file target");
+
+        let failure = file.keep().expect_err("existing generated file target rejects keep");
+        assert_ne!(expected, source);
+        assert_eq!(Some(&expected), failure.error().target());
+        assert_eq!(FsOperation::KeepTemp, failure.error().operation());
+        assert!(failure.error().provider().is_some());
+        assert_eq!(PersistFailureState::NotPublished, failure.state());
+        assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+        let native = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .expect("native keep cause");
+        assert_eq!(LocalFileErrorKind::AlreadyExists, native.kind());
+        assert_eq!(TempResourceState::Owned, file.state());
+        assert_eq!(
+            b"existing file",
+            std::fs::read(&native_target).expect("target remains").as_slice()
+        );
+        file.cleanup().expect("source remains recoverable");
+
+        let mut directory = filesystem
+            .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent.clone())))
+            .expect("temporary directory");
+        let source = directory.path().clone();
+        let expected = generated_keep_target(&parent, &source);
+        let native_target = root
+            .path()
+            .join("parent")
+            .join(expected.file_name().expect("target name"));
+        std::fs::create_dir(&native_target).expect("conflicting directory target");
+        std::fs::write(native_target.join("marker"), b"existing directory").expect("directory marker");
+
+        let failure = directory
+            .keep()
+            .expect_err("existing generated directory target rejects keep");
+        assert_ne!(expected, source);
+        assert_eq!(Some(&expected), failure.error().target());
+        assert_eq!(FsOperation::KeepTemp, failure.error().operation());
+        assert!(failure.error().provider().is_some());
+        assert_eq!(PersistFailureState::NotPublished, failure.state());
+        assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+        let native = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .expect("native keep cause");
+        assert_eq!(LocalFileErrorKind::AlreadyExists, native.kind());
+        assert_eq!(TempResourceState::Owned, directory.state());
+        assert_eq!(
+            b"existing directory",
+            std::fs::read(native_target.join("marker"))
+                .expect("marker remains")
+                .as_slice()
+        );
+        directory.cleanup().expect("source remains recoverable");
+    }
+}
+
+/// A Host install failure retains the generated target and unknown publication
+/// state.
+#[test]
+fn test_keep_install_failure_retains_target_and_state() {
+    const TEST_NAME: &str = "test_keep_install_failure_retains_target_and_state";
+    run_in_test_fault_process(TEST_NAME, "persist-install-indeterminate", || {
+        let root = tempfile::tempdir().expect("fixture root");
+        std::fs::create_dir(root.path().join("parent")).expect("keep parent");
+        let host_parent = host_path_to_logical(&root.path().join("parent")).expect("host parent");
+        let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+        let mut file = host
+            .create_temp_file(TempFileOptions::default().with_parent(Some(host_parent.clone())))
+            .expect("temporary file");
+        let expected = generated_keep_target(&host_parent, file.path());
+        let failure = file.keep().expect_err("injected installation failure");
+
+        assert_eq!(Some(&expected), failure.error().target());
+        assert_eq!(FsOperation::KeepTemp, failure.error().operation());
+        assert!(failure.error().provider().is_some());
+        assert_eq!(PersistFailureState::Indeterminate, failure.state());
+        assert_eq!(Some(FsEffectState::Indeterminate), failure.error().effect_state());
+        assert_eq!(None, failure.publication_target());
+        assert_eq!(TempResourceState::Indeterminate, file.state());
+        assert!(
+            failure
+                .error()
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .is_some()
+        );
+    });
+}
+
+/// Keep failures retain the caller's parent alias in both authority modes.
+#[cfg(unix)]
+#[test]
+fn test_keep_failure_preserves_requested_parent_alias() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempfile::tempdir().expect("fixture root");
+    std::fs::create_dir(root.path().join("real")).expect("real parent");
+    symlink("real", root.path().join("alias")).expect("parent alias");
+    let host_parent = host_path_to_logical(&root.path().join("alias")).expect("host alias");
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let rooted = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem");
+
+    for (filesystem, parent) in [
+        (host, host_parent),
+        (rooted, Path::parse("/alias").expect("rooted alias")),
+    ] {
+        let mut file = filesystem
+            .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+            .expect("temporary file");
+        let source = file.path().clone();
+        let expected = generated_keep_target(&parent, &source);
+        let target_name = expected.file_name().expect("target name").to_string();
+        std::fs::write(root.path().join("real").join(&target_name), b"existing").expect("conflicting target");
+        let failure = file.keep().expect_err("alias target conflict");
+        assert_eq!(Some(&expected), failure.error().target());
+        assert_ne!(Some(&source), failure.error().target());
+        file.cleanup().expect("source remains recoverable");
+
+        let mut directory = filesystem
+            .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent.clone())))
+            .expect("temporary directory");
+        let source = directory.path().clone();
+        let expected = generated_keep_target(&parent, &source);
+        let target_name = expected.file_name().expect("target name").to_string();
+        std::fs::create_dir(root.path().join("real").join(&target_name)).expect("conflicting target directory");
+        let failure = directory.keep().expect_err("alias target directory conflict");
+        assert_eq!(Some(&expected), failure.error().target());
+        assert_ne!(Some(&source), failure.error().target());
+        directory.cleanup().expect("source remains recoverable");
+    }
+}
+
 /// A recursive native copy failure exposes both the logical request root and
 /// the logical child entry that failed.
 #[test]

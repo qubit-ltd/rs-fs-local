@@ -228,36 +228,29 @@ impl TempResourceSpi for LocalTempResourceSpi {
     /// complete.
     fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
         self.require_owned(FsOperation::KeepTemp)?;
-        let (rooted, provider_id) = match self {
+        let (scope, provider_id) = match self {
             Self::File {
                 rooted, provider_id, ..
             }
             | Self::Directory {
                 rooted, provider_id, ..
-            } => (*rooted, provider_id.to_owned()),
+            } => (
+                if *rooted {
+                    LocalFileSystemScope::Rooted
+                } else {
+                    LocalFileSystemScope::Host
+                },
+                provider_id.to_owned(),
+            ),
         };
-        let result = match self {
-            Self::File { resource, .. } => keep_file(resource, &provider_id),
-            Self::Directory { resource, .. } => keep_directory(resource, &provider_id),
-        }?;
-        let projection = match self {
-            Self::File { projection, .. } | Self::Directory { projection, .. } => projection.as_ref(),
-        };
-        let projected = projection
-            .map(|projection| projection.project(result.path(), FsOperation::KeepTemp))
-            .transpose()
-            .map_err(logical_persist_error)?;
-        let logical = local_path_mapper::logical(
-            if rooted {
-                LocalFileSystemScope::Rooted
-            } else {
-                LocalFileSystemScope::Host
-            },
-            projected.as_deref().unwrap_or(result.path()),
-            FsOperation::KeepTemp,
-        )
-        .map_err(logical_persist_error)?;
-        Ok(map_persist_outcome(result, logical))
+        match self {
+            Self::File {
+                resource, projection, ..
+            } => keep_file(resource, &provider_id, scope, projection.as_ref()),
+            Self::Directory {
+                resource, projection, ..
+            } => keep_directory(resource, &provider_id, scope, projection.as_ref()),
+        }
     }
 
     /// Removes the owned native resource through its creating authority.
@@ -446,32 +439,52 @@ fn persist_directory(
 ///
 /// - `slot`: Adapter storage for the active native temporary file.
 /// - `provider_id`: Provider identity attached to lifecycle failures.
+/// - `scope`: Namespace in which the generated target is represented.
+/// - `projection`: Optional requested-parent spelling for generated paths.
 ///
 /// # Returns
 ///
-/// The completed native keep outcome.
+/// The mapped keep outcome with its generated logical target.
 ///
 /// # Errors
 ///
 /// Returns `InvalidState` when `slot` is empty. Native failures are mapped
 /// with their recovery state and restore the returned resource into `slot`.
-fn keep_file(slot: &mut Option<LocalTempFile>, provider_id: &str) -> Result<LocalPersistOutcome, SpiPersistFailure> {
+/// A resolved target that cannot be represented is reported as a provider
+/// contract violation while retaining the native error as its source.
+fn keep_file(
+    slot: &mut Option<LocalTempFile>,
+    provider_id: &str,
+    scope: LocalFileSystemScope,
+    projection: Option<&LocalTempPathProjection>,
+) -> Result<PersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.keep() {
-        Ok(result) => Ok(result),
+        Ok(result) => {
+            let target = logical_keep_target(result.path(), scope, projection).map_err(logical_persist_error)?;
+            Ok(map_persist_outcome(result, target))
+        }
         Err(error) => {
             let LocalPersistErrorParts {
                 error,
                 resource,
                 state,
                 source_state,
+                resolved_target,
                 ..
             } = error.into_parts();
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map_without_path(error, FsOperation::KeepTemp, "temporary file keep failed", provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                map_keep_error(
+                    error,
+                    resolved_target.as_deref(),
+                    state,
+                    scope,
+                    projection,
+                    "temporary file keep failed",
+                    provider_id,
+                ),
                 state,
             ))
         }
@@ -485,43 +498,116 @@ fn keep_file(slot: &mut Option<LocalTempFile>, provider_id: &str) -> Result<Loca
 ///
 /// - `slot`: Adapter storage for the active native temporary directory.
 /// - `provider_id`: Provider identity attached to lifecycle failures.
+/// - `scope`: Namespace in which the generated target is represented.
+/// - `projection`: Optional requested-parent spelling for generated paths.
 ///
 /// # Returns
 ///
-/// The completed native keep outcome.
+/// The mapped keep outcome with its generated logical target.
 ///
 /// # Errors
 ///
 /// Returns `InvalidState` when `slot` is empty. Native failures are mapped
 /// with their recovery state and restore the returned resource into `slot`.
+/// A resolved target that cannot be represented is reported as a provider
+/// contract violation while retaining the native error as its source.
 fn keep_directory(
     slot: &mut Option<LocalTempDirectory>,
     provider_id: &str,
-) -> Result<LocalPersistOutcome, SpiPersistFailure> {
+    scope: LocalFileSystemScope,
+    projection: Option<&LocalTempPathProjection>,
+) -> Result<PersistOutcome, SpiPersistFailure> {
     let resource = slot.take().ok_or_else(terminal_persist_error)?;
     match resource.keep() {
-        Ok(result) => Ok(result),
+        Ok(result) => {
+            let target = logical_keep_target(result.path(), scope, projection).map_err(logical_persist_error)?;
+            Ok(map_persist_outcome(result, target))
+        }
         Err(error) => {
             let LocalPersistErrorParts {
                 error,
                 resource,
                 state,
                 source_state,
+                resolved_target,
                 ..
             } = error.into_parts();
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map_without_path(
+                map_keep_error(
                     error,
-                    FsOperation::KeepTemp,
+                    resolved_target.as_deref(),
+                    state,
+                    scope,
+                    projection,
                     "temporary directory keep failed",
                     provider_id,
-                )
-                .with_effect_state(persist_effect_state(state)),
+                ),
                 state,
             ))
         }
+    }
+}
+
+/// Converts a generated native target through its authority and requested
+/// alias.
+///
+/// # Parameters
+///
+/// - `path`: Native target returned or resolved by the keep operation.
+/// - `scope`: Namespace authority used to encode the target.
+/// - `projection`: Optional requested-parent spelling retained at creation.
+///
+/// # Returns
+///
+/// The target in the filesystem's logical namespace.
+///
+/// # Errors
+///
+/// Returns a projection or path-mapping error when the native target cannot be
+/// expressed under the captured parent or logical authority.
+fn logical_keep_target(
+    path: &Path,
+    scope: LocalFileSystemScope,
+    projection: Option<&LocalTempPathProjection>,
+) -> FsResult<LogicalPath> {
+    let projected = projection
+        .map(|projection| projection.project(path, FsOperation::KeepTemp))
+        .transpose()?;
+    local_path_mapper::logical(scope, projected.as_deref().unwrap_or(path), FsOperation::KeepTemp)
+}
+
+/// Maps a native keep failure and attaches only its successfully resolved
+/// target.
+///
+/// An unrepresentable resolved target becomes a provider-contract error that
+/// retains the original native failure and the already computed effect state.
+fn map_keep_error(
+    error: LocalFileError,
+    resolved_target: Option<&Path>,
+    state: PersistFailureState,
+    scope: LocalFileSystemScope,
+    projection: Option<&LocalTempPathProjection>,
+    message: &'static str,
+    provider_id: &str,
+) -> FsError {
+    match resolved_target {
+        Some(target) => match logical_keep_target(target, scope, projection) {
+            Ok(target) => error_mapper::map_without_path(error, FsOperation::KeepTemp, message, provider_id)
+                .with_target(target)
+                .with_effect_state(persist_effect_state(state)),
+            Err(_) => FsError::with_source(
+                FsErrorKind::ProviderContractViolation,
+                FsOperation::KeepTemp,
+                "resolved native keep target violates the local path contract",
+                error,
+            )
+            .with_effect_state(persist_effect_state(state))
+            .with_provider(provider_id),
+        },
+        None => error_mapper::map_without_path(error, FsOperation::KeepTemp, message, provider_id)
+            .with_effect_state(persist_effect_state(state)),
     }
 }
 
@@ -747,11 +833,13 @@ mod tests {
     use super::LocalTempResourceSpi;
     use super::directory_cleanup_error;
     use super::file_cleanup_error;
+    use super::keep_file;
     use super::logical_persist_error;
     use super::persist_effect_state;
     use super::persist_failure_state;
     use super::persist_path_error;
     use super::terminal_persist_error;
+    use crate::spi::local_temp_path_projection::LocalTempPathProjection;
 
     /// Persistence wrappers retain the certainty appropriate to when path
     /// conversion failed.
@@ -773,6 +861,68 @@ mod tests {
         assert_eq!(PersistFailureState::PublishedSourceReleased, after_publication.state());
         assert_eq!(Some(FsEffectState::Applied), after_publication.error().effect_state());
         assert_eq!(FsErrorKind::InvalidPath, after_publication.error().kind());
+    }
+
+    /// A resolved target projection violation preserves the native failure and
+    /// the retained resource slot.
+    #[test]
+    fn test_keep_target_projection_violation_preserves_error_and_resource() {
+        use std::error::Error;
+
+        let parent = tempfile::tempdir().expect("test parent");
+        let mut resource = Some(
+            LocalFileSystem::host()
+                .expect("host filesystem")
+                .create_temp_file_with_options(&LocalTempFileOptions::new().with_parent(parent.path()))
+                .expect("temporary file"),
+        );
+        let source = resource.as_ref().expect("resource retained").path().to_path_buf();
+        let generated = source
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("generated parent")
+            .join(source.file_name().expect("resource name"));
+        std::fs::write(&generated, b"existing").expect("conflicting generated target");
+        let projection = LocalTempPathProjection::new(
+            std::path::Path::new("/requested"),
+            std::path::Path::new("/unrelated/sandbox-test/resource"),
+        )
+        .expect("test projection");
+
+        let failure = keep_file(
+            &mut resource,
+            "projection-test-provider",
+            qubit_local_files::path::LocalFileSystemScope::Host,
+            Some(&projection),
+        )
+        .expect_err("projection contract violation");
+
+        assert_eq!(PersistFailureState::NotPublished, failure.state());
+        assert_eq!(FsErrorKind::ProviderContractViolation, failure.error().kind());
+        assert_eq!(FsOperation::KeepTemp, failure.error().operation());
+        assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+        assert_eq!(Some("projection-test-provider"), failure.error().provider());
+        assert_eq!(None, failure.error().target());
+        assert_eq!(
+            Some(LocalFileErrorKind::AlreadyExists),
+            failure
+                .error()
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .map(LocalFileError::kind),
+        );
+        assert_eq!(
+            qubit_local_files::outcome::LocalTempSourceState::Owned,
+            resource
+                .as_ref()
+                .expect("native resource restored to slot")
+                .source_state(),
+        );
+        resource
+            .as_mut()
+            .expect("native resource restored to slot")
+            .cleanup()
+            .expect("source remains cleanable");
     }
 
     /// Terminal resources reject persistence and cleanup without fabricating
