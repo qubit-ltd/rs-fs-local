@@ -15,8 +15,7 @@ use qubit_fs_local::LocalResourcePolicy;
 #[test]
 fn test_native_resolves_rooted_relative_logical_path_from_virtual_pwd() {
     let root = tempfile::tempdir().expect("rooted fixture root must exist");
-    std::fs::write(root.path().join("relative"), b"rooted relative path")
-        .expect("rooted relative target must exist");
+    std::fs::write(root.path().join("relative"), b"rooted relative path").expect("rooted relative target must exist");
     let file_system = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
         .expect("rooted local filesystem must be opened");
     let path = Path::parse("relative").expect("relative logical path text");

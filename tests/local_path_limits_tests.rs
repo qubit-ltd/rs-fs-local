@@ -190,8 +190,7 @@ fn test_rooted_relative_logical_path_resolves_from_virtual_working_directory() {
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
     let relative = Path::parse("relative-target").expect("relative path text");
 
-    fs
-        .write_all(&relative, b"payload", WriteOptions::default())
+    fs.write_all(&relative, b"payload", WriteOptions::default())
         .expect("rooted relative path must resolve from the virtual working directory");
 
     assert_eq!(
