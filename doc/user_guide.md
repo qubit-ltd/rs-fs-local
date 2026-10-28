@@ -313,8 +313,11 @@ host provider produces the same URI and logical path, but resolves to the
 
 ## Errors and Diagnostics
 
-Native operation failures are reported through the `qubit-fs` error model; the
-local adapter identifies itself as `local-file`. Registry creation and
+Native operation failures are reported through the `qubit-fs` error model. The
+host provider and the convenience `rooted` provider use the default provider
+ID `local-file`; `rooted_with_descriptor` uses the supplied descriptor ID. For
+diagnostics, read the actual ID from the resolved filesystem with
+`file_system.properties().info().provider_id()`. Registry creation and
 resolution errors are returned by `qubit-fs-registry`. Inspect the returned
 error rather than assuming a URI was accepted.
 

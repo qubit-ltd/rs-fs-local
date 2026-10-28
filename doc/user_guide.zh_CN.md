@@ -276,8 +276,10 @@ provider 重放时，会得到相同的 URI 和逻辑路径，但文件系统会
 
 ## 错误与诊断
 
-原生操作失败会经由 `qubit-fs` 错误模型报告；本地 adapter 的 provider ID 为 `local-file`。
-registry 的创建和解析错误由 `qubit-fs-registry` 返回。应检查返回错误，而非假设 URI 已被接受。
+原生操作失败会经由 `qubit-fs` 错误模型报告。host provider 和便捷的 `rooted` provider 使用默认
+provider ID `local-file`；`rooted_with_descriptor` 使用传入的 descriptor ID。诊断时，应从已解析的
+filesystem 读取实际 ID：`file_system.properties().info().provider_id()`。registry 的创建和解析错误由
+`qubit-fs-registry` 返回。应检查返回错误，而非假设 URI 已被接受。
 
 provider 会拒绝超出本地文件契约的配置：远程 authority、query、相对路径、非 `file` scheme、
 options 和 credentials。
