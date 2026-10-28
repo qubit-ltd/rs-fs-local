@@ -178,9 +178,11 @@ impl LocalResourcePolicy {
         self.temp_max_attempts
     }
 
-    /// Returns the directory reopen behavior used by recursive directory listing walkers.
+    /// Returns the directory reopen behavior used by recursive directory
+    /// listing walkers.
     ///
-    /// This policy does not change the independent hard limit on directory handles used by copy.
+    /// This policy does not change the independent hard limit on directory
+    /// handles used by copy.
     #[must_use]
     #[inline]
     pub const fn directory_reopen_policy(self) -> LocalDirectoryReopenPolicy {
@@ -273,9 +275,11 @@ impl LocalResourcePolicy {
         self
     }
 
-    /// Sets the directory reopen behavior used by recursive directory listing walkers.
+    /// Sets the directory reopen behavior used by recursive directory listing
+    /// walkers.
     ///
-    /// This policy does not change the independent hard limit on directory handles used by copy.
+    /// This policy does not change the independent hard limit on directory
+    /// handles used by copy.
     ///
     /// # Parameters
     ///

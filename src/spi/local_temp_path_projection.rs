@@ -34,8 +34,8 @@ impl LocalTempPathProjection {
     ///
     /// # Parameters
     ///
-    /// - `requested_parent`: Absolute namespace parent supplied by the
-    ///   portable caller, retaining its requested alias spelling.
+    /// - `requested_parent`: Absolute namespace parent supplied by the portable
+    ///   caller, retaining its requested alias spelling.
     /// - `resource`: Native path of the generated temporary resource.
     ///
     /// # Returns

@@ -220,8 +220,8 @@ fn test_list_deadline_provider_cannot_be_relaxed() {
 fn assert_provider_zero_deadline(request_deadline: Option<Duration>) {
     let root = tempfile::tempdir().expect("fixture should exist");
     std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
-    let limits = LocalListResourceLimits::new(8, 64, 255, 4, Duration::ZERO)
-        .expect("zero provider deadline should be valid");
+    let limits =
+        LocalListResourceLimits::new(8, 64, 255, 4, Duration::ZERO).expect("zero provider deadline should be valid");
     let policy = LocalResourcePolicy::unbounded().with_list_limits(Some(limits));
     let filesystem = LocalFileSystems::host(policy).expect("filesystem should open");
     let scope_path = host_path_to_logical(root.path()).expect("fixture path should convert");

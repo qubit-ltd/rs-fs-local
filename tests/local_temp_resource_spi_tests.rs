@@ -82,8 +82,7 @@ fn test_temp_resources_preserve_requested_parent_alias() {
         .create_temp_file(TempFileOptions::default().with_parent(Some(relative_alias.clone())))
         .expect("create temporary file through relative alias");
     assert!(relative_file.path().as_str().starts_with("/alias/"));
-    let relative_file_target =
-        Path::parse("/alias/published-relative").expect("relative alias target");
+    let relative_file_target = Path::parse("/alias/published-relative").expect("relative alias target");
     let outcome = relative_file
         .persist(&relative_file_target, PersistOptions::default())
         .expect("publish through relative alias");
@@ -107,20 +106,15 @@ fn test_temp_resources_preserve_requested_parent_alias() {
 fn test_rooted_temp_file_relative_parent() {
     let root = tempfile::tempdir().expect("fixture root");
     std::fs::create_dir(root.path().join("reports")).expect("reports parent");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem");
 
-    for (parent, prefix, creates_parent) in [
-        ("reports", "/reports/", false),
-        ("new/reports", "/new/reports/", true),
-    ] {
+    for (parent, prefix, creates_parent) in [("reports", "/reports/", false), ("new/reports", "/new/reports/", true)] {
         for keep in [false, true] {
             let options = TempFileOptions::default()
                 .with_parent(Some(Path::parse(parent).expect("relative parent")))
                 .with_create_parent(creates_parent);
-            let mut resource = filesystem
-                .create_temp_file(options)
-                .expect("relative parent creation");
+            let mut resource = filesystem.create_temp_file(options).expect("relative parent creation");
             let created = resource.path().clone();
             assert!(created.is_absolute());
             assert!(created.as_str().starts_with(prefix));
@@ -153,13 +147,10 @@ fn test_rooted_temp_file_relative_parent() {
 fn test_rooted_temp_directory_relative_parent() {
     let root = tempfile::tempdir().expect("fixture root");
     std::fs::create_dir(root.path().join("reports")).expect("reports parent");
-    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
-        .expect("rooted filesystem");
+    let filesystem =
+        LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem");
 
-    for (parent, prefix, creates_parent) in [
-        ("reports", "/reports/", false),
-        ("new/reports", "/new/reports/", true),
-    ] {
+    for (parent, prefix, creates_parent) in [("reports", "/reports/", false), ("new/reports", "/new/reports/", true)] {
         for keep in [false, true] {
             let options = TempDirectoryOptions::default()
                 .with_parent(Some(Path::parse(parent).expect("relative parent")))

@@ -431,22 +431,27 @@ fn copy_source_options(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+    use std::sync::Mutex;
     use std::time::Duration;
 
-    use qubit_fs::copy::CopyMode;
     use qubit_fs::FileSystem;
-    use qubit_fs::directory::{ListOptions, ListScope};
+    use qubit_fs::copy::CopyMode;
+    use qubit_fs::directory::ListOptions;
+    use qubit_fs::directory::ListScope;
     use qubit_fs::error::FsResult;
-    use qubit_fs::spi::{
-        FileSystemSpi, ListRequest, OpenedDirectoryStream, ProviderProperties, StatRequest,
-        StatResponse,
-    };
+    use qubit_fs::spi::FileSystemSpi;
+    use qubit_fs::spi::ListRequest;
+    use qubit_fs::spi::OpenedDirectoryStream;
+    use qubit_fs::spi::ProviderProperties;
+    use qubit_fs::spi::StatRequest;
+    use qubit_fs::spi::StatResponse;
     use qubit_local_files::LocalFileSystem;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalCopySourceMode;
 
-    use super::{copy_source_options, list};
+    use super::copy_source_options;
+    use super::list;
     use crate::LocalListResourceLimits;
     use crate::LocalResourcePolicy;
     use crate::spi::LocalFileSystemSpi;
@@ -474,7 +479,8 @@ mod tests {
         }
     }
 
-    /// The facade-resolved request and real mapper combine both deadline budgets.
+    /// The facade-resolved request and real mapper combine both deadline
+    /// budgets.
     #[test]
     fn test_list_deadline_mapping_uses_tighter_budget() {
         let second = Duration::from_secs(1);
@@ -489,10 +495,8 @@ mod tests {
         for (request_deadline, provider_deadline, expected) in cases {
             let root = tempfile::tempdir().expect("fixture root should exist");
             std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
-            let limits = provider_deadline.map(|deadline| {
-                LocalListResourceLimits::new(8, 64, 255, 4, deadline)
-                    .expect("limits should be valid")
-            });
+            let limits = provider_deadline
+                .map(|deadline| LocalListResourceLimits::new(8, 64, 255, 4, deadline).expect("limits should be valid"));
             let policy = LocalResourcePolicy::unbounded().with_list_limits(limits);
             let inner = LocalFileSystemSpi::new(policy).expect("inner local SPI should construct");
             let defaults = policy.list_options();
@@ -508,9 +512,7 @@ mod tests {
 
             let _stream = filesystem
                 .list(
-                    &ListScope::Path(
-                        crate::host_path_to_logical(root.path()).expect("fixture path should convert"),
-                    ),
+                    &ListScope::Path(crate::host_path_to_logical(root.path()).expect("fixture path should convert")),
                     ListOptions::default().with_deadline(request_deadline),
                 )
                 .expect("list stream should open");

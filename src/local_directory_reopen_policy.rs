@@ -7,8 +7,8 @@
 // =============================================================================
 //! Directory reopen behavior for recursive local directory listing walkers.
 //!
-//! Reopening affects recursive listing only. Copy keeps its independent hard limit on open
-//! directory handles.
+//! Reopening affects recursive listing only. Copy keeps its independent hard
+//! limit on open directory handles.
 
 /// Behavior used when a recursive walker must close and later revisit a
 /// directory after reaching its open-handle budget.

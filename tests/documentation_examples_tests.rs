@@ -251,7 +251,8 @@ fn test_readme_and_user_guide_examples_compile() {
     for (document_index, document) in documents.iter().enumerate() {
         let source = fs::read_to_string(root.join(document)).expect("document should be readable");
         let blocks = if document.starts_with("doc/local_file_system_adapter_design") {
-            // Design documents contain API sketches; compile only explicitly marked complete examples.
+            // Design documents contain API sketches; compile only explicitly marked
+            // complete examples.
             marked_design_blocks(&source)
         } else {
             profiled_rust_blocks(&source).expect("published Rust fences require a supported adjacent profile")
