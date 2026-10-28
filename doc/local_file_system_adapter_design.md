@@ -65,9 +65,9 @@ impl LocalFileSystems {
 for registry, persistence, and tests. Identity is not derived from sensitive
 native path text. Every constructor requires an explicit policy.
 
+<!-- fs-local-example: direct -->
 ```rust
 use qubit_fs::Path as LogicalPath;
-use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 use std::path::Path as NativePath;
 

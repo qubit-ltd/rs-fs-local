@@ -36,6 +36,7 @@ cargo add qubit-fs-local@0.11 --features registry
 创建 rooted 门面，并在该 authority 内使用逻辑路径。Rooted 相对路径从初始为 `/` 的虚拟工作
 目录解析，也接受绝对逻辑路径。示例使用项目内临时根目录，运行时无需提升权限：
 
+<!-- fs-local-example: direct -->
 ```rust
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
@@ -64,6 +65,7 @@ println!("{metadata:?}");
 `host_path_to_logical` 转换，再传给门面。这样可以保留百分号转义和 Unix 非 UTF-8 文件名。
 已经是 rooted 逻辑路径时使用 `qubit_fs::Path::parse`；两者表示的 authority 不同。
 
+<!-- fs-local-example: direct -->
 ```rust
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};

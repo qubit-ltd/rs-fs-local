@@ -21,8 +21,10 @@ application logical Path
         └─ rooted*_with_id() ───► one retained native root
 ```
 
-The facade accepts absolute, hierarchical `qubit_fs::Path` values. A rooted
-facade keeps a native root and uses logical paths below it. `rooted` creates a
+Host accepts absolute, hierarchical `qubit_fs::Path` values. Rooted accepts
+absolute and relative logical paths; relative paths resolve from its virtual
+working directory, initially `/`. It keeps a native root and uses logical paths
+below it. `rooted` creates a
 process-local ID; `rooted_with_id` uses the supplied `FileSystemId`.
 
 With the `registry` feature, `LocalFileSystemProvider` is a provider factory
@@ -53,6 +55,7 @@ cargo add qubit-fs-local@0.11 --features registry
 
 ## Core Workflow
 
+<!-- fs-local-example: direct -->
 ```rust
 use std::time::Duration;
 
@@ -133,6 +136,7 @@ interrupt an I/O call already in progress.
 
 The following values are application scenario examples, not library defaults:
 
+<!-- fs-local-example: direct -->
 ```rust
 use std::time::Duration;
 use qubit_fs_local::{
@@ -184,6 +188,14 @@ per-operation ceilings. It is an explicit constructor, not a `Default` implement
 | copy | 64 | 100,000 | 1 GiB payload | 32 | 30 seconds |
 | delete | 64 | 100,000 | 16 MiB pending path text | not separately configured | 30 seconds |
 
+Host accepts absolute logical paths. Rooted accepts absolute and relative logical paths; relative
+paths resolve from its virtual working directory, initially `/`. Registry `file:` URIs must be
+absolute. Temporary-resource paths returned by the facade are absolute logical paths.
+
+The reopen setting applies only to recursive directory listing walkers. Copy still has an
+independent hard limit of 32 open directory handles; changing listing reopen behavior does not
+change that limit.
+
 Use `with_list_limits(Some(...))`, `with_copy_limits(Some(...))`, or
 `with_delete_limits(Some(...))` to replace one domain. Passing `None` explicitly
 removes that domain's ceiling. Other domains remain unchanged. Deadlines are
@@ -202,6 +214,7 @@ host provider with `LocalResourcePolicy::standard()` to the synchronous
 filesystem inventory. A Cargo dependency declaration alone does not ensure
 the provider crate is linked into the final binary:
 
+<!-- fs-local-example: registry -->
 ```rust
 use qubit_fs_local as _;
 use qubit_fs_registry::FileSystemRegistry;
@@ -217,6 +230,7 @@ and registered explicitly with the application's root and policy.
 Register a local provider to resolve a validated `file:` URI at application
 assembly time:
 
+<!-- fs-local-example: registry -->
 ```rust
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
@@ -245,6 +259,13 @@ aliases; the constructor does not add the default `file` alias.
 For example, two rooted providers can resolve the same logical path while
 retaining separate native authorities and identities:
 
+Install the SPI crate as a direct dependency for this selection example:
+
+```bash
+cargo add qubit-spi@0.13
+```
+
+<!-- fs-local-example: selection -->
 ```rust
 use std::path::Path as NativePath;
 
@@ -348,7 +369,7 @@ application-specific read-only reconciliation.
 | `LocalFileSystemProvider` is unavailable | Enable the `registry` feature. |
 | A `file:` URI does not resolve | Verify it is absolute, has no remote authority or query, and has no options or credentials. |
 | A rooted facade cannot be opened | Verify the native root exists and can be opened by the process. |
-| A path cannot be used | Use an absolute hierarchical `qubit_fs::Path` within the selected facade's authority. |
+| A path cannot be used | Host requires an absolute hierarchical `qubit_fs::Path`; Rooted accepts absolute or relative paths resolved from its virtual working directory (initially `/`). A temporary-resource path returned by the facade is absolute. |
 
 ## Limitations and Best Practices
 

@@ -42,6 +42,7 @@ resolve from the virtual working directory, which starts at `/`; absolute
 logical paths are also accepted. The example uses a temporary project-local
 root so it can be run without elevated access:
 
+<!-- fs-local-example: direct -->
 ```rust
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
@@ -74,6 +75,7 @@ preserves percent escapes and non-UTF-8 Unix names. Use `qubit_fs::Path::parse`
 for a path that is already a rooted logical path; the two representations have
 different authorities.
 
+<!-- fs-local-example: direct -->
 ```rust
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};

@@ -12,24 +12,156 @@ use std::path::PathBuf;
 use std::path::absolute;
 use std::process::Command;
 
-fn rust_blocks(markdown: &str) -> Vec<String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExampleProfile {
+    Direct,
+    Registry,
+    Selection,
+}
+
+impl ExampleProfile {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "direct" => Some(Self::Direct),
+            "registry" => Some(Self::Registry),
+            "selection" => Some(Self::Selection),
+            _ => None,
+        }
+    }
+}
+
+fn example_profiles(markdown: &str) -> Result<Vec<ExampleProfile>, String> {
+    let mut pending = None;
     let mut result = Vec::new();
+    for line in markdown.lines() {
+        if let Some(value) = line.strip_prefix("<!-- fs-local-example: ").and_then(|line| line.strip_suffix(" -->")) {
+            pending = Some(value.to_owned());
+        } else if line.trim() == "```rust" {
+            let value = pending.take().ok_or_else(|| "Rust fence has no profile marker".to_owned())?;
+            result.push(ExampleProfile::parse(&value).ok_or_else(|| format!("unknown profile {value}"))?);
+        } else if !line.trim().is_empty() {
+            pending = None;
+        }
+    }
+    Ok(result)
+}
+
+fn profile_dependencies(profile: ExampleProfile) -> Vec<&'static str> {
+    match profile {
+        ExampleProfile::Direct => vec!["qubit-fs", "qubit-fs-local"],
+        ExampleProfile::Registry => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry"],
+        ExampleProfile::Selection => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry", "qubit-spi"],
+    }
+}
+
+fn profile_manifest_text(profile: ExampleProfile) -> String {
+    let features = if profile == ExampleProfile::Direct { "" } else { ", features = [\"registry\"]" };
+    let mut text = format!("qubit-fs = {{ version = \"0.3\" }}\nqubit-fs-local = {{ version = \"0.11\"{features} }}\n");
+    if profile != ExampleProfile::Direct { text.push_str("qubit-fs-registry = { version = \"0.8\" }\n"); }
+    if profile == ExampleProfile::Selection { text.push_str("qubit-spi = { version = \"0.13\" }\n"); }
+    text
+}
+
+fn dependency_requirement(manifest: &str, name: &str) -> String {
+    let parsed: toml::Value = toml::from_str(manifest).unwrap();
+    parsed["dependencies"][name]["version"].as_str().unwrap().to_owned()
+}
+
+fn validate_selection_install(command: &str, requirement: &str) -> Result<(), String> {
+    let expected = format!("cargo add qubit-spi@{}", requirement.trim_start_matches('^'));
+    if command.trim() == expected { Ok(()) } else { Err(format!("expected {expected}")) }
+}
+
+fn profiled_rust_blocks(markdown: &str) -> Result<Vec<(ExampleProfile, String)>, String> {
+    let mut result = Vec::new();
+    let mut pending = None;
     let mut current: Option<String> = None;
     for line in markdown.lines() {
-        if line.trim() == "```rust" {
-            assert!(current.is_none(), "nested Rust fence");
+        if let Some(value) = line.strip_prefix("<!-- fs-local-example: ").and_then(|line| line.strip_suffix(" -->")) {
+            pending = Some(ExampleProfile::parse(value).ok_or_else(|| format!("unknown profile {value}"))?);
+        } else if line.trim() == "```rust" {
+            let profile = pending.take().ok_or_else(|| "Rust fence has no profile marker".to_owned())?;
             current = Some(String::new());
+            pending = Some(profile);
         } else if line.trim() == "```" {
             if let Some(block) = current.take() {
-                result.push(block);
+                result.push((pending.take().ok_or_else(|| "Rust fence lost profile".to_owned())?, block));
             }
         } else if let Some(block) = current.as_mut() {
             block.push_str(line.strip_prefix("# ").unwrap_or(line));
             block.push('\n');
+        } else if !line.trim().is_empty() {
+            pending = None;
         }
     }
-    assert!(current.is_none(), "unterminated Rust fence");
+    if current.is_some() { return Err("unterminated Rust fence".to_owned()); }
+    Ok(result)
+}
+
+fn marked_design_blocks(markdown: &str) -> Vec<(ExampleProfile, String)> {
+    let mut result = Vec::new();
+    let mut pending = None;
+    let mut current: Option<(Option<ExampleProfile>, String)> = None;
+    for line in markdown.lines() {
+        if let Some(value) = line.strip_prefix("<!-- fs-local-example: ").and_then(|line| line.strip_suffix(" -->")) {
+            pending = Some(ExampleProfile::parse(value).unwrap_or_else(|| panic!("unknown profile {value}")));
+        } else if line.trim() == "```rust" {
+            current = Some((pending.take(), String::new()));
+        } else if line.trim() == "```" {
+            if let Some((Some(profile), block)) = current.take() { result.push((profile, block)); }
+            else { current = None; }
+        } else if let Some((_, block)) = current.as_mut() {
+            block.push_str(line.strip_prefix("# ").unwrap_or(line)); block.push('\n');
+        } else if !line.trim().is_empty() { pending = None; }
+    }
     result
+}
+
+#[test]
+fn test_example_profiles_require_known_adjacent_markers() {
+    assert!(example_profiles("<!-- fs-local-example: direct -->\n```rust\nlet _ = 1;\n```").is_ok());
+    assert!(example_profiles("```rust\nlet _ = 1;\n```").is_err());
+    assert!(example_profiles("<!-- fs-local-example: mystery -->\n```rust\nlet _ = 1;\n```").is_err());
+}
+
+#[test]
+fn test_all_published_rust_examples_have_supported_profiles() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for document in ["README.md", "README.zh_CN.md", "doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        let source = fs::read_to_string(root.join(document)).unwrap();
+        assert!(example_profiles(&source).is_ok(), "{document}");
+    }
+    for document in ["doc/local_file_system_adapter_design.md", "doc/local_file_system_adapter_design.zh_CN.md"] {
+        let source = fs::read_to_string(root.join(document)).unwrap();
+        assert_eq!(source.matches("<!-- fs-local-example: direct -->").count(), 1, "{document}");
+        assert!(!source.contains("<!-- fs-local-example: registry -->"), "{document}");
+        assert!(!source.contains("<!-- fs-local-example: selection -->"), "{document}");
+    }
+}
+
+#[test]
+fn test_direct_profile_does_not_inject_registry_or_spi() {
+    let deps = profile_dependencies(ExampleProfile::Direct);
+    assert_eq!(deps, ["qubit-fs", "qubit-fs-local"]);
+    let manifest = profile_manifest_text(ExampleProfile::Direct);
+    assert!(!manifest.contains("qubit-fs-registry"));
+    assert!(!manifest.contains("qubit-spi"));
+    assert!(!manifest.contains("features = [\"registry\"]"));
+}
+
+#[test]
+fn test_selection_profile_requires_spi_install_command() {
+    let manifest = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
+    let requirement = dependency_requirement(&manifest, "qubit-spi");
+    assert!(validate_selection_install("cargo add qubit-spi@0.13", &requirement).is_ok());
+    assert!(validate_selection_install("cargo add qubit-fs-local@0.11", &requirement).is_err());
+    for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(document)).unwrap();
+        let marker = source.rfind("<!-- fs-local-example: selection -->").unwrap();
+        let preceding = &source[..marker];
+        let command = preceding.lines().rev().find(|line| line.trim().starts_with("cargo add qubit-spi@"));
+        assert!(command.is_some_and(|line| validate_selection_install(line, &requirement).is_ok()), "{document}");
+    }
 }
 
 fn toml_path(path: &Path) -> String {
@@ -42,20 +174,12 @@ fn toml_path(path: &Path) -> String {
 #[test]
 fn test_readme_and_user_guide_examples_compile() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace = tempfile::tempdir().expect("isolated example sources");
-    let bin = workspace.path().join("src/bin");
-    fs::create_dir_all(&bin).expect("bin directory");
     let source = fs::read_to_string(root.join("Cargo.toml")).expect("read manifest");
     let package: toml::Value = toml::from_str(&source).expect("parse manifest");
     let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
     let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
     let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
-    let manifest = format!(
-        "[package]\nname = \"local-documentation-check\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-registry = {registry}\nqubit-fs-local = {{ path = \"{}\", features = [\"registry\"] }}\nqubit-spi = {spi}\n",
-        toml_path(root),
-    );
     let sibling_root = root.parent().expect("candidate checkout has a parent");
-    let mut manifest = manifest;
     let mut patches = Vec::new();
     for (package, sibling) in [
         ("qubit-fs", "rs-fs"),
@@ -70,85 +194,79 @@ fn test_readme_and_user_guide_examples_compile() {
             patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
         }
     }
-    if !patches.is_empty() {
-        manifest.push_str("\n[patch.crates-io]\n");
-        manifest.push_str(&patches.join("\n"));
-        manifest.push('\n');
-    }
-    fs::write(workspace.path().join("Cargo.toml"), manifest).expect("manifest should be written");
-
-    for (document_index, document) in [
+    let documents = [
         "README.md",
         "README.zh_CN.md",
         "doc/user_guide.md",
         "doc/user_guide.zh_CN.md",
-    ]
-    .iter()
-    .enumerate()
-    {
-        let blocks = rust_blocks(&fs::read_to_string(root.join(document)).expect("document should be readable"));
+        "doc/local_file_system_adapter_design.md",
+        "doc/local_file_system_adapter_design.zh_CN.md",
+    ];
+    let mut examples: Vec<(usize, usize, &str, ExampleProfile, String)> = Vec::new();
+    for (document_index, document) in documents.iter().enumerate() {
+        let source = fs::read_to_string(root.join(document)).expect("document should be readable");
+        let blocks = if document.starts_with("doc/local_file_system_adapter_design") {
+            // Design documents contain API sketches; compile only explicitly marked complete examples.
+            marked_design_blocks(&source)
+        } else {
+            profiled_rust_blocks(&source).expect("published Rust fences require a supported adjacent profile")
+        };
         assert!(!blocks.is_empty(), "{document} must have Rust examples");
-        for (block_index, block) in blocks.iter().enumerate() {
+        for (block_index, (profile, block)) in blocks.into_iter().enumerate() {
+            examples.push((document_index, block_index, document, profile, block));
+        }
+    }
+    for profile in [ExampleProfile::Direct, ExampleProfile::Registry, ExampleProfile::Selection] {
+        let workspace = tempfile::tempdir().expect("isolated profile example crate");
+        let bin = workspace.path().join("src/bin");
+        fs::create_dir_all(&bin).expect("bin directory");
+        for (document_index, block_index, _, example_profile, block) in &examples {
+            if *example_profile != profile { continue; }
             let code = format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n");
             fs::write(bin.join(format!("doc_{document_index}_{block_index}.rs")), code)
                 .expect("example source should be written");
         }
-    }
-
-    let metadata = Command::new(env!("CARGO"))
-        .args(["metadata", "--format-version", "1"])
-        .current_dir(workspace.path())
-        .output()
-        .expect("resolve example dependencies");
-    assert!(
-        metadata.status.success(),
-        "{}",
-        String::from_utf8_lossy(&metadata.stderr)
-    );
-    let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
-    for name in [
-        "qubit-fs",
-        "qubit-fs-registry",
-        "qubit-fs-local",
-        "qubit-local-files",
-        "qubit-io",
-        "qubit-spi",
-    ] {
-        assert_eq!(
-            graph["packages"]
-                .as_array()
-                .expect("package list")
-                .iter()
-                .filter(|p| p["name"].as_str() == Some(name))
-                .count(),
-            1,
-            "unique package identity for {name}"
+        let mut manifest = format!(
+            "[package]\nname = \"local-documentation-{}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-local = {{ version = \"{}\", path = \"{}\"{} }}\n",
+            match profile { ExampleProfile::Direct => "direct", ExampleProfile::Registry => "registry", ExampleProfile::Selection => "selection" },
+            package["package"]["version"].as_str().expect("local version"),
+            toml_path(root),
+            if profile == ExampleProfile::Direct { String::new() } else { ", features = [\"registry\"]".to_owned() },
         );
-    }
-    let status = Command::new(env!("CARGO"))
-        .args(["check", "--locked", "--quiet", "--bins"])
-        .current_dir(workspace.path())
-        .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
-        .status()
-        .expect("compile document examples");
-    assert!(status.success(), "document examples must compile");
-    for (document_index, document) in [
-        "README.md",
-        "README.zh_CN.md",
-        "doc/user_guide.md",
-        "doc/user_guide.zh_CN.md",
-    ]
-    .iter()
-    .enumerate()
-    {
-        let binary = format!("doc_{document_index}_0");
-        let status = Command::new(env!("CARGO"))
-            .args(["run", "--locked", "--quiet", "--bin", &binary])
+        if profile != ExampleProfile::Direct { manifest.push_str(&format!("qubit-fs-registry = {registry}\n")); }
+        if profile == ExampleProfile::Selection { manifest.push_str(&format!("qubit-spi = {spi}\n")); }
+        if !patches.is_empty() { manifest.push_str("\n[patch.crates-io]\n"); manifest.push_str(&patches.join("\n")); manifest.push('\n'); }
+        fs::write(workspace.path().join("Cargo.toml"), &manifest).expect("manifest should be written");
+        let expected = profile_dependencies(profile);
+        for name in &expected { assert!(manifest.contains(&format!("{name} =")), "{profile:?} manifest lacks {name}"); }
+
+        let metadata = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1"]).current_dir(workspace.path()).output().expect("resolve example dependencies");
+        assert!(metadata.status.success(), "{}", String::from_utf8_lossy(&metadata.stderr));
+        let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
+        let mut expected_graph = expected.clone();
+        expected_graph.extend(["qubit-fs-local", "qubit-local-files", "qubit-io"]);
+        if profile != ExampleProfile::Direct { expected_graph.extend(["qubit-fs-registry", "qubit-spi"]); }
+        expected_graph.sort_unstable(); expected_graph.dedup();
+        for name in expected_graph {
+            assert_eq!(graph["packages"].as_array().unwrap().iter().filter(|p| p["name"].as_str() == Some(name)).count(), 1, "unique package identity for {name} in {profile:?}");
+        }
+        let resolve = &graph["resolve"]["nodes"];
+        let local_node = resolve.as_array().unwrap().iter().find(|node| node["id"].as_str().unwrap().contains("qubit-fs-local")).unwrap();
+        let local_features = local_node["features"].as_array().unwrap();
+        assert_eq!(local_features.iter().any(|feature| feature.as_str() == Some("registry")), profile != ExampleProfile::Direct, "local feature isolation for {profile:?}");
+        let status = Command::new(env!("CARGO")).args(["check", "--locked", "--quiet", "--bins"]).current_dir(workspace.path()).env("CARGO_TARGET_DIR", root.join("target/documentation-examples")).status().expect("compile document examples");
+        assert!(status.success(), "{profile:?} document examples must compile");
+        if profile == ExampleProfile::Direct {
+            for (document_index, _, document, _, _) in examples.iter().filter(|(_, block_index, document, profile, _)| *block_index == 0 && ["README.md", "README.zh_CN.md", "doc/user_guide.md", "doc/user_guide.zh_CN.md"].contains(document) && *profile == ExampleProfile::Direct) {
+                let binary = format!("doc_{document_index}_0");
+                let status = Command::new(env!("CARGO")).args(["run", "--locked", "--quiet", "--bin", &binary])
             .current_dir(workspace.path())
             .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
             .status()
             .expect("run first document example");
-        assert!(status.success(), "{document} first example must run");
+                assert!(status.success(), "{document} first example must run");
+            }
+        }
     }
 }
 

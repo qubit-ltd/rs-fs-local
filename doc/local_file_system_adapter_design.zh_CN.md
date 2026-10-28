@@ -91,8 +91,10 @@ impl LocalFileSystems {
 
 常见使用：
 
+<!-- fs-local-example: direct -->
 ```rust
 use qubit_fs::Path as LogicalPath;
+use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use std::path::Path as NativePath;
 
@@ -101,7 +103,8 @@ let file_system = LocalFileSystems::rooted(
     LocalResourcePolicy::unbounded(),
 )?;
 let path = LogicalPath::parse("/reports/summary.csv")?;
-let metadata = file_system.stat(&path)?;
+let _metadata = file_system.stat(&path)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 `LocalFileSystems` 只组织 factory，不包含文件算法。每个 factory 都要求显式 `LocalResourcePolicy`；

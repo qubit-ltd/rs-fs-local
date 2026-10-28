@@ -19,8 +19,9 @@ registry provider。本版本集成 `qubit-fs` 0.3 与 `qubit-local-files` 0.5�
       └─ rooted*_with_id() ───► 一个保留的原生根目录
 ```
 
-门面接受绝对、层级化的 `qubit_fs::Path`。rooted 门面保留一个原生根目录，并使用其下的
-逻辑路径。`rooted` 创建进程本地 ID；`rooted_with_id` 使用给定的 `FileSystemId`。
+Host 仅接受绝对、层级化的 `qubit_fs::Path`。Rooted 接受绝对和相对逻辑路径；相对路径从其
+虚拟工作目录（初始为 `/`）解析。它保留一个原生根目录，并使用其下的逻辑路径。`rooted` 创建
+进程本地 ID；`rooted_with_id` 使用给定的 `FileSystemId`。
 
 启用 `registry` feature 后，`LocalFileSystemProvider` 会为符合要求的 `file:` 配置创建
 provider 工厂。解析成功后，registry 会返回已配置的文件系统、provider 解码后的逻辑路径和
@@ -47,6 +48,7 @@ cargo add qubit-fs-local@0.11 --features registry
 
 ## 核心工作流
 
+<!-- fs-local-example: direct -->
 ```rust
 use std::time::Duration;
 
@@ -116,6 +118,7 @@ provider 上限不会开启递归、忽略缺失目标、创建父目录或改�
 
 下面的数值是应用场景示例，不是库默认值：
 
+<!-- fs-local-example: direct -->
 ```rust
 use std::time::Duration;
 use qubit_fs_local::{
@@ -161,6 +164,12 @@ adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 
 | copy | 64 | 100,000 | 1 GiB payload | 32 | 30 秒 |
 | delete | 64 | 100,000 | 16 MiB 待处理路径文本 | 不单独配置 | 30 秒 |
 
+Host 仅接受绝对逻辑路径。Rooted 接受绝对或相对逻辑路径；相对路径从其虚拟工作目录解析，初始为 `/`。
+Registry 的 `file:` URI 必须是绝对 URI。门面返回的临时资源路径是绝对逻辑路径。
+
+目录 reopen 设置仅影响递归目录 listing walker。copy 仍受独立的已打开目录句柄硬上限 32 约束；
+更改 listing reopen 行为不会改变该上限。
+
 用 `with_list_limits(Some(...))`、`with_copy_limits(Some(...))` 或
 `with_delete_limits(Some(...))` 覆盖对应领域；传入 `None` 表示显式取消该领域的上限，
 不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
@@ -175,6 +184,7 @@ writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。
 `LocalResourcePolicy::standard()` 有限资源上限的 host provider。仅在 Cargo 中声明依赖
 不能保证 provider crate 进入最终二进制，需要显式链接：
 
+<!-- fs-local-example: registry -->
 ```rust
 use qubit_fs_local as _;
 use qubit_fs_registry::FileSystemRegistry;
@@ -188,6 +198,7 @@ rooted provider 持有已打开的原生 authority，必须由应用传入 root 
 
 在应用组装阶段注册本地 provider，解析经过校验的 `file:` URI：
 
+<!-- fs-local-example: registry -->
 ```rust
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
@@ -212,6 +223,13 @@ provider，也不会让它进入后续 fallback。便捷的 `rooted` 构造函�
 
 例如，两个 rooted provider 可以解析同一个逻辑路径，同时保留各自的原生 authority 和 identity：
 
+该 selection 示例需要将 SPI crate 作为直接依赖安装：
+
+```bash
+cargo add qubit-spi@0.13
+```
+
+<!-- fs-local-example: selection -->
 ```rust
 use std::path::Path as NativePath;
 
@@ -303,7 +321,7 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
 | 无法使用 `LocalFileSystemProvider` | 启用 `registry` feature。 |
 | `file:` URI 无法解析 | 确认它是绝对 URI、没有远程 authority 或 query，且未提供 options 或 credentials。 |
 | rooted 门面无法打开 | 确认原生根目录存在并能被进程打开。 |
-| 路径不可用 | 在所选门面的 authority 内使用绝对、层级化的 `qubit_fs::Path`。 |
+| 路径不可用 | Host 要求绝对层级化 `qubit_fs::Path`；Rooted 接受绝对或相对路径，相对路径从虚拟工作目录（初始为 `/`）解析。门面返回的临时资源路径是绝对路径。 |
 
 ## 限制与最佳实践
 
