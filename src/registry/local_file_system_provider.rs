@@ -37,11 +37,25 @@ use crate::constants::LOCAL_PROVIDER_ID;
 ///
 /// ```
 /// # #[cfg(feature = "registry")]
+/// use qubit_fs::path::ConnectionUri;
+/// # #[cfg(feature = "registry")]
+/// use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+/// # #[cfg(feature = "registry")]
 /// use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 /// # #[cfg(feature = "registry")]
-/// let provider = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+/// let registry = FileSystemRegistry::default();
 /// # #[cfg(feature = "registry")]
-/// let _ = provider;
+/// registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()))?;
+/// # #[cfg(feature = "registry")]
+/// let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
+/// # #[cfg(feature = "registry")]
+/// let resolution = registry.resolve_config(&config)?;
+/// # #[cfg(feature = "registry")]
+/// assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
+/// # #[cfg(feature = "registry")]
+/// assert_eq!(resolution.file_system().properties().info().provider_id(), "local-file");
+/// # #[cfg(feature = "registry")]
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone)]
 #[must_use]
@@ -66,11 +80,25 @@ impl LocalFileSystemProvider {
     ///
     /// ```
     /// # #[cfg(feature = "registry")]
+    /// use qubit_fs::path::ConnectionUri;
+    /// # #[cfg(feature = "registry")]
+    /// use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
+    /// # #[cfg(feature = "registry")]
     /// use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
     /// # #[cfg(feature = "registry")]
-    /// let provider = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+    /// let registry = FileSystemRegistry::default();
     /// # #[cfg(feature = "registry")]
-    /// let _ = provider;
+    /// registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()))?;
+    /// # #[cfg(feature = "registry")]
+    /// let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
+    /// # #[cfg(feature = "registry")]
+    /// let resolution = registry.resolve_config(&config)?;
+    /// # #[cfg(feature = "registry")]
+    /// assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
+    /// # #[cfg(feature = "registry")]
+    /// assert_eq!(resolution.file_system().properties().info().provider_id(), "local-file");
+    /// # #[cfg(feature = "registry")]
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub const fn host(policy: LocalResourcePolicy) -> Self {
         Self {

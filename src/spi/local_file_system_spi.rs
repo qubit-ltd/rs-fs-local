@@ -78,10 +78,13 @@ use crate::path::local_path_mapper;
 /// # Examples
 ///
 /// ```
+/// use qubit_fs::FileSystem;
 /// use qubit_fs_local::spi::LocalFileSystemSpi;
 /// use qubit_fs_local::LocalResourcePolicy;
 ///
-/// let _spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())?;
+/// let file_system = FileSystem::from_spi(LocalFileSystemSpi::new(LocalResourcePolicy::standard())?)?;
+/// assert_eq!(file_system.properties().info().id().as_str(), "local-host");
+/// assert_eq!(file_system.properties().info().provider_id(), "local-file");
 /// # Ok::<(), qubit_fs::error::FsError>(())
 /// ```
 #[must_use]
@@ -109,10 +112,13 @@ impl LocalFileSystemSpi {
     /// # Examples
     ///
     /// ```
+    /// use qubit_fs::FileSystem;
     /// use qubit_fs_local::spi::LocalFileSystemSpi;
     /// use qubit_fs_local::LocalResourcePolicy;
     ///
-    /// let _spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())?;
+    /// let file_system = FileSystem::from_spi(LocalFileSystemSpi::new(LocalResourcePolicy::standard())?)?;
+    /// assert_eq!(file_system.properties().info().id().as_str(), "local-host");
+    /// assert_eq!(file_system.properties().info().provider_id(), "local-file");
     /// # Ok::<(), qubit_fs::error::FsError>(())
     /// ```
     ///

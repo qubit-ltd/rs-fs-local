@@ -60,8 +60,9 @@ pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::options::LocalReadO
 ///
 /// # Errors
 ///
-/// This conversion currently accepts every resolved listing shape; the
-/// `Result` preserves the adapter conversion contract for future options.
+/// Returns `RequirementNotMet` when a literal-prefix filter or a symlink
+/// policy override cannot be represented by the native walker for the
+/// configured filesystem scope.
 #[inline]
 pub(crate) fn list(
     options: &ResolvedListOptions,
