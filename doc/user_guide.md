@@ -81,8 +81,8 @@ let fs = LocalFileSystems::rooted_with_id(
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
+assert_eq!(metadata.len(), Some(b"name,total\nsample,1\n".len() as u64));
 println!("{metadata:?}");
-# let _ = metadata;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -232,15 +232,26 @@ assembly time:
 
 <!-- fs-local-example: registry -->
 ```rust
+use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
+let root = std::env::current_dir()?.join("target/local-fs-registry-guide");
+std::fs::create_dir_all(root.join("reports"))?;
+let payload = b"tenant,amount\nA,1\n";
+std::fs::write(root.join("reports/summary.csv"), payload)?;
 let registry = FileSystemRegistry::default();
-registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))?;
-let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/report.csv")?);
+registry.register(LocalFileSystemProvider::rooted(
+    FileSystemId::new("guide-reports")?,
+    &root,
+    LocalResourcePolicy::standard(),
+)?)?;
+let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
 let resolution = registry.resolve_config(&config)?;
-let _metadata = resolution.file_system().stat(resolution.path())?;
+assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
+assert_eq!(resolution.file_system().properties().info().id().as_str(), "guide-reports");
+assert_eq!(resolution.file_system().stat(resolution.path())?.len(), Some(payload.len() as u64));
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -267,25 +278,31 @@ cargo add qubit-spi@0.13
 
 <!-- fs-local-example: selection -->
 ```rust
-use std::path::Path as NativePath;
-
 use qubit_fs::{metadata::FileSystemId, path::ConnectionUri};
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
 
+let root_a = std::env::current_dir()?.join("target/local-fs-selection-guide/tenant-a");
+let root_b = std::env::current_dir()?.join("target/local-fs-selection-guide/tenant-b");
+std::fs::create_dir_all(root_a.join("reports"))?;
+std::fs::create_dir_all(root_b.join("reports"))?;
+let payload_a = b"tenant,amount\nA,1\n";
+let payload_b = b"tenant,amount\nB,200\n";
+std::fs::write(root_a.join("reports/summary.csv"), payload_a)?;
+std::fs::write(root_b.join("reports/summary.csv"), payload_b)?;
 let registry = FileSystemRegistry::default();
 registry.register(LocalFileSystemProvider::rooted_with_descriptor(
     ProviderDescriptor::new(ProviderId::new("tenant-a")?),
     FileSystemId::new("tenant-a-files")?,
-    NativePath::new("/srv/tenant-a"),
-    LocalResourcePolicy::unbounded(),
+    &root_a,
+    LocalResourcePolicy::standard(),
 )?)?;
 registry.register(LocalFileSystemProvider::rooted_with_descriptor(
     ProviderDescriptor::new(ProviderId::new("tenant-b")?),
     FileSystemId::new("tenant-b-files")?,
-    NativePath::new("/srv/tenant-b"),
-    LocalResourcePolicy::unbounded(),
+    &root_b,
+    LocalResourcePolicy::standard(),
 )?)?;
 
 let uri = ConnectionUri::parse("file:///reports/summary.csv")?;
@@ -300,6 +317,8 @@ assert_ne!(
     first.file_system().properties().info().id(),
     second.file_system().properties().info().id(),
 );
+assert_eq!(first.file_system().stat(first.path())?.len(), Some(payload_a.len() as u64));
+assert_eq!(second.file_system().stat(second.path())?.len(), Some(payload_b.len() as u64));
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 

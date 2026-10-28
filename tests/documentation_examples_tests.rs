@@ -59,6 +59,51 @@ fn profile_dependencies(profile: ExampleProfile) -> Vec<&'static str> {
     }
 }
 
+fn should_run_example(document: &str, block_index: usize, profile: ExampleProfile) -> bool {
+    match profile {
+        ExampleProfile::Direct => {
+            block_index == 0
+                && [
+                    "README.md",
+                    "README.zh_CN.md",
+                    "doc/user_guide.md",
+                    "doc/user_guide.zh_CN.md",
+                ]
+                .contains(&document)
+        }
+        ExampleProfile::Registry | ExampleProfile::Selection => {
+            document == "doc/user_guide.md" || document == "doc/user_guide.zh_CN.md"
+        }
+    }
+}
+
+#[test]
+fn test_runnable_example_selection_covers_guide_registry() {
+    for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(document)).unwrap();
+        let blocks = profiled_rust_blocks(&source).unwrap();
+        for (block_index, (profile, _)) in blocks.iter().enumerate() {
+            if matches!(profile, ExampleProfile::Registry | ExampleProfile::Selection) {
+                assert!(
+                    should_run_example(document, block_index, *profile),
+                    "{document} {profile:?}"
+                );
+            }
+        }
+    }
+    assert!(!should_run_example("README.md", 1, ExampleProfile::Direct));
+    assert!(!should_run_example(
+        "doc/local_file_system_adapter_design.md",
+        0,
+        ExampleProfile::Direct
+    ));
+    assert!(!should_run_example(
+        "doc/local_file_system_adapter_design.md",
+        0,
+        ExampleProfile::Registry
+    ));
+}
+
 fn manifest_dependency_names(manifest: &toml::Value) -> Vec<String> {
     let mut names = manifest["dependencies"]
         .as_table()
@@ -426,29 +471,21 @@ fn test_readme_and_user_guide_examples_compile() {
             .status()
             .expect("compile document examples");
         assert!(status.success(), "{profile:?} document examples must compile");
-        if profile == ExampleProfile::Direct {
-            for (document_index, _, document, _, _) in
-                examples.iter().filter(|(_, block_index, document, profile, _)| {
-                    *block_index == 0
-                        && [
-                            "README.md",
-                            "README.zh_CN.md",
-                            "doc/user_guide.md",
-                            "doc/user_guide.zh_CN.md",
-                        ]
-                        .contains(document)
-                        && *profile == ExampleProfile::Direct
-                })
-            {
-                let binary = format!("doc_{document_index}_0");
-                let status = Command::new(env!("CARGO"))
-                    .args(["run", "--locked", "--quiet", "--bin", &binary])
-                    .current_dir(workspace.path())
-                    .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
-                    .status()
-                    .expect("run first document example");
-                assert!(status.success(), "{document} first example must run");
+        for (document_index, block_index, document, example_profile, _) in &examples {
+            if *example_profile != profile || !should_run_example(document, *block_index, profile) {
+                continue;
             }
+            let binary = format!("doc_{document_index}_{block_index}");
+            let status = Command::new(env!("CARGO"))
+                .args(["run", "--locked", "--quiet", "--bin", &binary])
+                .current_dir(workspace.path())
+                .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .status()
+                .expect("run selected document example");
+            assert!(
+                status.success(),
+                "{document} example {block_index} for {profile:?} must run"
+            );
         }
     }
 }
