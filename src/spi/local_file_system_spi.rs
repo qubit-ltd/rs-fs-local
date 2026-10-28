@@ -889,8 +889,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 })?;
         let projection = parent
             .as_deref()
-            .map(|parent| LocalTempPathProjection::new(parent, value.path()))
-            .transpose()?;
+            .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
         let public_path = projection
             .as_ref()
             .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
@@ -953,8 +952,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             })?;
         let projection = parent
             .as_deref()
-            .map(|parent| LocalTempPathProjection::new(parent, value.path()))
-            .transpose()?;
+            .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
         let public_path = projection
             .as_ref()
             .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))

@@ -66,6 +66,14 @@ fn test_temp_resources_preserve_requested_parent_alias() {
         filesystem
             .delete_file(&target, DeleteOptions::default())
             .expect("remove publication");
+        let mut kept_file = filesystem
+            .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+            .expect("create file to keep through alias");
+        let outcome = kept_file.keep().expect("keep file under requested parent");
+        assert!(outcome.target().as_str().starts_with(&prefix));
+        filesystem
+            .delete_file(outcome.target(), DeleteOptions::default())
+            .expect("remove kept file");
         let mut directory = filesystem
             .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent)))
             .expect("create aliased temporary directory");

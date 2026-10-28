@@ -27,41 +27,25 @@ pub(crate) struct LocalTempPathProjection {
 }
 
 impl LocalTempPathProjection {
-    /// Captures the native library's one-private-sandbox creation layout.
+    /// Captures the requested and native creation parents.
     ///
-    /// `resource` must contain a generated sandbox and a resource name below
-    /// its creation parent. No filesystem lookup or authority change occurs.
+    /// No filesystem lookup or authority change occurs.
     ///
     /// # Parameters
     ///
     /// - `requested_parent`: Absolute namespace parent supplied by the portable
     ///   caller, retaining its requested alias spelling.
-    /// - `resource`: Native path of the generated temporary resource.
+    /// - `native_parent`: Native namespace parent used to create the resource.
     ///
     /// # Returns
     ///
     /// A projection pairing the requested parent with the native creation
-    /// parent inferred from `resource`.
-    ///
-    /// # Errors
-    ///
-    /// Returns a provider-contract error for an unexpected native layout.
-    pub(crate) fn new(requested_parent: &Path, resource: &Path) -> FsResult<Self> {
-        let sandbox = resource.parent().filter(|path| {
-            path.file_name()
-                .is_some_and(|name| name.as_encoded_bytes().starts_with(b"sandbox-"))
-        });
-        let native_parent = sandbox.and_then(Path::parent).ok_or_else(|| {
-            FsError::new(
-                FsErrorKind::ProviderContractViolation,
-                FsOperation::CreateTemp,
-                "native temporary resource has no private creation sandbox",
-            )
-        })?;
-        Ok(Self {
+    /// parent.
+    pub(crate) fn new(requested_parent: &Path, native_parent: &Path) -> Self {
+        Self {
             requested_parent: requested_parent.to_path_buf(),
             native_parent: native_parent.to_path_buf(),
-        })
+        }
     }
 
     /// Re-expresses a generated descendant beneath the requested parent.
@@ -101,19 +85,23 @@ mod tests {
 
     use super::LocalTempPathProjection;
 
-    /// Projection rejects a native layout that cannot establish its parent.
+    /// Projection accepts native layouts with arbitrary names and depth.
     #[test]
-    fn test_projection_rejects_missing_sandbox() {
-        let error = LocalTempPathProjection::new(Path::new("alias"), Path::new("real/file"))
-            .expect_err("a native sandbox is required");
-        assert_eq!(error.kind(), FsErrorKind::ProviderContractViolation);
+    fn test_projection_accepts_arbitrary_native_layout() {
+        let projection = LocalTempPathProjection::new(Path::new("alias"), Path::new("real"));
+        let projected = projection
+            .project(
+                Path::new("real/private-v2/nested/file"),
+                FsOperation::CreateTemp,
+            )
+            .expect("native layout under explicit parent projects successfully");
+        assert_eq!(Path::new("alias/private-v2/nested/file"), projected);
     }
 
     /// Keep output must remain under the captured native creation parent.
     #[test]
     fn test_projection_rejects_foreign_keep_parent() {
-        let projection = LocalTempPathProjection::new(Path::new("alias"), Path::new("real/sandbox-test/file"))
-            .expect("native sandbox layout");
+        let projection = LocalTempPathProjection::new(Path::new("alias"), Path::new("real"));
         let error = projection
             .project(Path::new("foreign/kept"), FsOperation::KeepTemp)
             .expect_err("foreign output must be rejected");

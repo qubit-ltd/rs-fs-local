@@ -885,9 +885,8 @@ mod tests {
         std::fs::write(&generated, b"existing").expect("conflicting generated target");
         let projection = LocalTempPathProjection::new(
             std::path::Path::new("/requested"),
-            std::path::Path::new("/unrelated/sandbox-test/resource"),
-        )
-        .expect("test projection");
+            std::path::Path::new("/unrelated"),
+        );
 
         let failure = keep_file(
             &mut resource,
