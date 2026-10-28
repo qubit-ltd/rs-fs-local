@@ -139,6 +139,11 @@ fn test_rooted_temp_file_relative_parent() {
                     FsErrorKind::NotFound
                 );
             }
+            if creates_parent {
+                filesystem
+                    .stat(&Path::parse(parent).expect("relative parent"))
+                    .expect("created parent remains after resource lifecycle");
+            }
         }
     }
 }
@@ -179,6 +184,11 @@ fn test_rooted_temp_directory_relative_parent() {
                     filesystem.stat(&created).expect_err("resource removed").kind(),
                     FsErrorKind::NotFound
                 );
+            }
+            if creates_parent {
+                filesystem
+                    .stat(&Path::parse(parent).expect("relative parent"))
+                    .expect("created parent remains after resource lifecycle");
             }
         }
     }
