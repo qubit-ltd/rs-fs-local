@@ -14,6 +14,7 @@ use qubit_fs::error::FsError;
 use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
 use qubit_fs::metadata::DirEntry;
+use qubit_fs::path::Path as LogicalPath;
 use qubit_fs::spi::DirectoryStreamSpi;
 use qubit_fs::spi::ResolvedListOptions;
 use qubit_local_files as native_files;
@@ -43,6 +44,8 @@ pub(crate) enum LocalDirectoryStreamSpi {
         ListingOptions,
         /// Provider identity attached to lazy traversal failures.
         String,
+        /// Relative request root retained for projecting returned entry paths.
+        Option<LogicalPath>,
     ),
 }
 
@@ -74,6 +77,7 @@ impl LocalDirectoryStreamSpi {
     /// - `walker`: Native lazy directory walker.
     /// - `options`: Resolved listing behavior retained for the stream.
     /// - `provider_id`: Provider identity attached to lazy traversal errors.
+    /// - `requested_root`: Logical path used to open the native walker.
     ///
     /// # Returns
     ///
@@ -83,8 +87,14 @@ impl LocalDirectoryStreamSpi {
         walker: native_files::LocalDirectoryWalker,
         options: &ResolvedListOptions,
         provider_id: &str,
+        requested_root: &LogicalPath,
     ) -> Self {
-        Self::Rooted(walker, ListingOptions::new(options), provider_id.to_owned())
+        Self::Rooted(
+            walker,
+            ListingOptions::new(options),
+            provider_id.to_owned(),
+            (!requested_root.is_absolute()).then(|| requested_root.clone()),
+        )
     }
 }
 
@@ -102,18 +112,20 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
     /// represented as a canonical logical path.
     fn next_entry(&mut self) -> FsResult<Option<DirEntry>> {
         loop {
-            let (entry, scope, options, provider_id) = match self {
+            let (entry, scope, options, provider_id, relative_root) = match self {
                 Self::Host(walker, options, provider_id) => (
                     walker.next(),
                     native_files::path::LocalFileSystemScope::Host,
                     options,
                     provider_id,
+                    None,
                 ),
-                Self::Rooted(walker, options, provider_id) => (
+                Self::Rooted(walker, options, provider_id, relative_root) => (
                     walker.next(),
                     native_files::path::LocalFileSystemScope::Rooted,
                     options,
                     provider_id,
+                    relative_root.as_ref(),
                 ),
             };
             let Some(entry) = entry else {
@@ -128,7 +140,12 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             if !options.matches(&logical_relative) {
                 continue;
             }
-            let path = local_path_mapper::logical(scope, entry.path(), FsOperation::List)?;
+            let path = match relative_root {
+                Some(root) => {
+                    LogicalPath::from_components(false, root.components().chain(logical_relative.components()))?
+                }
+                None => local_path_mapper::logical(scope, entry.path(), FsOperation::List)?,
+            };
             let mut result = DirEntry::new(path, local_outcome_mapper::file_kind(entry.metadata().kind()));
             if options.include_metadata() {
                 result.metadata = Some(local_outcome_mapper::metadata(entry.metadata().clone()));

@@ -6,7 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 // contract tests.
-//! Host namespace synchronous SPI delegated to `qubit-local-files`.
+//! Host and Rooted synchronous SPI delegated to `qubit-local-files`.
 
 use std::num::NonZeroUsize;
 use std::path::Path as NativePath;
@@ -458,7 +458,8 @@ impl LocalFileSystemSpi {
     ///
     /// # Returns
     ///
-    /// Opened-file information containing the host filesystem identity.
+    /// Opened-file information containing this filesystem's configured
+    /// identity.
     #[inline]
     fn info(&self, path: Path) -> OpenedFileInfo {
         OpenedFileInfo::new(self.properties.info().id().clone(), path)
@@ -482,17 +483,19 @@ impl LocalFileSystemSpi {
 }
 
 impl FileSystemSpi for LocalFileSystemSpi {
-    /// Returns the immutable host filesystem properties.
+    /// Returns the immutable properties of this filesystem instance.
     ///
     /// # Returns
     ///
-    /// A snapshot of host identity, capabilities, limits, and path rules.
+    /// A snapshot of this instance's identity, capabilities, limits, and path
+    /// rules.
     #[inline]
     fn properties(&self) -> ProviderProperties {
         self.properties.clone()
     }
 
-    /// Reads metadata for a host logical path.
+    /// Reads metadata for a logical path through the configured local
+    /// authority.
     ///
     /// # Parameters
     ///
@@ -513,7 +516,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::Stat, request.path()))
     }
 
-    /// Opens a lazy host directory listing.
+    /// Opens a lazy directory listing through the configured local authority.
     ///
     /// # Parameters
     ///
@@ -521,7 +524,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// # Returns
     ///
-    /// A directory stream that maps native entries to logical paths.
+    /// A directory stream that preserves the requested absolute or relative
+    /// logical root in returned entry paths. Host listing requests require an
+    /// absolute path.
     ///
     /// # Errors
     ///
@@ -547,7 +552,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .list_with_options(&path, &options)
             .map(|value| {
                 let stream = if rooted {
-                    LocalDirectoryStreamSpi::rooted(value, request.options(), &self.provider_id)
+                    LocalDirectoryStreamSpi::rooted(value, request.options(), &self.provider_id, logical_path)
                 } else {
                     LocalDirectoryStreamSpi::host(value, request.options(), &self.provider_id)
                 };
@@ -556,7 +561,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::List, logical_path))
     }
 
-    /// Opens a host file for reading.
+    /// Opens a file for reading through the configured local authority.
     ///
     /// # Parameters
     ///
@@ -598,7 +603,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
         Ok(OpenedReader::new(info, Box::new(reader)))
     }
 
-    /// Opens a host file for stateful publication.
+    /// Opens a file for stateful publication through the configured local
+    /// authority.
     ///
     /// # Parameters
     ///
@@ -632,7 +638,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::OpenWriter, request.path()))
     }
 
-    /// Creates a host directory using resolved facade policy.
+    /// Creates a directory through the configured local authority using
+    /// resolved facade policy.
     ///
     /// # Parameters
     ///
@@ -655,7 +662,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::CreateDir, request.path()))
     }
 
-    /// Deletes one host file.
+    /// Deletes a file through the configured local authority.
     ///
     /// # Parameters
     ///
@@ -677,7 +684,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::Delete, request.path()))
     }
 
-    /// Deletes one host directory.
+    /// Deletes a directory through the configured local authority.
     ///
     /// # Parameters
     ///
@@ -699,7 +706,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::Delete, request.path()))
     }
 
-    /// Attempts a native host copy when all requirements are expressible.
+    /// Attempts a native copy through the configured local authority when all
+    /// requirements are expressible.
     ///
     /// # Parameters
     ///
@@ -790,7 +798,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             })
     }
 
-    /// Renames one host path to another through native atomic rename.
+    /// Renames one path to another through the configured native authority.
     ///
     /// # Parameters
     ///
@@ -829,7 +837,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             })
     }
 
-    /// Creates a temporary file in the host authority.
+    /// Creates a temporary file in the configured local authority.
     ///
     /// # Parameters
     ///
@@ -837,7 +845,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// # Returns
     ///
-    /// An opened temporary file with host-mode lifecycle ownership.
+    /// An opened temporary file retaining the creating Host or Rooted
+    /// authority.
     ///
     /// # Errors
     ///
@@ -892,7 +901,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         ))
     }
 
-    /// Creates a temporary directory in the host authority.
+    /// Creates a temporary directory in the configured local authority.
     ///
     /// # Parameters
     ///
@@ -900,7 +909,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// # Returns
     ///
-    /// An opened temporary directory with host-mode lifecycle ownership.
+    /// An opened temporary directory retaining the creating Host or Rooted
+    /// authority.
     ///
     /// # Errors
     ///
