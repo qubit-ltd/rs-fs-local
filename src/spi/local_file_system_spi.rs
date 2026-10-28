@@ -376,6 +376,34 @@ impl LocalFileSystemSpi {
         local_path_mapper::native(self.native.scope(), path)
     }
 
+    /// Resolves a temporary-resource parent in the namespace used for
+    /// projection.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Logical parent requested by the caller.
+    ///
+    /// # Returns
+    ///
+    /// The native parent, made absolute for relative Rooted paths while
+    /// retaining their spelling beneath the authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns path-conversion errors or a mapped current-directory error
+    /// when a relative Rooted parent cannot be resolved.
+    fn native_temp_parent(&self, path: &Path) -> FsResult<PathBuf> {
+        let parent = self.native_path(path)?;
+        if self.is_rooted() && !parent.has_root() {
+            let current = self
+                .native
+                .current_directory()
+                .map_err(|error| self.map(error, FsOperation::CreateTemp, path))?;
+            return Ok(current.join(parent));
+        }
+        Ok(parent)
+    }
+
     /// Converts a logical source-target pair for the configured scope.
     ///
     /// # Parameters
@@ -818,7 +846,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let parent = request
             .options()
             .parent()
-            .map(|path| self.native_path(path))
+            .map(|path| self.native_temp_parent(path))
             .transpose()?;
         let mut options = native_files::options::LocalTempFileOptions::new()
             .with_prefix(request.options().prefix())
@@ -881,7 +909,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let parent = request
             .options()
             .parent()
-            .map(|path| self.native_path(path))
+            .map(|path| self.native_temp_parent(path))
             .transpose()?;
         let mut options = native_files::options::LocalTempDirectoryOptions::new()
             .with_prefix(request.options().prefix())

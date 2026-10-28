@@ -19,7 +19,8 @@ use qubit_fs::error::FsResult;
 /// Projects generated paths from the native parent to its requested alias.
 #[derive(Debug)]
 pub(crate) struct LocalTempPathProjection {
-    /// Parent spelling supplied by the portable caller.
+    /// Absolute namespace parent supplied by the portable caller, retaining
+    /// aliases rather than resolving them through the filesystem.
     requested_parent: PathBuf,
     /// Resolved creation parent retained by the native resource.
     native_parent: PathBuf,
@@ -33,7 +34,8 @@ impl LocalTempPathProjection {
     ///
     /// # Parameters
     ///
-    /// - `requested_parent`: Parent spelling supplied by the portable caller.
+    /// - `requested_parent`: Absolute namespace parent supplied by the
+    ///   portable caller, retaining its requested alias spelling.
     /// - `resource`: Native path of the generated temporary resource.
     ///
     /// # Returns

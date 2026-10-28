@@ -51,7 +51,7 @@ fn test_temp_resources_preserve_requested_parent_alias() {
     let rooted = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem");
     for (filesystem, parent) in [
         (host, host_parent),
-        (rooted, Path::parse("/alias").expect("rooted alias")),
+        (rooted.clone(), Path::parse("/alias").expect("rooted alias")),
     ] {
         let prefix = format!("{}/", parent.as_str());
         let mut file = filesystem
@@ -75,6 +75,112 @@ fn test_temp_resources_preserve_requested_parent_alias() {
         filesystem
             .delete_directory(outcome.target(), DeleteOptions::default())
             .expect("remove kept directory");
+    }
+
+    let relative_alias = Path::parse("alias").expect("relative rooted alias");
+    let mut relative_file = rooted
+        .create_temp_file(TempFileOptions::default().with_parent(Some(relative_alias.clone())))
+        .expect("create temporary file through relative alias");
+    assert!(relative_file.path().as_str().starts_with("/alias/"));
+    let relative_file_target =
+        Path::parse("/alias/published-relative").expect("relative alias target");
+    let outcome = relative_file
+        .persist(&relative_file_target, PersistOptions::default())
+        .expect("publish through relative alias");
+    assert_eq!(outcome.target(), &relative_file_target);
+    rooted
+        .delete_file(&relative_file_target, DeleteOptions::default())
+        .expect("remove relative alias publication");
+    let mut relative_directory = rooted
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(relative_alias)))
+        .expect("create temporary directory through relative alias");
+    assert!(relative_directory.path().as_str().starts_with("/alias/"));
+    let outcome = relative_directory.keep().expect("keep through relative alias");
+    assert!(outcome.target().as_str().starts_with("/alias/"));
+    rooted
+        .delete_directory(outcome.target(), DeleteOptions::default())
+        .expect("remove relative alias kept directory");
+}
+
+/// Relative Rooted parents project to usable absolute logical paths.
+#[test]
+fn test_rooted_temp_file_relative_parent() {
+    let root = tempfile::tempdir().expect("fixture root");
+    std::fs::create_dir(root.path().join("reports")).expect("reports parent");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem");
+
+    for (parent, prefix, creates_parent) in [
+        ("reports", "/reports/", false),
+        ("new/reports", "/new/reports/", true),
+    ] {
+        for keep in [false, true] {
+            let options = TempFileOptions::default()
+                .with_parent(Some(Path::parse(parent).expect("relative parent")))
+                .with_create_parent(creates_parent);
+            let mut resource = filesystem
+                .create_temp_file(options)
+                .expect("relative parent creation");
+            let created = resource.path().clone();
+            assert!(created.is_absolute());
+            assert!(created.as_str().starts_with(prefix));
+            filesystem.stat(&created).expect("returned path is usable");
+            if keep {
+                let outcome = resource.keep().expect("keep temporary file");
+                assert!(outcome.target().as_str().starts_with(prefix));
+                filesystem.stat(outcome.target()).expect("kept target is usable");
+                filesystem
+                    .delete_file(outcome.target(), DeleteOptions::default())
+                    .expect("remove kept file");
+            } else {
+                resource.cleanup().expect("explicit cleanup");
+                assert_eq!(
+                    filesystem.stat(&created).expect_err("resource removed").kind(),
+                    FsErrorKind::NotFound
+                );
+            }
+        }
+    }
+}
+
+/// Relative Rooted parents project to usable absolute logical paths.
+#[test]
+fn test_rooted_temp_directory_relative_parent() {
+    let root = tempfile::tempdir().expect("fixture root");
+    std::fs::create_dir(root.path().join("reports")).expect("reports parent");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem");
+
+    for (parent, prefix, creates_parent) in [
+        ("reports", "/reports/", false),
+        ("new/reports", "/new/reports/", true),
+    ] {
+        for keep in [false, true] {
+            let options = TempDirectoryOptions::default()
+                .with_parent(Some(Path::parse(parent).expect("relative parent")))
+                .with_create_parent(creates_parent);
+            let mut resource = filesystem
+                .create_temp_directory(options)
+                .expect("relative parent creation");
+            let created = resource.path().clone();
+            assert!(created.is_absolute());
+            assert!(created.as_str().starts_with(prefix));
+            filesystem.stat(&created).expect("returned path is usable");
+            if keep {
+                let outcome = resource.keep().expect("keep temporary directory");
+                assert!(outcome.target().as_str().starts_with(prefix));
+                filesystem.stat(outcome.target()).expect("kept target is usable");
+                filesystem
+                    .delete_directory(outcome.target(), DeleteOptions::default())
+                    .expect("remove kept directory");
+            } else {
+                resource.cleanup().expect("explicit cleanup");
+                assert_eq!(
+                    filesystem.stat(&created).expect_err("resource removed").kind(),
+                    FsErrorKind::NotFound
+                );
+            }
+        }
     }
 }
 
