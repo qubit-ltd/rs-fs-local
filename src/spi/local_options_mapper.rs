@@ -431,11 +431,95 @@ fn copy_source_options(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
     use qubit_fs::copy::CopyMode;
+    use qubit_fs::FileSystem;
+    use qubit_fs::directory::{ListOptions, ListScope};
+    use qubit_fs::error::FsResult;
+    use qubit_fs::spi::{
+        FileSystemSpi, ListRequest, OpenedDirectoryStream, ProviderProperties, StatRequest,
+        StatResponse,
+    };
+    use qubit_local_files::LocalFileSystem;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalCopySourceMode;
 
-    use super::copy_source_options;
+    use super::{copy_source_options, list};
+    use crate::LocalListResourceLimits;
+    use crate::LocalResourcePolicy;
+    use crate::spi::LocalFileSystemSpi;
+
+    struct DeadlineProbe {
+        inner: LocalFileSystemSpi,
+        captured: Arc<Mutex<Option<Option<Duration>>>>,
+        defaults: qubit_local_files::options::LocalListOptions,
+        scope: qubit_local_files::path::LocalFileSystemScope,
+    }
+
+    impl FileSystemSpi for DeadlineProbe {
+        fn properties(&self) -> ProviderProperties {
+            self.inner.properties()
+        }
+
+        fn stat(&self, request: StatRequest<'_>) -> FsResult<StatResponse> {
+            self.inner.stat(request)
+        }
+
+        fn list(&self, request: ListRequest<'_>) -> FsResult<OpenedDirectoryStream> {
+            let mapped = list(request.options(), self.scope, self.defaults)?;
+            *self.captured.lock().expect("capture lock should not be poisoned") = Some(mapped.deadline());
+            self.inner.list(request)
+        }
+    }
+
+    /// The facade-resolved request and real mapper combine both deadline budgets.
+    #[test]
+    fn test_list_deadline_mapping_uses_tighter_budget() {
+        let second = Duration::from_secs(1);
+        let cases = [
+            (Some(second * 2), Some(second * 5), Some(second * 2)),
+            (Some(second * 5), Some(second * 2), Some(second * 2)),
+            (None, Some(second * 2), Some(second * 2)),
+            (Some(second * 2), None, Some(second * 2)),
+            (None, None, None),
+        ];
+
+        for (request_deadline, provider_deadline, expected) in cases {
+            let root = tempfile::tempdir().expect("fixture root should exist");
+            std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
+            let limits = provider_deadline.map(|deadline| {
+                LocalListResourceLimits::new(8, 64, 255, 4, deadline)
+                    .expect("limits should be valid")
+            });
+            let policy = LocalResourcePolicy::unbounded().with_list_limits(limits);
+            let inner = LocalFileSystemSpi::new(policy).expect("inner local SPI should construct");
+            let defaults = policy.list_options();
+            let native = LocalFileSystem::host().expect("host scope should construct");
+            let captured = Arc::new(Mutex::new(None));
+            let filesystem = FileSystem::from_spi(DeadlineProbe {
+                inner,
+                captured: Arc::clone(&captured),
+                defaults,
+                scope: native.scope(),
+            })
+            .expect("probe facade should construct");
+
+            let _stream = filesystem
+                .list(
+                    &ListScope::Path(
+                        crate::host_path_to_logical(root.path()).expect("fixture path should convert"),
+                    ),
+                    ListOptions::default().with_deadline(request_deadline),
+                )
+                .expect("list stream should open");
+            assert_eq!(
+                Some(expected),
+                *captured.lock().expect("capture lock should not be poisoned")
+            );
+        }
+    }
 
     /// A complete facade request must override every native source default.
     #[test]

@@ -188,26 +188,51 @@ fn test_list_and_copy_requests_cannot_relax_provider_ceilings() {
     }
 }
 
-/// A request deadline tightens an existing provider deadline while preserving
-/// an otherwise usable listing request.
+/// A zero request budget fails during native provider open with list context.
 #[test]
-fn test_list_request_tightens_provider_deadline() {
+fn test_list_deadline_request_zero() {
     let root = tempfile::tempdir().expect("fixture should exist");
     std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
-    let filesystem = LocalFileSystems::rooted(root.path(), bounded_policy()).expect("filesystem should open");
-    let mut stream = filesystem
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("filesystem should open");
+    let scope_path = host_path_to_logical(root.path()).expect("fixture path should convert");
+    let error = filesystem
         .list(
-            &ListScope::Path((Path::root()).clone()),
-            ListOptions::default().with_deadline(Some(Duration::from_millis(250))),
+            &ListScope::Path(scope_path),
+            ListOptions::default().with_deadline(Some(Duration::ZERO)),
         )
-        .expect("listing with a tighter deadline should open");
+        .expect_err("zero request deadline should fail while the provider opens the walker");
+    assert_eq!(FsErrorKind::Timeout, error.kind());
+    assert_eq!(qubit_fs::error::FsOperation::List, error.operation());
+}
 
-    assert!(
-        stream
-            .next_entry()
-            .expect("entry should be readable before the deadline")
-            .is_some()
-    );
+/// A zero provider budget is enforced while the native walker opens.
+#[test]
+fn test_list_deadline_provider_zero() {
+    assert_provider_zero_deadline(None);
+}
+
+/// A caller's positive budget cannot relax a zero provider deadline.
+#[test]
+fn test_list_deadline_provider_cannot_be_relaxed() {
+    assert_provider_zero_deadline(Some(Duration::from_secs(5)));
+}
+
+fn assert_provider_zero_deadline(request_deadline: Option<Duration>) {
+    let root = tempfile::tempdir().expect("fixture should exist");
+    std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
+    let limits = LocalListResourceLimits::new(8, 64, 255, 4, Duration::ZERO)
+        .expect("zero provider deadline should be valid");
+    let policy = LocalResourcePolicy::unbounded().with_list_limits(Some(limits));
+    let filesystem = LocalFileSystems::host(policy).expect("filesystem should open");
+    let scope_path = host_path_to_logical(root.path()).expect("fixture path should convert");
+    let error = filesystem
+        .list(
+            &ListScope::Path(scope_path),
+            ListOptions::default().with_deadline(request_deadline),
+        )
+        .expect_err("zero provider deadline should fail while the provider opens the walker");
+    assert_eq!(FsErrorKind::Timeout, error.kind());
+    assert_eq!(qubit_fs::error::FsOperation::List, error.operation());
 }
 
 /// Partial recursive deletion retains portable budget classification and
