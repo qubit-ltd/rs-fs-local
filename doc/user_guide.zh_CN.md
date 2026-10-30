@@ -238,7 +238,7 @@ provider，也不会让它进入后续 fallback。便捷的 `rooted` 构造函�
 该 selection 示例需要将 SPI crate 作为直接依赖安装：
 
 ```bash
-cargo add qubit-spi@0.13
+cargo add qubit-spi@0.14
 ```
 
 <!-- fs-local-example: selection -->

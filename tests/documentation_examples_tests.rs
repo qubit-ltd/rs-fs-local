@@ -237,7 +237,7 @@ fn test_direct_profile_does_not_inject_registry_or_spi() {
 fn test_selection_profile_requires_spi_install_command() {
     let manifest = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     let requirement = dependency_requirement(&manifest, "qubit-spi");
-    assert!(validate_selection_install("cargo add qubit-spi@0.13", &requirement).is_ok());
+    assert!(validate_selection_install("cargo add qubit-spi@0.14", &requirement).is_ok());
     assert!(validate_selection_install("cargo add qubit-fs-local@0.11", &requirement).is_err());
     for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
         let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(document)).unwrap();

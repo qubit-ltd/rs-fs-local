@@ -273,7 +273,7 @@ retaining separate native authorities and identities:
 Install the SPI crate as a direct dependency for this selection example:
 
 ```bash
-cargo add qubit-spi@0.13
+cargo add qubit-spi@0.14
 ```
 
 <!-- fs-local-example: selection -->

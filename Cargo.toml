@@ -67,7 +67,7 @@ qubit-local-files = { path = "../rs-local-files", version = "0.5" }
 qubit-io = "0.19"
 qubit-fs-registry = { path = "../rs-fs-registry", version = "0.8", optional = true }
 qubit-redact = { path = "../rs-redact", version = "0.10", optional = true }
-qubit-spi = { version = "0.13", optional = true }
+qubit-spi = { version = "^0.14", optional = true }
 
 [features]
 default = []
