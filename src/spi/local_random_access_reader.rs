@@ -29,7 +29,11 @@ pub(crate) struct LocalRandomAccessReader {
 impl LocalRandomAccessReader {
     /// Retains the opened native reader and its portable error context.
     pub(crate) fn new(reader: native_files::LocalFileReader, path: Path, provider_id: String) -> Self {
-        Self { reader, path, provider_id }
+        Self {
+            reader,
+            path,
+            provider_id,
+        }
     }
 
     fn map_io(&self, error: std::io::Error) -> qubit_fs::error::FsError {
@@ -52,5 +56,38 @@ impl RandomAccessReadSession for LocalRandomAccessReader {
             .seek(SeekFrom::Start(offset))
             .map_err(|error| self.map_io(error))?;
         Input::read(&mut self.reader, output).map_err(|error| self.map_io(error))
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::error::Error;
+
+    use qubit_fs::Path;
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_fs::spi::RandomAccessReadSession;
+
+    use super::LocalRandomAccessReader;
+
+    #[test]
+    fn test_seek_failure_maps_native_error_context() {
+        let root = tempfile::tempdir().expect("temporary root");
+        let native_path = root.path().join("payload");
+        std::fs::write(&native_path, b"payload").expect("seed file");
+        let filesystem = qubit_local_files::LocalFileSystem::host().expect("native host filesystem");
+        let native_reader = filesystem.open_reader(&native_path).expect("open native reader");
+        let path = Path::parse("/payload").expect("logical path");
+        let mut reader = LocalRandomAccessReader::new(native_reader, path.clone(), "test-provider".to_owned());
+
+        let error = reader
+            .read_at(u64::MAX, &mut [0])
+            .expect_err("unrepresentable seek must fail");
+
+        assert_eq!(FsErrorKind::InvalidPath, error.kind());
+        assert_eq!(FsOperation::Read, error.operation());
+        assert_eq!(Some(&path), error.path());
+        assert_eq!(Some("test-provider"), error.provider());
+        assert!(error.source().is_some(), "native I/O source must be retained");
     }
 }

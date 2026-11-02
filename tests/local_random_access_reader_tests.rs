@@ -2,6 +2,8 @@
 //    Copyright (c) 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Native random-access sessions retain one opened file object.
 
@@ -9,6 +11,8 @@
 use std::io::ErrorKind;
 
 use qubit_fs::FileSystem;
+use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
 use qubit_fs::read::ReadOptions;
@@ -24,10 +28,12 @@ impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("temporary root");
         let id = FileSystemId::new("local-random-access-test").expect("valid id");
-        let spi = LocalFileSystemSpi::rooted(id, root.path(), LocalResourcePolicy::standard())
-            .expect("rooted SPI");
+        let spi = LocalFileSystemSpi::rooted(id, root.path(), LocalResourcePolicy::standard()).expect("rooted SPI");
         let file_system = FileSystem::from_spi(spi).expect("filesystem");
-        Self { _root: root, file_system }
+        Self {
+            _root: root,
+            file_system,
+        }
     }
 }
 
@@ -47,12 +53,49 @@ fn test_session_reads_nonsequential_offsets_from_one_opened_file() {
     assert_eq!(Some(6), reader.info().metadata().and_then(|metadata| metadata.len()));
 
     let mut tail = [0; 2];
+    assert_eq!(0, reader.read_at(u64::MAX, &mut []).expect("empty read does not seek"));
     assert_eq!(2, reader.read_at(4, &mut tail).expect("read tail"));
     assert_eq!(*b"ef", tail);
     let mut head = [0; 2];
     assert_eq!(2, reader.read_at(0, &mut head).expect("read head"));
     assert_eq!(*b"ab", head);
     assert_eq!(0, reader.read_at(6, &mut head).expect("EOF"));
+}
+
+#[test]
+fn test_open_missing_file_maps_native_error_context() {
+    let fixture = Fixture::new();
+    let path = Path::parse("/missing").expect("logical path");
+
+    let error = fixture
+        .file_system
+        .open_random_access_reader(&path, ReadOptions::default())
+        .expect_err("missing file must fail to open");
+
+    assert_eq!(FsErrorKind::NotFound, error.kind());
+    assert_eq!(FsOperation::OpenReader, error.operation());
+    assert_eq!(Some(&path), error.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_read_at_seek_error_maps_native_io_context() {
+    let fixture = Fixture::new();
+    let native_path = fixture._root.path().join("payload");
+    std::fs::write(&native_path, b"abcdef").expect("seed file");
+    let path = Path::parse("/payload").expect("logical path");
+    let mut reader = fixture
+        .file_system
+        .open_random_access_reader(&path, ReadOptions::default())
+        .expect("open random access session");
+
+    let error = reader
+        .read_at(u64::MAX, &mut [0])
+        .expect_err("unrepresentable seek must fail");
+
+    assert_eq!(FsErrorKind::InvalidOptions, error.kind());
+    assert_eq!(FsOperation::Read, error.operation());
+    assert_eq!(Some(&path), error.path());
 }
 
 #[cfg(unix)]
@@ -116,7 +159,11 @@ fn test_open_handle_prevents_native_path_replacement_on_windows() {
         .expect("open original handle");
 
     let error = std::fs::rename(&replacement, &original).expect_err("Windows sharing mode rejects replacement");
-    assert_eq!(ErrorKind::PermissionDenied, error.kind(), "platform: Windows; native replacement is denied");
+    assert_eq!(
+        ErrorKind::PermissionDenied,
+        error.kind(),
+        "platform: Windows; native replacement is denied"
+    );
     let mut bytes = [0; 6];
     assert_eq!(6, opened.read_at(0, &mut bytes).expect("read retained handle"));
     assert_eq!(*b"AAAAAA", bytes);
