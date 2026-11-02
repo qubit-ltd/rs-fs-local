@@ -42,4 +42,6 @@ jobs:
       - name: Prepare local path dependencies
         run: ./.infra/bin/prepare-local-path-dependencies.sh
       - name: Run local adapter tests on Windows
-        run: cargo test --locked --no-default-features --features registry --test path_tests --test local_file_uri_path_tests --test local_error_mapping_tests --test local_temp_resource_spi_tests
+        run: cargo test --locked --no-default-features --features registry --test path_tests --test local_file_uri_path_tests --test local_error_mapping_tests --test local_temp_resource_spi_tests --test local_range_read_tests
+      - name: Run local range reader unit tests on Windows
+        run: cargo test --locked --no-default-features --features registry --lib spi::local_range_reader::tests::
