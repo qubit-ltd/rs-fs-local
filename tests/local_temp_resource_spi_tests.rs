@@ -13,6 +13,7 @@ use std::path::Path as NativePath;
 
 use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyOptions;
+use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::DeleteOptions;
 use qubit_fs::error::FsEffectState;
@@ -1301,4 +1302,237 @@ fn assert_cleanup_source_uncertainty(error: &FsError, missing: bool) {
         native.kind()
     );
     assert!(native.path().is_some());
+}
+
+#[test]
+fn test_persist_metadata_policies_preserve_source_fields() {
+    let policies = [
+        MetadataPreservePolicy::None,
+        MetadataPreservePolicy::Portable,
+        MetadataPreservePolicy::UserMetadata,
+        MetadataPreservePolicy::ProviderNative,
+        MetadataPreservePolicy::All,
+    ];
+    for rooted_scope in [false, true] {
+        for policy in policies {
+            verify_file_persist_metadata(rooted_scope, policy);
+            verify_directory_persist_metadata(rooted_scope, policy);
+        }
+    }
+}
+
+fn verify_file_persist_metadata(rooted_scope: bool, policy: MetadataPreservePolicy) {
+    let root = tempfile::tempdir().expect("persist metadata fixture");
+    let filesystem = metadata_test_filesystem(root.path(), rooted_scope);
+    let parent = metadata_test_parent(root.path(), rooted_scope);
+    let target = Path::parse(&format!("{}/meta-file", parent.as_str().trim_end_matches('/'))).expect("target path");
+    let mut resource = filesystem
+        .create_temp_file(TempFileOptions::default().with_parent(Some(parent)))
+        .expect("create temporary file");
+    let source_path = resource.path().clone();
+    let source_native = metadata_test_native_path(root.path(), &source_path, rooted_scope);
+    std::fs::write(&source_native, b"persist metadata").expect("seed file payload");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&source_native, std::fs::Permissions::from_mode(0o640)).expect("set source mode");
+    }
+    #[cfg(windows)]
+    {
+        let mut permissions = std::fs::metadata(&source_native)
+            .expect("read source permissions")
+            .permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&source_native, permissions).expect("set source readonly flag");
+    }
+    let outcome = resource
+        .persist(&target, PersistOptions::default().with_preserve_metadata(policy))
+        .expect("persist file under metadata policy");
+    assert_eq!(&target, outcome.target());
+    assert!(!filesystem.exists(&source_path).expect("check source removal"));
+    let target_native = metadata_test_native_path(root.path(), &target, rooted_scope);
+    assert_eq!(
+        b"persist metadata".as_slice(),
+        std::fs::read(&target_native).expect("read payload")
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            0o640,
+            std::fs::metadata(&target_native)
+                .expect("read target mode")
+                .permissions()
+                .mode()
+                & 0o777
+        );
+    }
+    #[cfg(windows)]
+    {
+        assert!(
+            std::fs::metadata(&target_native)
+                .expect("read target permissions")
+                .permissions()
+                .readonly()
+        );
+    }
+}
+
+fn verify_directory_persist_metadata(rooted_scope: bool, policy: MetadataPreservePolicy) {
+    let root = tempfile::tempdir().expect("persist metadata fixture");
+    let filesystem = metadata_test_filesystem(root.path(), rooted_scope);
+    let parent = metadata_test_parent(root.path(), rooted_scope);
+    let target =
+        Path::parse(&format!("{}/meta-directory", parent.as_str().trim_end_matches('/'))).expect("target path");
+    let mut resource = filesystem
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent)))
+        .expect("create temporary directory");
+    let source_path = resource.path().clone();
+    let source_native = metadata_test_native_path(root.path(), &source_path, rooted_scope);
+    let child = source_native.join("payload");
+    std::fs::write(&child, b"persist metadata").expect("seed directory payload");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&source_native, std::fs::Permissions::from_mode(0o750)).expect("set source mode");
+    }
+    #[cfg(windows)]
+    {
+        let mut permissions = std::fs::metadata(&child).expect("read child permissions").permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&child, permissions).expect("set child readonly flag");
+    }
+    let outcome = resource
+        .persist(&target, PersistOptions::default().with_preserve_metadata(policy))
+        .expect("persist directory under metadata policy");
+    assert_eq!(&target, outcome.target());
+    assert!(!filesystem.exists(&source_path).expect("check source removal"));
+    let target_native = metadata_test_native_path(root.path(), &target, rooted_scope);
+    assert_eq!(
+        b"persist metadata".as_slice(),
+        std::fs::read(target_native.join("payload")).expect("read payload")
+    );
+    #[cfg(windows)]
+    assert!(
+        std::fs::metadata(target_native.join("payload"))
+            .expect("read published child permissions")
+            .permissions()
+            .readonly()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            0o750,
+            std::fs::metadata(&target_native)
+                .expect("read target mode")
+                .permissions()
+                .mode()
+                & 0o777
+        );
+    }
+}
+
+fn metadata_test_filesystem(root: &NativePath, rooted_scope: bool) -> FileSystem {
+    if rooted_scope {
+        LocalFileSystems::rooted(root, LocalResourcePolicy::unbounded()).expect("rooted filesystem")
+    } else {
+        LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem")
+    }
+}
+
+fn metadata_test_parent(root: &NativePath, rooted_scope: bool) -> Path {
+    if rooted_scope {
+        Path::parse("/").expect("root parent")
+    } else {
+        host_path_to_logical(root).expect("host fixture parent")
+    }
+}
+
+fn metadata_test_native_path(root: &NativePath, logical: &Path, rooted_scope: bool) -> std::path::PathBuf {
+    if rooted_scope {
+        root.join(logical.as_str().trim_start_matches('/'))
+    } else {
+        NativePath::new(logical.as_str()).to_path_buf()
+    }
+}
+
+#[test]
+fn test_persist_metadata_overwrite_uses_source_attributes() {
+    {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+        for rooted_scope in [false, true] {
+            let root = tempfile::tempdir().expect("persist overwrite fixture");
+            let filesystem = if rooted_scope {
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted filesystem")
+            } else {
+                LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem")
+            };
+            let parent = if rooted_scope {
+                Path::parse("/").expect("root parent")
+            } else {
+                host_path_to_logical(root.path()).expect("host fixture parent")
+            };
+            let target =
+                Path::parse(&format!("{}/overwrite-meta", parent.as_str().trim_end_matches('/'))).expect("target path");
+            filesystem
+                .write_all(&target, b"old", WriteOptions::default())
+                .expect("seed old target");
+            let target_native = metadata_test_native_path(root.path(), &target, rooted_scope);
+            #[cfg(unix)]
+            std::fs::set_permissions(&target_native, std::fs::Permissions::from_mode(0o600)).expect("set target mode");
+            #[cfg(windows)]
+            {
+                let mut permissions = std::fs::metadata(&target_native)
+                    .expect("read target permissions")
+                    .permissions();
+                permissions.set_readonly(false);
+                std::fs::set_permissions(&target_native, permissions).expect("set target readonly flag");
+            }
+            let mut resource = filesystem
+                .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+                .expect("create temporary file");
+            let source_native = metadata_test_native_path(root.path(), resource.path(), rooted_scope);
+            std::fs::write(&source_native, b"new").expect("seed source");
+            #[cfg(unix)]
+            std::fs::set_permissions(&source_native, std::fs::Permissions::from_mode(0o640)).expect("set source mode");
+            #[cfg(windows)]
+            {
+                let mut permissions = std::fs::metadata(&source_native)
+                    .expect("read source permissions")
+                    .permissions();
+                permissions.set_readonly(true);
+                std::fs::set_permissions(&source_native, permissions).expect("set source readonly flag");
+            }
+            resource
+                .persist(
+                    &target,
+                    PersistOptions::default()
+                        .with_overwrite(true)
+                        .with_preserve_metadata(MetadataPreservePolicy::Portable),
+                )
+                .expect("overwrite with portable metadata policy");
+            assert_eq!(
+                b"new".as_slice(),
+                std::fs::read(&target_native).expect("read replacement")
+            );
+            #[cfg(unix)]
+            assert_eq!(
+                0o640,
+                std::fs::metadata(&target_native)
+                    .expect("read target mode")
+                    .permissions()
+                    .mode()
+                    & 0o777
+            );
+            #[cfg(windows)]
+            assert!(
+                std::fs::metadata(&target_native)
+                    .expect("read target permissions")
+                    .permissions()
+                    .readonly()
+            );
+        }
+    }
 }
