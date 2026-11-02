@@ -37,6 +37,7 @@ use qubit_local_files::outcome::LocalPersistCleanupState;
 use qubit_local_files::outcome::LocalPersistFailureState;
 use qubit_local_files::outcome::LocalPersistMethod;
 use qubit_local_files::outcome::LocalPersistOutcome;
+use qubit_local_files::outcome::LocalPersistStage;
 use qubit_local_files::outcome::LocalTempSourceState;
 use qubit_local_files::path::LocalFileSystemScope;
 
@@ -371,12 +372,13 @@ fn persist_file(
                 resource,
                 state,
                 source_state,
+                stage,
                 ..
             } = error.into_parts();
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map(error, FsOperation::PersistTemp, logical_target, None, provider_id)
+                map_persist_error(error, stage, logical_target, provider_id)
                     .with_effect_state(persist_effect_state(state)),
                 state,
             ))
@@ -419,16 +421,47 @@ fn persist_directory(
                 resource,
                 state,
                 source_state,
+                stage,
                 ..
             } = error.into_parts();
             *slot = Some(resource);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                error_mapper::map(error, FsOperation::PersistTemp, logical_target, None, provider_id)
+                map_persist_error(error, stage, logical_target, provider_id)
                     .with_effect_state(persist_effect_state(state)),
                 state,
             ))
         }
+    }
+}
+
+/// Maps a native persistence failure without changing its direct source.
+fn map_persist_error(
+    error: LocalFileError,
+    stage: LocalPersistStage,
+    logical_target: &LogicalPath,
+    provider_id: &str,
+) -> FsError {
+    error_mapper::map_without_path(
+        error,
+        FsOperation::PersistTemp,
+        persist_failure_message(stage),
+        provider_id,
+    )
+    .with_path(logical_target.clone())
+}
+
+/// Returns a stable diagnostic message for a native persistence stage.
+fn persist_failure_message(stage: LocalPersistStage) -> &'static str {
+    match stage {
+        LocalPersistStage::ResolveTarget => "native temporary publication failed at stage ResolveTarget",
+        LocalPersistStage::PrepareParent => "native temporary publication failed at stage PrepareParent",
+        LocalPersistStage::SynchronizeSource => "native temporary publication failed at stage SynchronizeSource",
+        LocalPersistStage::InstallDestination => "native temporary publication failed at stage InstallDestination",
+        LocalPersistStage::SynchronizeDestination => {
+            "native temporary publication failed at stage SynchronizeDestination"
+        }
+        _ => "native temporary publication failed at an unknown stage",
     }
 }
 
@@ -471,6 +504,7 @@ fn keep_file(
                 state,
                 source_state,
                 resolved_target,
+                stage,
                 ..
             } = error.into_parts();
             *slot = Some(resource);
@@ -482,7 +516,7 @@ fn keep_file(
                     state,
                     scope,
                     projection,
-                    "temporary file keep failed",
+                    persist_failure_message(stage),
                     provider_id,
                 ),
                 state,
@@ -530,6 +564,7 @@ fn keep_directory(
                 state,
                 source_state,
                 resolved_target,
+                stage,
                 ..
             } = error.into_parts();
             *slot = Some(resource);
@@ -541,7 +576,7 @@ fn keep_directory(
                     state,
                     scope,
                     projection,
-                    "temporary directory keep failed",
+                    persist_failure_message(stage),
                     provider_id,
                 ),
                 state,
@@ -600,7 +635,7 @@ fn map_keep_error(
             Err(_) => FsError::with_source(
                 FsErrorKind::ProviderContractViolation,
                 FsOperation::KeepTemp,
-                "resolved native keep target violates the local path contract",
+                &format!("resolved native keep target violates the local path contract; {message}"),
                 error,
             )
             .with_effect_state(persist_effect_state(state))
@@ -825,6 +860,7 @@ mod tests {
     use qubit_local_files::options::LocalPersistOptions;
     use qubit_local_files::options::LocalTempDirectoryOptions;
     use qubit_local_files::options::LocalTempFileOptions;
+    use qubit_local_files::outcome::LocalPersistStage;
     #[cfg(unix)]
     use qubit_local_files::policy::LocalDurabilityRequirement;
     #[cfg(unix)]
@@ -835,11 +871,26 @@ mod tests {
     use super::file_cleanup_error;
     use super::keep_file;
     use super::logical_persist_error;
+    use super::map_persist_error;
     use super::persist_effect_state;
+    use super::persist_failure_message;
     use super::persist_failure_state;
     use super::persist_path_error;
     use super::terminal_persist_error;
     use crate::spi::local_temp_path_projection::LocalTempPathProjection;
+
+    #[test]
+    fn test_persist_failure_messages_cover_native_stages() {
+        for stage in [
+            LocalPersistStage::ResolveTarget,
+            LocalPersistStage::PrepareParent,
+            LocalPersistStage::SynchronizeSource,
+            LocalPersistStage::InstallDestination,
+            LocalPersistStage::SynchronizeDestination,
+        ] {
+            assert!(persist_failure_message(stage).contains(&format!("{stage:?}")));
+        }
+    }
 
     /// Persistence wrappers retain the certainty appropriate to when path
     /// conversion failed.
@@ -897,6 +948,7 @@ mod tests {
         assert_eq!(PersistFailureState::NotPublished, failure.state());
         assert_eq!(FsErrorKind::ProviderContractViolation, failure.error().kind());
         assert_eq!(FsOperation::KeepTemp, failure.error().operation());
+        assert!(failure.error().to_string().contains("InstallDestination"));
         assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
         assert_eq!(Some("projection-test-provider"), failure.error().provider());
         assert_eq!(None, failure.error().target());
@@ -920,6 +972,81 @@ mod tests {
             .expect("native resource restored to slot")
             .cleanup()
             .expect("source remains cleanable");
+    }
+
+    /// Native synchronization failures retain their stage independently from
+    /// publication and source recovery facts.
+    #[cfg(unix)]
+    #[test]
+    fn test_persist_sync_failures_keep_stage_and_effect() {
+        use std::error::Error;
+
+        for (fault_name, expected_stage, expected_state, expected_effect) in [
+            (
+                "temp-file-source-sync",
+                LocalPersistStage::SynchronizeSource,
+                qubit_local_files::outcome::LocalPersistFailureState::NotPublished,
+                FsEffectState::Unchanged,
+            ),
+            (
+                "temp-file-parent-sync",
+                LocalPersistStage::SynchronizeDestination,
+                qubit_local_files::outcome::LocalPersistFailureState::Published,
+                FsEffectState::Applied,
+            ),
+        ] {
+            let parent = tempfile::tempdir().expect("test parent");
+            let filesystem = LocalFileSystem::host().expect("host filesystem");
+            let temporary = filesystem
+                .create_temp_file_with_options(&LocalTempFileOptions::new().with_parent(parent.path()))
+                .expect("temporary file");
+            let target = parent.path().join("published");
+            let fault = install_test_fault(fault_name).expect("sync fault");
+            let error = temporary
+                .persist_with(
+                    &target,
+                    LocalPersistOptions::new().with_durability(LocalDurabilityRequirement::Required),
+                )
+                .expect_err("injected synchronization failure");
+            drop(fault);
+
+            let parts = error.into_parts();
+            assert_eq!(expected_stage, parts.stage);
+            assert_eq!(expected_state, parts.state);
+            let expected_source =
+                if expected_state == qubit_local_files::outcome::LocalPersistFailureState::NotPublished {
+                    qubit_local_files::outcome::LocalTempSourceState::Owned
+                } else {
+                    qubit_local_files::outcome::LocalTempSourceState::CleanupRequired
+                };
+            assert_eq!(expected_source, parts.source_state);
+            let state = persist_failure_state(parts.state, parts.source_state);
+            let mapped = map_persist_error(
+                parts.error,
+                parts.stage,
+                &Path::parse("/published").expect("logical target"),
+                "sync-test-provider",
+            )
+            .with_effect_state(persist_effect_state(state));
+            assert!(mapped.to_string().contains(&format!("{expected_stage:?}")));
+            assert_eq!(Some(expected_effect), mapped.effect_state());
+            assert!(
+                mapped
+                    .source()
+                    .and_then(|source| source.downcast_ref::<LocalFileError>())
+                    .is_some()
+            );
+
+            if expected_source == qubit_local_files::outcome::LocalTempSourceState::Owned {
+                let mut resource = parts.resource;
+                resource.cleanup().expect("unpublished source remains cleanable");
+                assert!(!target.exists());
+            } else {
+                let mut resource = parts.resource;
+                resource.cleanup().expect("retained staging source can be cleaned");
+                assert!(target.is_file(), "published target is not the cleanup source");
+            }
+        }
     }
 
     /// Terminal resources reject persistence and cleanup without fabricating

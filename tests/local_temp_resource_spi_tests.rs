@@ -273,6 +273,7 @@ fn test_keep_failure_reports_generated_target() {
         let failure = file.keep().expect_err("existing generated file target rejects keep");
         assert_ne!(expected, source);
         assert_eq!(Some(&expected), failure.error().target());
+        assert!(failure.error().to_string().contains("InstallDestination"));
         assert_eq!(FsOperation::KeepTemp, failure.error().operation());
         assert!(failure.error().provider().is_some());
         assert_eq!(PersistFailureState::NotPublished, failure.state());
@@ -307,6 +308,7 @@ fn test_keep_failure_reports_generated_target() {
             .expect_err("existing generated directory target rejects keep");
         assert_ne!(expected, source);
         assert_eq!(Some(&expected), failure.error().target());
+        assert!(failure.error().to_string().contains("InstallDestination"));
         assert_eq!(FsOperation::KeepTemp, failure.error().operation());
         assert!(failure.error().provider().is_some());
         assert_eq!(PersistFailureState::NotPublished, failure.state());
@@ -345,6 +347,7 @@ fn test_keep_install_failure_retains_target_and_state() {
         let failure = file.keep().expect_err("injected installation failure");
 
         assert_eq!(Some(&expected), failure.error().target());
+        assert!(failure.error().to_string().contains("InstallDestination"));
         assert_eq!(FsOperation::KeepTemp, failure.error().operation());
         assert!(failure.error().provider().is_some());
         assert_eq!(PersistFailureState::Indeterminate, failure.state());
@@ -463,8 +466,17 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
         .persist(&target, PersistOptions::default())
         .expect_err("persist must report the existing destination");
     assert_eq!(failure.state(), PersistFailureState::NotPublished);
+    assert!(failure.error().to_string().contains("InstallDestination"));
     assert_eq!(failure.error().kind(), FsErrorKind::AlreadyExists);
     assert_eq!(failure.error().effect_state(), Some(FsEffectState::Unchanged),);
+    assert_eq!(
+        Some(LocalFileErrorKind::AlreadyExists),
+        failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .map(LocalFileError::kind),
+    );
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
     file_system
@@ -475,6 +487,40 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
         .expect("retained temporary file must be persistable after conflict removal");
 
     assert_eq!(outcome.target(), &target);
+
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let host_parent = host_path_to_logical(root.path()).expect("host parent");
+    let host_target = Path::parse(&format!(
+        "{}/host-published.txt",
+        host_parent.as_str().trim_end_matches('/')
+    ))
+    .expect("host target");
+    host.write_all(&host_target, b"existing", WriteOptions::default())
+        .expect("host conflict target");
+    let mut temporary = host
+        .create_temp_file(TempFileOptions::default().with_parent(Some(host_parent)))
+        .expect("host temporary file");
+    let failure = temporary
+        .persist(&host_target, PersistOptions::default())
+        .expect_err("host persist reports the existing destination");
+    assert!(failure.error().to_string().contains("InstallDestination"));
+    assert_eq!(PersistFailureState::NotPublished, failure.state());
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+    assert!(
+        failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
+    std::fs::remove_file(root.path().join("host-published.txt")).expect("remove host conflict");
+    assert_eq!(
+        &host_target,
+        temporary
+            .persist(&host_target, PersistOptions::default())
+            .expect("host retry")
+            .target()
+    );
 }
 
 /// A confirmed destination conflict retains the native temporary directory for
@@ -498,8 +544,17 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         .persist(&target, PersistOptions::default())
         .expect_err("persist must report the existing destination");
     assert_eq!(failure.state(), PersistFailureState::NotPublished);
+    assert!(failure.error().to_string().contains("InstallDestination"));
     assert_eq!(failure.error().kind(), FsErrorKind::AlreadyExists);
     assert_eq!(failure.error().effect_state(), Some(FsEffectState::Unchanged),);
+    assert_eq!(
+        Some(LocalFileErrorKind::AlreadyExists),
+        failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .map(LocalFileError::kind),
+    );
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
     file_system
@@ -510,6 +565,41 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         .expect("retained temporary directory must be persistable after conflict removal");
 
     assert_eq!(outcome.target(), &target);
+
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let host_parent = host_path_to_logical(root.path()).expect("host parent");
+    let host_target = Path::parse(&format!(
+        "{}/host-published-directory",
+        host_parent.as_str().trim_end_matches('/')
+    ))
+    .expect("host target directory");
+    host.create_directory(&host_target, CreateDirectoryOptions::default())
+        .expect("host conflict directory");
+    let mut temporary = host
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(host_parent)))
+        .expect("host temporary directory");
+    let failure = temporary
+        .persist(&host_target, PersistOptions::default())
+        .expect_err("host persist reports the existing directory");
+    assert!(failure.error().to_string().contains("InstallDestination"));
+    assert_eq!(PersistFailureState::NotPublished, failure.state());
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
+    assert!(
+        failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
+    host.delete_directory(&host_target, DeleteOptions::default())
+        .expect("remove host conflict directory");
+    assert_eq!(
+        &host_target,
+        temporary
+            .persist(&host_target, PersistOptions::default())
+            .expect("host retry")
+            .target()
+    );
 }
 
 /// A temporary directory replaces an empty destination when persistence allows
