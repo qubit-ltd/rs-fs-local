@@ -10,6 +10,7 @@
 use std::fs;
 use std::io::ErrorKind;
 #[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::fs::symlink;
 #[cfg(unix)]
 use std::os::unix::net::UnixListener;
@@ -485,6 +486,78 @@ fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
             .expect("destination must remain")
             .is_directory_like()
     );
+}
+
+/// Replacing an existing file retains its native permissions for both
+/// authorities.
+#[cfg(unix)]
+#[test]
+fn test_replacement_preserves_existing_permissions() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("permissions fixture");
+        let target = root.path().join("target.txt");
+        fs::write(&target, b"old").expect("existing target");
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).expect("target permissions");
+        let (filesystem, logical) = if rooted {
+            (
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted"),
+                Path::parse("/target.txt").expect("logical target"),
+            )
+        } else {
+            (
+                LocalFileSystems::host(LocalResourcePolicy::standard()).expect("host"),
+                host_path_to_logical(&target).expect("host target"),
+            )
+        };
+        filesystem
+            .write_all(&logical, b"new", WriteOptions::default())
+            .expect("replace");
+        assert_eq!(fs::read(&target).expect("new content"), b"new");
+        assert_eq!(
+            fs::metadata(&target).expect("target metadata").permissions().mode() & 0o777,
+            0o640,
+        );
+    }
+}
+
+/// Portable copy preserves the source's native permissions for both
+/// authorities.
+#[cfg(unix)]
+#[test]
+fn test_portable_copy_preserves_native_permissions() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("permissions fixture");
+        let source = root.path().join("source.txt");
+        let target = root.path().join("target.txt");
+        fs::write(&source, b"payload").expect("copy source");
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o640)).expect("source permissions");
+        let (filesystem, logical_source, logical_target) = if rooted {
+            (
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted"),
+                Path::parse("/source.txt").expect("source path"),
+                Path::parse("/target.txt").expect("target path"),
+            )
+        } else {
+            (
+                LocalFileSystems::host(LocalResourcePolicy::standard()).expect("host"),
+                host_path_to_logical(&source).expect("host source"),
+                host_path_to_logical(&target).expect("host target"),
+            )
+        };
+        let outcome = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file().with_preserve_metadata(MetadataPreservePolicy::Portable),
+            )
+            .expect("portable copy");
+        assert_eq!(outcome.metadata(), MetadataPreservePolicy::Portable);
+        assert_eq!(fs::read(&target).expect("copied content"), b"payload");
+        let source_mode = fs::metadata(&source).expect("source metadata").permissions().mode() & 0o777;
+        let target_mode = fs::metadata(&target).expect("target metadata").permissions().mode() & 0o777;
+        assert_eq!(source_mode, 0o640);
+        assert_eq!(target_mode, source_mode);
+    }
 }
 
 /// Copying with portable metadata preservation reports the policy actually

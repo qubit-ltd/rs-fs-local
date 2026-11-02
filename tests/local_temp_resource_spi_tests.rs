@@ -193,30 +193,52 @@ fn test_rooted_temp_directory_relative_parent() {
     }
 }
 
+/// A successful child with no matching test must not certify fault execution.
+#[test]
+#[should_panic(expected = "fault child did not complete requested action")]
+fn test_fault_child_rejects_missing_exact_test() {
+    run_in_test_fault_process(
+        "__qubit_fs_local_nonexistent_fault_test__",
+        "persist-install-indeterminate",
+        || panic!("a nonexistent test cannot execute this action"),
+    );
+}
+
 fn run_in_test_fault_process<F>(test_name: &str, fault: &str, action: F)
 where
     F: FnOnce(),
 {
     const TEST_FAULT_ENV: &str = "QUBIT_LOCAL_FILES_TEST_FAULT";
     const TEST_FAULT_CHILD_ENV: &str = "QUBIT_LOCAL_FILES_TEST_FAULT_CHILD";
+    let completion = format!("QUBIT_FS_LOCAL_FAULT_COMPLETED:{test_name}:{fault}");
     if std::env::var_os(TEST_FAULT_ENV).is_some_and(|selected| selected == OsStr::new(fault)) {
         let _fault = install_test_fault(fault).expect("test fault controller should install");
         action();
+        eprintln!("{completion}");
         return;
     }
     if std::env::var_os(TEST_FAULT_CHILD_ENV).is_some() {
         return;
     }
     let executable = std::env::current_exe().expect("test executable should be available");
-    let status = std::process::Command::new(executable)
+    let output = std::process::Command::new(executable)
         .arg("--exact")
         .arg(test_name)
         .arg("--nocapture")
         .env(TEST_FAULT_ENV, fault)
         .env(TEST_FAULT_CHILD_ENV, "1")
-        .status()
+        .output()
         .expect("test fault child should launch");
-    assert!(status.success(), "test fault child should pass");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test fault child should pass\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.lines().any(|line| line == completion),
+        "fault child did not complete requested action: {test_name}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+    );
 }
 
 fn generated_keep_target(parent: &Path, source: &Path) -> Path {
