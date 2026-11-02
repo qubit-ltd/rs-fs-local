@@ -192,9 +192,11 @@ Host accepts absolute logical paths. Rooted accepts absolute and relative logica
 paths resolve from its virtual working directory, initially `/`. Registry `file:` URIs must be
 absolute. Temporary-resource paths returned by the facade are absolute logical paths.
 
-The reopen setting applies only to recursive directory listing walkers. Copy still has an
-independent hard limit of 32 open directory handles; changing listing reopen behavior does not
-change that limit.
+The reopen setting applies only to recursive directory listing walkers. Copy uses an
+independently configured open-directory handle budget: `LocalResourcePolicy::standard()`
+sets it to 32, custom copy limits may select another positive value, and
+`with_copy_limits(None)` or `LocalResourcePolicy::unbounded()` removes the provider
+ceiling for this resource. Changing listing reopen behavior does not change the copy budget.
 
 Use `with_list_limits(Some(...))`, `with_copy_limits(Some(...))`, or
 `with_delete_limits(Some(...))` to replace one domain. Passing `None` explicitly

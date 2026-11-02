@@ -168,8 +168,10 @@ adapter 保留 native 的删除分类：通过 `delete_file` 删除目录返回 
 Host 仅接受绝对逻辑路径。Rooted 接受绝对或相对逻辑路径；相对路径从其虚拟工作目录解析，初始为 `/`。
 Registry 的 `file:` URI 必须是绝对 URI。门面返回的临时资源路径是绝对逻辑路径。
 
-目录 reopen 设置仅影响递归目录 listing walker。copy 仍受独立的已打开目录句柄硬上限 32 约束；
-更改 listing reopen 行为不会改变该上限。
+目录 reopen 设置仅影响递归目录 listing walker。copy 使用独立配置的打开目录句柄预算：
+`LocalResourcePolicy::standard()` 将其设为 32，自定义 copy limits 可以选择其他正值，
+`with_copy_limits(None)` 或 `LocalResourcePolicy::unbounded()` 则取消 provider 对此资源的
+上限。更改 listing reopen 行为不会改变 copy 预算。
 
 用 `with_list_limits(Some(...))`、`with_copy_limits(Some(...))` 或
 `with_delete_limits(Some(...))` 覆盖对应领域；传入 `None` 表示显式取消该领域的上限，
