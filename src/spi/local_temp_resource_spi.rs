@@ -883,10 +883,8 @@ mod tests {
             .expect("generated parent")
             .join(source.file_name().expect("resource name"));
         std::fs::write(&generated, b"existing").expect("conflicting generated target");
-        let projection = LocalTempPathProjection::new(
-            std::path::Path::new("/requested"),
-            std::path::Path::new("/unrelated"),
-        );
+        let projection =
+            LocalTempPathProjection::new(std::path::Path::new("/requested"), std::path::Path::new("/unrelated"));
 
         let failure = keep_file(
             &mut resource,

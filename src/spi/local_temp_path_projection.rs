@@ -90,10 +90,7 @@ mod tests {
     fn test_projection_accepts_arbitrary_native_layout() {
         let projection = LocalTempPathProjection::new(Path::new("alias"), Path::new("real"));
         let projected = projection
-            .project(
-                Path::new("real/private-v2/nested/file"),
-                FsOperation::CreateTemp,
-            )
+            .project(Path::new("real/private-v2/nested/file"), FsOperation::CreateTemp)
             .expect("native layout under explicit parent projects successfully");
         assert_eq!(Path::new("alias/private-v2/nested/file"), projected);
     }
