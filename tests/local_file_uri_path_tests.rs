@@ -10,8 +10,12 @@
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
+#[cfg(windows)]
+use qubit_fs::read::ReadOptions;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalResourcePolicy;
+#[cfg(windows)]
+use qubit_fs_local::host_path_to_logical;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_fs_registry::FileSystemRegistryError;
@@ -104,4 +108,70 @@ fn test_rooted_provider_round_trips_encoded_unix_backslash() {
         .file_system()
         .stat(resolution.path())
         .expect("decoded backslash path must access the native fixture");
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_host_registry_round_trips_native_file() {
+    let root = tempfile::tempdir().expect("host fixture directory must be created");
+    let native = root.path().join("report %中.txt");
+    let payload = b"windows host URI round trip";
+    std::fs::write(&native, payload).expect("seed host file");
+
+    let expected_path = host_path_to_logical(&native).expect("logical host path");
+    assert!(expected_path.as_str().ends_with("/report %25中.txt"));
+    let parent = host_path_to_logical(root.path()).expect("logical host parent");
+    let encoded_parent = encode_host_uri_parent(&parent);
+    let uri_text = format!("file://{encoded_parent}/report%20%25%E4%B8%AD.txt");
+
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()).expect("host provider must open"))
+        .expect("host provider must register");
+
+    let first = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse(&uri_text).expect("host URI"),
+        ))
+        .expect("resolve host URI");
+    assert_eq!(first.path(), &expected_path);
+    assert_eq!(
+        first
+            .file_system()
+            .read_all(first.path(), ReadOptions::default(), payload.len())
+            .expect("read first resolution"),
+        payload,
+    );
+
+    let replay = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse(first.canonical_uri().as_str()).expect("canonical URI"),
+        ))
+        .expect("replay canonical URI");
+    assert_eq!(replay.path(), first.path());
+    assert_eq!(replay.canonical_uri(), first.canonical_uri());
+    assert_eq!(
+        replay.file_system().properties().info().id(),
+        first.file_system().properties().info().id(),
+    );
+    assert_eq!(
+        replay
+            .file_system()
+            .read_all(replay.path(), ReadOptions::default(), payload.len())
+            .expect("read replay"),
+        payload,
+    );
+}
+
+#[cfg(windows)]
+fn encode_host_uri_parent(path: &qubit_fs::path::Path) -> String {
+    let mut result = String::new();
+    for byte in path.as_str().bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b':' | b'%' | b'-' | b'.' | b'_' | b'~') {
+            result.push(char::from(byte));
+        } else {
+            result.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    result.trim_end_matches('/').to_owned()
 }
