@@ -126,7 +126,7 @@ fn test_windows_host_registry_round_trips_native_file() {
 
     let registry = FileSystemRegistry::default();
     registry
-        .register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()).expect("host provider must open"))
+        .register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()))
         .expect("host provider must register");
 
     let first = registry
