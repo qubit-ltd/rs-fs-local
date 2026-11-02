@@ -45,6 +45,7 @@ use qubit_fs::spi::DeleteFileRequest;
 use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ListRequest;
 use qubit_fs::spi::OpenReaderRequest;
+use qubit_fs::spi::OpenedRandomAccessReader;
 use qubit_fs::spi::OpenWriterRequest;
 use qubit_fs::spi::OpenedDirectoryStream;
 use qubit_fs::spi::OpenedReader;
@@ -54,6 +55,7 @@ use qubit_fs::spi::OpenedWriter;
 use qubit_fs::spi::ProviderOperation;
 use qubit_fs::spi::ProviderOperations;
 use qubit_fs::spi::ProviderProperties;
+use qubit_fs::spi::RandomAccessReadSession;
 use qubit_fs::spi::RenameRequest;
 use qubit_fs::spi::SpiCopyFailure;
 use qubit_fs::spi::SpiRenameFailure;
@@ -340,6 +342,7 @@ impl LocalFileSystemSpi {
                 .with(ProviderOperation::Stat)
                 .with(ProviderOperation::List)
                 .with(ProviderOperation::OpenReader)
+                .with(ProviderOperation::OpenRandomAccessReader)
                 .with(ProviderOperation::OpenWriter)
                 .with(ProviderOperation::CreateDirectory)
                 .with(ProviderOperation::DeleteFile)
@@ -607,6 +610,32 @@ impl FileSystemSpi for LocalFileSystemSpi {
                     .with_provider(self.properties.info().provider_id())
                 })?;
         Ok(OpenedReader::new(info, Box::new(reader)))
+    }
+
+    /// Opens a random-access session bound to one native file handle.
+    fn open_random_access_reader(
+        &self,
+        request: OpenReaderRequest<'_>,
+    ) -> FsResult<OpenedRandomAccessReader> {
+        let path = self.native_path(request.path())?;
+        let mut options = local_options_mapper::read(request.options());
+        if let Some(timeout) = self.open_retry_timeout {
+            options = options.with_open_retry_timeout(timeout);
+        }
+        let reader = self
+            .native
+            .open_reader_with_options(&path, &options)
+            .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))?;
+        let metadata = local_outcome_mapper::metadata(reader.metadata().clone());
+        let info = self.info(request.path().clone()).with_metadata(metadata);
+        let session: Box<dyn RandomAccessReadSession> = Box::new(
+            super::local_random_access_reader::LocalRandomAccessReader::new(
+                reader,
+                request.path().clone(),
+                self.provider_id.clone(),
+            ),
+        );
+        Ok(OpenedRandomAccessReader::new(info, session))
     }
 
     /// Opens a file for stateful publication through the configured local

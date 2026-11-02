@@ -15,6 +15,7 @@ mod local_file_writer_spi;
 mod local_options_mapper;
 mod local_outcome_mapper;
 mod local_range_reader;
+mod local_random_access_reader;
 mod local_temp_path_projection;
 mod local_temp_resource_spi;
 
