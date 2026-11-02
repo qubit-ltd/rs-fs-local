@@ -2,6 +2,8 @@
 //    Copyright (c) 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Native random-access sessions retain one opened file object.
 
@@ -24,10 +26,12 @@ impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().expect("temporary root");
         let id = FileSystemId::new("local-random-access-test").expect("valid id");
-        let spi = LocalFileSystemSpi::rooted(id, root.path(), LocalResourcePolicy::standard())
-            .expect("rooted SPI");
+        let spi = LocalFileSystemSpi::rooted(id, root.path(), LocalResourcePolicy::standard()).expect("rooted SPI");
         let file_system = FileSystem::from_spi(spi).expect("filesystem");
-        Self { _root: root, file_system }
+        Self {
+            _root: root,
+            file_system,
+        }
     }
 }
 
@@ -116,7 +120,11 @@ fn test_open_handle_prevents_native_path_replacement_on_windows() {
         .expect("open original handle");
 
     let error = std::fs::rename(&replacement, &original).expect_err("Windows sharing mode rejects replacement");
-    assert_eq!(ErrorKind::PermissionDenied, error.kind(), "platform: Windows; native replacement is denied");
+    assert_eq!(
+        ErrorKind::PermissionDenied,
+        error.kind(),
+        "platform: Windows; native replacement is denied"
+    );
     let mut bytes = [0; 6];
     assert_eq!(6, opened.read_at(0, &mut bytes).expect("read retained handle"));
     assert_eq!(*b"AAAAAA", bytes);

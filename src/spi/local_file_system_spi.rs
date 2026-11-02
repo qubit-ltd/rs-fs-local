@@ -45,9 +45,9 @@ use qubit_fs::spi::DeleteFileRequest;
 use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ListRequest;
 use qubit_fs::spi::OpenReaderRequest;
-use qubit_fs::spi::OpenedRandomAccessReader;
 use qubit_fs::spi::OpenWriterRequest;
 use qubit_fs::spi::OpenedDirectoryStream;
+use qubit_fs::spi::OpenedRandomAccessReader;
 use qubit_fs::spi::OpenedReader;
 use qubit_fs::spi::OpenedTempDirectory;
 use qubit_fs::spi::OpenedTempFile;
@@ -613,10 +613,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     }
 
     /// Opens a random-access session bound to one native file handle.
-    fn open_random_access_reader(
-        &self,
-        request: OpenReaderRequest<'_>,
-    ) -> FsResult<OpenedRandomAccessReader> {
+    fn open_random_access_reader(&self, request: OpenReaderRequest<'_>) -> FsResult<OpenedRandomAccessReader> {
         let path = self.native_path(request.path())?;
         let mut options = local_options_mapper::read(request.options());
         if let Some(timeout) = self.open_retry_timeout {
@@ -628,13 +625,12 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))?;
         let metadata = local_outcome_mapper::metadata(reader.metadata().clone());
         let info = self.info(request.path().clone()).with_metadata(metadata);
-        let session: Box<dyn RandomAccessReadSession> = Box::new(
-            super::local_random_access_reader::LocalRandomAccessReader::new(
+        let session: Box<dyn RandomAccessReadSession> =
+            Box::new(super::local_random_access_reader::LocalRandomAccessReader::new(
                 reader,
                 request.path().clone(),
                 self.provider_id.clone(),
-            ),
-        );
+            ));
         Ok(OpenedRandomAccessReader::new(info, session))
     }
 
