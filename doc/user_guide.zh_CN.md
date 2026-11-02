@@ -338,6 +338,10 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
 发生了新发布。`PublishedSourceRetained` 之后的 cleanup 只处理保留的原生 sandbox，
 不回滚目标。应用应保留失败和临时句柄，直到状态允许 cleanup 或完成应用自己的只读核查。
 
+原生 `persist` 和 `keep` 失败时，诊断文案会标明发布失败所在的 `LocalPersistStage`。
+这段文字仅供诊断，不是供程序解析的接口；恢复决策应依据类型化的
+`PersistFailureState` 和 effect state。原始 `LocalFileError` 仍是错误的直接 source。
+
 ## 排障
 
 | 现象 | 检查项 |
@@ -357,9 +361,11 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
   `ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
 - 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
   句柄上的 `LocalFileReader` 外层包装 `LimitInput`，不会重新打开路径。它在同一 native
-  句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
-  资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
-  Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
+  句柄上 seek 和读取，metadata 仍描述完整资源。资源打开后，零长度窗口不执行 seek，直接
+  返回空；不存在的路径仍报错。EOF 或超出 EOF 的读取通常返回空，但原生 seek/read 错误仍会
+  传播。超出有符号原生位置范围的偏移，只有在同一已打开句柄的 metadata 证明其位于 EOF
+  或之后时才按空窗口处理。metadata 是打开时的观察，并发修改时不构成内容快照。自动前缀
+  范围优化要求 Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
 
 ## 延伸阅读
 

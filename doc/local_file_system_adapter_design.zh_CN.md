@@ -427,6 +427,8 @@ nonblocking/async 本地原语之前：
 ## 12. Error 映射
 
 错误映射集中在 `spi/error_mapper.rs` 的私有 free functions 中，不把 mapper 暴露为应用 API。
+原生 `persist` 和 `keep` 失败的诊断文案会包含对应的 `LocalPersistStage`。文案仅用于诊断，
+不是供程序解析的接口；恢复应依据类型化的 state/effect，原始 `LocalFileError` 仍是直接 source。
 `map` 与 `map_without_path` 补齐 canonical provider、逻辑路径和 target context；copy
 failure 通过独立的 typed `LocalCopyFailure` 映射路径保留完整状态。host 与 rooted SPI
 共享这组映射函数。
@@ -589,6 +591,8 @@ writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。
 
 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
 句柄上的 `LocalFileReader` 外层包装 `LimitInput`，不会重新打开路径。它在同一 native
-句柄上 seek 和读取，metadata 仍描述完整资源。零长度、EOF 和超出 EOF 的窗口在确认
-资源存在后返回空；不存在的路径仍报错。并发修改时不承诺内容快照。自动前缀范围优化要求
-Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
+句柄上 seek 和读取，metadata 仍描述完整资源。资源打开后，零长度窗口不执行 seek，直接
+返回空；不存在的路径仍报错。EOF 或超出 EOF 的读取通常返回空，但原生 seek/read 错误仍会
+传播。超出有符号原生位置范围的偏移，只有在同一已打开句柄的 metadata 证明其位于 EOF
+或之后时才按空窗口处理。metadata 是打开时的观察，并发修改时不构成内容快照。自动前缀
+范围优化要求 Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。

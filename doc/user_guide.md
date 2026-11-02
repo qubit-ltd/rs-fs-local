@@ -386,6 +386,12 @@ cleanup acts on the retained native sandbox; it is not a target rollback. Keep
 the failure and the temporary handle until the state permits cleanup or
 application-specific read-only reconciliation.
 
+For native `persist` and `keep` failures, the diagnostic message identifies the
+`LocalPersistStage` where publication failed. Treat this text as diagnostic
+context, not a string-parsing interface: recovery decisions come from the typed
+`PersistFailureState` and effect state. The original `LocalFileError` remains
+the direct error source.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -413,10 +419,14 @@ application-specific read-only reconciliation.
 - This provider advertises Conditional `RangeRead` for native regular-file windows.
   The adapter wraps the already opened `LocalFileReader` in `LimitInput`; it does
   not reopen the path. It seeks and reads through the same native handle, retaining
-  full resource metadata. Zero-length, EOF, and beyond-EOF windows are empty after checking
-  resource existence; missing paths still fail. This does not promise a snapshot
-  under concurrent mutation. Automatic `read_prefix` narrowing requires Guaranteed
-  range support, so local prefix reads continue to use bounded sequential consumption.
+  full resource metadata. After opening the resource, zero-length windows return
+  empty without seeking; missing paths still fail. EOF and beyond-EOF reads
+  normally return empty, but native seek or read errors still propagate. An
+  offset above the signed native position range is treated as empty only when
+  metadata from that same opened handle proves it is at or beyond EOF. Metadata
+  is an opening observation, not a snapshot under concurrent mutation.
+  Automatic `read_prefix` narrowing requires Guaranteed range support, so local
+  prefix reads continue to use bounded sequential consumption.
 
 ## Further Reading
 
