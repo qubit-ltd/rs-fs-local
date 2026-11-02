@@ -31,8 +31,10 @@ use crate::LocalListResourceLimits;
 ///
 /// ```
 /// use qubit_fs_local::LocalResourcePolicy;
-/// let policy = LocalResourcePolicy::unbounded();
-/// assert!(policy.list_limits().is_none());
+/// let policy = LocalResourcePolicy::standard();
+/// assert!(policy.list_limits().is_some());
+/// assert!(policy.copy_limits().is_some());
+/// assert!(policy.delete_limits().is_some());
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalResourcePolicy {

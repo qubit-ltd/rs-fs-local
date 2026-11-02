@@ -72,7 +72,7 @@ use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 use std::path::Path as NativePath;
 
 let fs = LocalFileSystems::rooted(
-    NativePath::new("/data"), LocalResourcePolicy::unbounded(),
+    NativePath::new("/data"), LocalResourcePolicy::standard(),
 )?;
 let metadata = fs.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 # let _ = metadata;
@@ -87,6 +87,8 @@ requested root at depth zero and pending encoded native path bytes. Deadlines
 are cooperative. Temporary cleanup, `Drop`, and native publication cleanup do
 not inherit ordinary deletion ceilings, and these settings are not aggregate
 concurrent quotas.
+
+Use `standard()` for ordinary workflows; choose `unbounded()` only when accepting unlimited recursive work.
 
 ## 5. SPI implementation
 

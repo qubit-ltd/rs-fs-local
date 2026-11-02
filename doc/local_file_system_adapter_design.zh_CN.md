@@ -100,7 +100,7 @@ use std::path::Path as NativePath;
 
 let file_system = LocalFileSystems::rooted(
     NativePath::new("/data"),
-    LocalResourcePolicy::unbounded(),
+    LocalResourcePolicy::standard(),
 )?;
 let path = LogicalPath::parse("/reports/summary.csv")?;
 let _metadata = file_system.stat(&path)?;
@@ -108,7 +108,7 @@ let _metadata = file_system.stat(&path)?;
 ```
 
 `LocalFileSystems` 只组织 factory，不包含文件算法。每个 factory 都要求显式 `LocalResourcePolicy`；
-只有调用方明确选择时才允许无界递归资源使用。
+普通工作流使用 standard()；只有明确接受无界递归工作量时才选择 unbounded()。
 
 ## 5. SPI 实现
 

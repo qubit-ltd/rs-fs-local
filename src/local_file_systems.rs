@@ -33,7 +33,7 @@ static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// ```
 /// use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 ///
-/// let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+/// let filesystem = LocalFileSystems::host(LocalResourcePolicy::standard())?;
 /// assert_eq!(filesystem.properties().info().id().as_str(), "local-host");
 /// # Ok::<(), qubit_fs::error::FsError>(())
 /// ```
@@ -51,7 +51,7 @@ impl LocalFileSystems {
     /// ```
     /// use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
     ///
-    /// let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+    /// let filesystem = LocalFileSystems::host(LocalResourcePolicy::standard())?;
     /// assert_eq!(filesystem.properties().info().id().as_str(), "local-host");
     /// # Ok::<(), qubit_fs::error::FsError>(())
     /// ```
