@@ -21,6 +21,7 @@ use qubit_local_files as native_files;
 use qubit_spi::ProviderId;
 
 use crate::LocalResourcePolicy;
+use crate::LocalTempCleanupControl;
 use crate::spi::LocalFileSystemSpi;
 
 /// Monotonic process-local suffix for generated rooted filesystem identities.
@@ -62,6 +63,33 @@ impl LocalFileSystems {
     /// concrete filesystem.
     pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::new(policy)?)
+    }
+
+    /// Creates the process host filesystem with shared temporary cleanup
+    /// limits.
+    ///
+    /// Clones of `cleanup` share one configuration. Each newly created
+    /// temporary directory retains a clone, and an attempt uses the limits
+    /// snapshot taken when that attempt starts. `None` leaves cleanup
+    /// unbounded. This does not change ordinary list, copy, or delete limits.
+    ///
+    /// # Parameters
+    ///
+    /// - `policy`: Resource ceilings for ordinary local operations.
+    /// - `cleanup`: Shared limits for temporary-directory cleanup.
+    ///
+    /// # Returns
+    ///
+    /// The process-host filesystem using the supplied cleanup control.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the host SPI cannot be assembled into a filesystem.
+    pub fn host_with_temp_cleanup(
+        policy: LocalResourcePolicy,
+        cleanup: LocalTempCleanupControl,
+    ) -> FsResult<FileSystem> {
+        FileSystem::from_spi(LocalFileSystemSpi::new(policy)?.with_temp_cleanup_control(cleanup))
     }
 
     /// Opens `root` as a descriptor-backed rooted filesystem with a
@@ -121,6 +149,38 @@ impl LocalFileSystems {
         FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root, policy)?)
     }
 
+    /// Opens `root` with caller-specified identity and shared cleanup limits.
+    ///
+    /// The root authority is opened once and retained by the resulting
+    /// filesystem. Clones of `cleanup` share a configuration retained by new
+    /// temporary-directory sessions. Each attempt uses one starting snapshot;
+    /// `None` leaves cleanup unbounded. Changing the control cannot restore
+    /// cleanup authority when the resource source is indeterminate.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: Stable identity exposed by the rooted filesystem.
+    /// - `root`: Native directory to retain as filesystem authority.
+    /// - `policy`: Resource ceilings for ordinary local operations.
+    /// - `cleanup`: Shared limits for temporary-directory cleanup.
+    ///
+    /// # Returns
+    ///
+    /// A rooted filesystem using the supplied identity and cleanup control.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the root cannot be opened or the filesystem cannot
+    /// be assembled.
+    pub fn rooted_with_id_and_temp_cleanup(
+        id: FileSystemId,
+        root: &Path,
+        policy: LocalResourcePolicy,
+        cleanup: LocalTempCleanupControl,
+    ) -> FsResult<FileSystem> {
+        FileSystem::from_spi(LocalFileSystemSpi::rooted(id, root, policy)?.with_temp_cleanup_control(cleanup))
+    }
+
     /// Opens `root` with a registry-validated provider identity.
     ///
     /// This is intended for applications that register multiple rooted local
@@ -142,18 +202,17 @@ impl LocalFileSystems {
     /// Returns an error when `root` cannot be opened or the rooted filesystem
     /// cannot be assembled with `id` and `provider_id`.
     #[cfg(feature = "registry")]
-    pub(crate) fn rooted_with_provider_id(
+    pub(crate) fn rooted_with_provider_id_and_temp_cleanup(
         id: FileSystemId,
         provider_id: &ProviderId,
         root: &Path,
         policy: LocalResourcePolicy,
+        cleanup: LocalTempCleanupControl,
     ) -> FsResult<FileSystem> {
-        FileSystem::from_spi(LocalFileSystemSpi::rooted_with_provider_id(
-            id,
-            provider_id.as_str(),
-            root,
-            policy,
-        )?)
+        FileSystem::from_spi(
+            LocalFileSystemSpi::rooted_with_provider_id(id, provider_id.as_str(), root, policy)?
+                .with_temp_cleanup_control(cleanup),
+        )
     }
 }
 

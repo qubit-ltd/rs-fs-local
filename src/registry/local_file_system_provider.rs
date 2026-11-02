@@ -8,6 +8,7 @@
 //! Registry provider for host and rooted local filesystems.
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use qubit_fs::Path as FsPath;
 use qubit_fs::error::FsError;
@@ -28,6 +29,7 @@ use super::internal::LocalProviderMode;
 use super::local_file_uri_path;
 use crate::LocalFileSystems;
 use crate::LocalResourcePolicy;
+use crate::LocalTempCleanupControl;
 use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
 
@@ -57,7 +59,6 @@ use crate::constants::LOCAL_PROVIDER_ID;
 /// # #[cfg(feature = "registry")]
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-#[derive(Clone)]
 #[must_use]
 pub struct LocalFileSystemProvider {
     /// Authority mode used for every configuration resolved by this provider.
@@ -66,6 +67,19 @@ pub struct LocalFileSystemProvider {
     descriptor: Option<ProviderDescriptor>,
     /// Immutable resource policy selected by the embedding application.
     policy: LocalResourcePolicy,
+    /// Shared cleanup limits used by resolutions and retained rooted sessions.
+    temp_cleanup_control: OnceLock<LocalTempCleanupControl>,
+}
+
+impl Clone for LocalFileSystemProvider {
+    fn clone(&self) -> Self {
+        Self {
+            mode: self.mode.clone(),
+            descriptor: self.descriptor.clone(),
+            policy: self.policy,
+            temp_cleanup_control: OnceLock::from(self.temp_cleanup_control()),
+        }
+    }
 }
 
 impl LocalFileSystemProvider {
@@ -105,6 +119,7 @@ impl LocalFileSystemProvider {
             mode: LocalProviderMode::Host,
             descriptor: None,
             policy,
+            temp_cleanup_control: OnceLock::new(),
         }
     }
 
@@ -160,11 +175,34 @@ impl LocalFileSystemProvider {
         root: &Path,
         policy: LocalResourcePolicy,
     ) -> Result<Self, FsError> {
-        LocalFileSystems::rooted_with_provider_id(id, descriptor.id(), root, policy).map(|file_system| Self {
+        let temp_cleanup_control = LocalTempCleanupControl::new(None);
+        LocalFileSystems::rooted_with_provider_id_and_temp_cleanup(
+            id,
+            descriptor.id(),
+            root,
+            policy,
+            temp_cleanup_control.clone(),
+        )
+        .map(|file_system| Self {
             mode: LocalProviderMode::Rooted { file_system },
             descriptor: Some(descriptor),
             policy,
+            temp_cleanup_control: OnceLock::from(temp_cleanup_control),
         })
+    }
+
+    /// Returns a clone of the shared temporary cleanup configuration.
+    ///
+    /// Host resolutions, rooted resources, and provider clones use this shared
+    /// control. Retain the returned handle to adjust the budget for subsequent
+    /// cleanup attempts. An attempt already in progress uses its starting
+    /// snapshot; setting `None` explicitly selects unbounded cleanup. This
+    /// accessor does not restore cleanup authority for an indeterminate source.
+    #[must_use]
+    pub fn temp_cleanup_control(&self) -> LocalTempCleanupControl {
+        self.temp_cleanup_control
+            .get_or_init(|| LocalTempCleanupControl::new(None))
+            .clone()
     }
 
     /// Validates and decodes a registry configuration into a logical path and
@@ -263,7 +301,9 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     fn create_configured(&self, config: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         let (path, uri) = Self::decode_config(config)?;
         let file_system = match &self.mode {
-            LocalProviderMode::Host => LocalFileSystems::host(self.policy),
+            LocalProviderMode::Host => {
+                LocalFileSystems::host_with_temp_cleanup(self.policy, self.temp_cleanup_control())
+            }
             LocalProviderMode::Rooted { file_system } => Ok(file_system.clone()),
         }
         .map_err(ProviderFailure::initialization_failed)?;

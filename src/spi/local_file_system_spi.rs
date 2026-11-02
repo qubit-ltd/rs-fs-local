@@ -45,9 +45,9 @@ use qubit_fs::spi::DeleteFileRequest;
 use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ListRequest;
 use qubit_fs::spi::OpenReaderRequest;
-use qubit_fs::spi::OpenedRandomAccessReader;
 use qubit_fs::spi::OpenWriterRequest;
 use qubit_fs::spi::OpenedDirectoryStream;
+use qubit_fs::spi::OpenedRandomAccessReader;
 use qubit_fs::spi::OpenedReader;
 use qubit_fs::spi::OpenedTempDirectory;
 use qubit_fs::spi::OpenedTempFile;
@@ -71,6 +71,8 @@ use super::local_outcome_mapper;
 use super::local_temp_path_projection::LocalTempPathProjection;
 use super::local_temp_resource_spi::LocalTempResourceSpi;
 use crate::LocalResourcePolicy;
+use crate::LocalTempCleanupControl;
+use crate::LocalTempCleanupResourceLimits;
 use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
 use crate::path::local_path_mapper;
@@ -102,6 +104,8 @@ pub struct LocalFileSystemSpi {
     open_retry_timeout: Option<Duration>,
     /// Temporary-name attempt limit not represented by native defaults.
     temp_max_attempts: Option<NonZeroUsize>,
+    /// Optional shared limits for temporary-directory cleanup.
+    temp_cleanup_control: Option<LocalTempCleanupControl>,
 }
 
 impl LocalFileSystemSpi {
@@ -276,7 +280,28 @@ impl LocalFileSystemSpi {
             provider_id: provider_id.to_owned(),
             open_retry_timeout: resource_policy.open_retry_timeout(),
             temp_max_attempts: resource_policy.temp_max_attempts(),
+            temp_cleanup_control: None,
         })
+    }
+
+    /// Attaches shared limits for subsequent temporary-directory cleanup
+    /// attempts.
+    ///
+    /// # Parameters
+    ///
+    /// - `cleanup`: Shared cleanup configuration retained by created directory
+    ///   sessions.
+    ///
+    /// # Returns
+    ///
+    /// This SPI configured to apply snapshots of `cleanup` to temporary
+    /// directories. An in-progress cleanup attempt keeps its starting
+    /// snapshot; updating the control affects later explicit cleanup
+    /// attempts and persistence/keep synchronization. `None` means
+    /// unbounded cleanup.
+    pub fn with_temp_cleanup_control(mut self, cleanup: LocalTempCleanupControl) -> Self {
+        self.temp_cleanup_control = Some(cleanup);
+        self
     }
 
     /// Builds the immutable provider property snapshot.
@@ -613,10 +638,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     }
 
     /// Opens a random-access session bound to one native file handle.
-    fn open_random_access_reader(
-        &self,
-        request: OpenReaderRequest<'_>,
-    ) -> FsResult<OpenedRandomAccessReader> {
+    fn open_random_access_reader(&self, request: OpenReaderRequest<'_>) -> FsResult<OpenedRandomAccessReader> {
         let path = self.native_path(request.path())?;
         let mut options = local_options_mapper::read(request.options());
         if let Some(timeout) = self.open_retry_timeout {
@@ -628,13 +650,12 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))?;
         let metadata = local_outcome_mapper::metadata(reader.metadata().clone());
         let info = self.info(request.path().clone()).with_metadata(metadata);
-        let session: Box<dyn RandomAccessReadSession> = Box::new(
-            super::local_random_access_reader::LocalRandomAccessReader::new(
+        let session: Box<dyn RandomAccessReadSession> =
+            Box::new(super::local_random_access_reader::LocalRandomAccessReader::new(
                 reader,
                 request.path().clone(),
                 self.provider_id.clone(),
-            ),
-        );
+            ));
         Ok(OpenedRandomAccessReader::new(info, session))
     }
 
@@ -958,6 +979,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let mut options = native_files::options::LocalTempDirectoryOptions::new()
             .with_prefix(request.options().prefix())
             .with_suffix(request.options().suffix());
+        options = options.with_cleanup_limits(self.cleanup_limits());
         if let Some(parent) = parent.as_deref() {
             options = options.with_parent(parent);
         }
@@ -994,8 +1016,19 @@ impl FileSystemSpi for LocalFileSystemSpi {
                 self.is_rooted(),
                 self.provider_id.clone(),
                 projection,
+                self.temp_cleanup_control.clone(),
             )),
         ))
+    }
+}
+
+impl LocalFileSystemSpi {
+    fn cleanup_limits(&self) -> native_files::options::LocalTempCleanupLimits {
+        self.temp_cleanup_control
+            .as_ref()
+            .and_then(LocalTempCleanupControl::limits)
+            .map(LocalTempCleanupResourceLimits::native_limits)
+            .unwrap_or_default()
     }
 }
 

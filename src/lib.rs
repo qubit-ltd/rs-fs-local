@@ -16,6 +16,8 @@ mod local_directory_reopen_policy;
 mod local_file_systems;
 mod local_list_resource_limits;
 mod local_resource_policy;
+mod local_temp_cleanup_control;
+mod local_temp_cleanup_resource_limits;
 mod path;
 #[cfg(feature = "registry")]
 mod registry;
@@ -28,5 +30,7 @@ pub use local_file_systems::LocalFileSystems;
 pub use local_file_systems::host_path_to_logical;
 pub use local_list_resource_limits::LocalListResourceLimits;
 pub use local_resource_policy::LocalResourcePolicy;
+pub use local_temp_cleanup_control::LocalTempCleanupControl;
+pub use local_temp_cleanup_resource_limits::LocalTempCleanupResourceLimits;
 #[cfg(feature = "registry")]
 pub use registry::LocalFileSystemProvider;

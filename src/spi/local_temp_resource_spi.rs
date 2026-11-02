@@ -42,6 +42,8 @@ use qubit_local_files::outcome::LocalTempSourceState;
 use qubit_local_files::path::LocalFileSystemScope;
 
 use super::local_temp_path_projection::LocalTempPathProjection;
+use crate::LocalTempCleanupControl;
+use crate::LocalTempCleanupResourceLimits;
 use crate::path::local_path_mapper;
 use crate::spi::error_mapper;
 
@@ -71,6 +73,8 @@ pub(crate) enum LocalTempResourceSpi {
         provider_id: String,
         /// Requested parent spelling, independent of native cleanup authority.
         projection: Option<LocalTempPathProjection>,
+        /// Shared limits refreshed before lifecycle operations and drop.
+        cleanup_control: Option<LocalTempCleanupControl>,
     },
 }
 impl LocalTempResourceSpi {
@@ -101,6 +105,22 @@ impl LocalTempResourceSpi {
         }
     }
 
+    fn refresh_directory_cleanup_limits(&mut self) {
+        let Self::Directory {
+            resource: Some(resource),
+            cleanup_control: Some(control),
+            ..
+        } = self
+        else {
+            return;
+        };
+        let limits = control
+            .limits()
+            .map(LocalTempCleanupResourceLimits::native_limits)
+            .unwrap_or_default();
+        resource.set_cleanup_limits(limits);
+    }
+
     /// Wraps a host- or rooted-authority native temporary directory.
     ///
     /// # Parameters
@@ -119,12 +139,14 @@ impl LocalTempResourceSpi {
         rooted: bool,
         provider_id: String,
         projection: Option<LocalTempPathProjection>,
+        cleanup_control: Option<LocalTempCleanupControl>,
     ) -> Self {
         Self::Directory {
             resource: Some(value),
             rooted,
             provider_id,
             projection,
+            cleanup_control,
         }
     }
 
@@ -203,6 +225,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
     /// recovery state when publication fails. Successful publication retains
     /// the requested logical target without another path conversion.
     fn persist(&mut self, request: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
+        self.refresh_directory_cleanup_limits();
         let (target, _) = self.target(request.target())?;
         let provider_id = match self {
             Self::File { provider_id, .. } | Self::Directory { provider_id, .. } => provider_id.to_owned(),
@@ -228,6 +251,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
     /// Returns a recoverable provider failure when publication does not
     /// complete.
     fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
+        self.refresh_directory_cleanup_limits();
         self.require_owned(FsOperation::KeepTemp)?;
         let (scope, provider_id) = match self {
             Self::File {
@@ -266,6 +290,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
     /// failure when native cleanup does not complete. Failed cleanup retains
     /// the native resource for retry.
     fn cleanup(&mut self) -> FsResult<()> {
+        self.refresh_directory_cleanup_limits();
         match self {
             Self::File {
                 resource, provider_id, ..
@@ -284,6 +309,12 @@ impl TempResourceSpi for LocalTempResourceSpi {
                     .map_err(|error| directory_cleanup_error(error, resource.source_state(), provider_id))
             }
         }
+    }
+}
+
+impl Drop for LocalTempResourceSpi {
+    fn drop(&mut self) {
+        self.refresh_directory_cleanup_limits();
     }
 }
 
@@ -1069,6 +1100,7 @@ mod tests {
                 rooted: true,
                 provider_id: "terminal-directory".to_owned(),
                 projection: None,
+                cleanup_control: None,
             },
         ] {
             let error = resource.cleanup().expect_err("terminal resource must reject cleanup");
@@ -1116,7 +1148,7 @@ mod tests {
             .create_temp_directory_with_options(&LocalTempDirectoryOptions::new().with_parent(parent.path()))
             .expect("temporary directory");
         temporary.cleanup().expect("release source");
-        let mut adapter = LocalTempResourceSpi::directory(temporary, false, "test".to_owned(), None);
+        let mut adapter = LocalTempResourceSpi::directory(temporary, false, "test".to_owned(), None, None);
         assert_direct_spi_rejected(&mut adapter, PersistFailureState::NotPublishedSourceReleased);
     }
 
