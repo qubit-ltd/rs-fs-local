@@ -289,7 +289,7 @@ fn test_delete_deadline_preserves_timeout_and_partial_effects() {
         Duration::from_secs(60),
     )));
     let filesystem = LocalFileSystems::rooted(directory.path(), policy).expect("Rooted facade should open");
-    let _fault = install_test_fault("local-delete-deadline-8").expect("deadline fault should install");
+    let _fault = install_test_fault("local-delete-deadline-9").expect("deadline fault should install");
     let error = filesystem
         .delete_directory(&path("/tree"), DeleteOptions::default().with_recursive(true))
         .expect_err("deadline should expire after child deletion");

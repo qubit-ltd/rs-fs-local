@@ -179,10 +179,9 @@ fn test_host_commit_conflict_preserves_not_published_state() {
     );
 }
 
-/// Definite native cleanup failures retain the adapter session, so retrying
-/// abort performs native cleanup again instead of reporting false success.
+/// Replacing a staging file keeps abort retryable and preserves the new entry.
 #[test]
-fn test_host_abort_failure_retains_writer_for_retry() {
+fn test_host_abort_rejects_replaced_staging_file_for_retry() {
     let root = tempdir().expect("host fixture root must be created");
     let target = root.path().join("target");
     let logical = host_path_to_logical(&target).expect("host target path must be logical");
@@ -198,15 +197,22 @@ fn test_host_abort_failure_retains_writer_for_retry() {
         .map(|entry| entry.expect("staging entry must be readable").path())
         .find(|path| path != &target)
         .expect("writer must create one staging entry");
-    fs::remove_file(staging).expect("external actor must remove the staging entry");
+    fs::remove_file(&staging).expect("external actor must remove the staging entry");
+    fs::write(&staging, b"replacement").expect("external actor must install replacement entry");
 
     for _ in 0..2 {
         let error = writer
             .abort()
-            .expect_err("missing staging cleanup must remain retryable");
-        assert_eq!(FsErrorKind::NotFound, error.kind());
+            .expect_err("replacement staging entry must remain retryable");
+        assert_eq!(FsErrorKind::InvalidPath, error.kind());
         assert_eq!(WriterState::Open, writer.state());
     }
+    assert_eq!(
+        b"replacement",
+        fs::read(staging)
+            .expect("replacement entry must be preserved")
+            .as_slice()
+    );
 }
 
 /// Host listing maps the facade symlink option into recursive traversal.

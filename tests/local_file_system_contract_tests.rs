@@ -288,12 +288,12 @@ impl HostFixture {
     }
 
     /// Converts any host logical path returned by the provider into a native
-    /// path for read-only contract observation.
+    /// path for independent contract observation or setup.
     ///
     /// Unlike fixture mutation paths, a provider-generated default temporary
     /// path may legitimately live in the system temporary directory rather
     /// than below this fixture's private root.
-    fn observation_path(&self, path: &Path) -> FixtureResult<PathBuf> {
+    fn contract_native_path(&self, path: &Path) -> FixtureResult<PathBuf> {
         LocalPaths::host()
             .from_canonical_components(path.components())
             .map_err(|error| FixtureError::with_source("host observation path conversion failed", error))
@@ -338,7 +338,7 @@ impl FileSystemFixture for HostFixture {
     }
 
     fn read_file(&self, path: &Path) -> FixtureResult<FixtureSupport<Vec<u8>>> {
-        let native = self.native_path(path)?;
+        let native = self.contract_native_path(path)?;
         reject_symlink_target(&native, "fixture observation target")?;
         fs::read(native)
             .map(FixtureSupport::Supported)
@@ -346,7 +346,7 @@ impl FileSystemFixture for HostFixture {
     }
 
     fn exists_out_of_band(&self, path: &Path) -> FixtureResult<FixtureSupport<bool>> {
-        let native = self.observation_path(path)?;
+        let native = self.contract_native_path(path)?;
         match fs::symlink_metadata(native) {
             Ok(_) => Ok(FixtureSupport::Supported(true)),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(FixtureSupport::Supported(false)),
@@ -355,7 +355,7 @@ impl FileSystemFixture for HostFixture {
     }
 
     fn write_file_out_of_band(&self, path: &Path, bytes: &[u8]) -> FixtureResult<FixtureSupport<()>> {
-        let native = self.native_path(path)?;
+        let native = self.contract_native_path(path)?;
         reject_symlink_target(&native, "fixture out-of-band write target")?;
         if let Some(parent) = native.parent() {
             fs::create_dir_all(parent)
