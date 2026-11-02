@@ -94,6 +94,9 @@ URI 解码、provider 规则和资源上限。`qubit-fs-local` 承担这一角�
 ## 核心能力
 
 - 通过 host 和 rooted 构造路径提供本地文件的具体同步 `FileSystem` 门面。
+- 本地 provider 支持 `qubit-fs` 的可选随机读取会话，并保留该请求打开的原生 reader。
+  缓存长度来自这个已打开句柄，只限定本会话范围，不是文件内容快照。API 和错误边界见
+  `qubit-fs` 用户手册。
 - 可选的 `LocalFileSystemProvider` 位于 `registry` feature 后；它将支持的 `file:` 配置
   解析为文件系统、路径和 canonical URI。
 - `registry` feature 会向链接期 inventory 提交一个采用有限
@@ -120,6 +123,8 @@ URI 解码、provider 规则和资源上限。`qubit-fs-local` 承担这一角�
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
+- [Core random-access session guide](../rs-fs/doc/user_guide.md#sampling-the-same-opened-object-at-several-offsets)
+- [核心随机读取会话说明](../rs-fs/doc/user_guide.zh_CN.md#从同一已打开对象的多个位置采样)
 - [English adapter design](doc/local_file_system_adapter_design.md)
 - [中文适配器设计](doc/local_file_system_adapter_design.zh_CN.md)
 - [API 文档](https://docs.rs/qubit-fs-local)

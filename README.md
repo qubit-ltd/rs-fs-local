@@ -113,6 +113,10 @@ asynchronous local `FileSystem` facade.
 
 - A concrete synchronous `FileSystem` facade over local files, with host and
   rooted construction paths.
+- The local provider supports the optional `qubit-fs` random-access session by
+  retaining the native reader opened for the request. Its cached length is an
+  upper bound from that opened handle, not a snapshot of file contents; callers
+  should see the `qubit-fs` user guide for the API and error boundaries.
 - Optional `LocalFileSystemProvider` registration behind the `registry`
   feature; it resolves supported `file:` configurations to a filesystem, path,
   and canonical URI.
@@ -146,6 +150,8 @@ filesystem facade.
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
+- [Core random-access session guide](../rs-fs/doc/user_guide.md#sampling-the-same-opened-object-at-several-offsets)
+- [核心随机读取会话说明](../rs-fs/doc/user_guide.zh_CN.md#从同一已打开对象的多个位置采样)
 - [Adapter design](doc/local_file_system_adapter_design.md)
 - [中文设计文档](doc/local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
