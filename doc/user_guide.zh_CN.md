@@ -296,6 +296,33 @@ provider selection/descriptor 和 filesystem identity 一并保存。只把 cano
 provider 重放时，会得到相同的 URI 和逻辑路径，但文件系统会变成 `local-host`，不会回到
 原来的任一 rooted filesystem。
 
+## 元数据保留
+
+复制与临时资源持久化的元数据行为不同。下表说明本 provider 接受的请求和可观察保证；
+未知或无法表达的字段不在契约内，但这不等于它们必然丢失。
+
+| 策略 | Copy | 成功的 `persist`（文件和目录） |
+| --- | --- | --- |
+| `None` | 接受；不请求复制源元数据。 | 接受；不会清除已附着在移动源对象上的属性。 |
+| `Portable` | 接受；请求保留原生权限，包括 Unix mode bits 和 Windows 文件 readonly 标志。 | 接受；成功的同文件系统 rename 会携带源对象权限（Unix mode bits；Windows 文件 readonly 标志）。 |
+| `UserMetadata` | 在原生复制前以 `RequirementNotMet` 拒绝；本 provider 不支持用户元数据复制。 | 接受；不会写入或单独验证用户键值元数据。 |
+| `ProviderNative` | 在原生复制前以 `RequirementNotMet` 拒绝；没有 provider 原生元数据复制契约。 | 接受；使用原生移动行为，不执行 provider 专属元数据操作。 |
+| `All` | 在原生复制前以 `RequirementNotMet` 拒绝；无法表达全部元数据类别。 | 接受；使用原生移动行为，不承诺保留所有可观察字段。 |
+
+成功的 `persist` 中，Host 和 Rooted 文件及目录均通过原生 move/rename 路径发布。
+overwrite 会用临时源替换旧目标，因此结果项采用源权限，旧目标属性随旧项移除。
+原生移动无法执行时不会复制到新文件；跨设备或其他不支持的移动会作为发布失败返回。
+`None` 不表示“移除权限”。
+
+对于 copy，`Portable` 请求原生权限元数据，包括 Unix mode bits 和 Windows 文件 readonly 标志；
+不承诺时间戳、owner、ACL、扩展属性或用户键值元数据。
+对于 persist，成功 rename 会携带源权限；不保证时间戳、owner、ACL、扩展属性、用户元数据或
+平台自动维护字段保持不变。移动目录会携带目录对象及其子项，不会逐项重写子项元数据。
+
+元数据保留与 durability 无关。`PersistOutcome` 确认发布事实，不代表断电持久性或逐字段验收。
+`CopyOutcome::metadata()` 报告 copy 声明的策略类别，不是逐字段验证。应用若依赖具体字段，
+应检查目标。实现路径与依据见[适配器设计中的元数据契约](local_file_system_adapter_design.zh_CN.md#metadata-contract)。
+
 ## 错误与诊断
 
 原生操作失败会经由 `qubit-fs` 错误模型报告。host provider 和便捷的 `rooted` provider 使用默认

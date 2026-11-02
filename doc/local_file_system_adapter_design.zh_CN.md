@@ -596,3 +596,33 @@ writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。
 传播。超出有符号原生位置范围的偏移，只有在同一已打开句柄的 metadata 证明其位于 EOF
 或之后时才按空窗口处理。metadata 是打开时的观察，并发修改时不构成内容快照。自动前缀
 范围优化要求 Guaranteed 能力，因此本地 `read_prefix` 仍使用有界顺序消费。
+
+## 元数据契约
+
+公开策略矩阵见[用户指南](user_guide.zh_CN.md#元数据保留)。Adapter 将 copy 的 `None`
+映射为 native `None`，将 `Portable` 映射为 native `Permissions`；`UserMetadata`、
+`ProviderNative` 和 `All` 在原生复制前返回 `RequirementNotMet`。权限是当前明确支持的唯一
+copy 元数据类别；本 crate 的 portable copy 回归断言 Unix mode bits。
+
+| 策略 | Copy adapter | Persist adapter／原生行为 |
+| --- | --- | --- |
+| `None` | 接受；native `None`。 | 接受；不清除属性。 |
+| `Portable` | 接受；native `Permissions`（Unix mode bits 和 Windows 文件 readonly 标志）。 | 接受；同一对象 rename 携带源权限（Unix mode bits 和 Windows 文件 readonly 标志）。 |
+| `UserMetadata` | 原生复制前返回 `RequirementNotMet`。 | 接受；没有用户元数据 setter 或验收。 |
+| `ProviderNative` | 原生复制前返回 `RequirementNotMet`。 | 接受；没有 provider 专属元数据操作。 |
+| `All` | 原生复制前返回 `RequirementNotMet`。 | 接受；不代表保留所有字段。 |
+
+Persist 的 `local_temp_resource_spi::persist_options` 只映射 overwrite 和 parent 创建选项，
+native persist API 没有元数据策略 setter。Facade 接受五种策略值，行为测试覆盖每种策略下的
+Host／Rooted × 文件／目录。成功发布移动同一临时对象：Host 文件使用
+`move_file_without_replacing` 或 `replace_file`；Rooted 文件使用原生 rename 或
+rename-without-replacement；目录使用原生 rename，不存在复制降级。overwrite 替换旧目标项，
+旧目标属性不会成为发布源的属性。测试核验 payload、源路径消失、目标回报，以及文件和目录的
+Unix 源 mode；overwrite 测试证明不同目标 mode 会由源 mode 替代。
+
+因此 persist 策略值可接受，但不改变原生发布。成功 rename 因移动同一对象而携带源权限；
+`None` 不请求清除属性。Adapter 不承诺时间戳、owner、ACL、扩展属性或用户元数据保持不变，
+outcome 也没有逐字段验收回执。native move 失败继续保留现有发布失败与恢复状态；不能仅因
+adapter 没有对应 setter 就拒绝某个类别。元数据行为不代表 durability。权限操作具有平台差异，
+当前测试断言 Unix mode，并在 Windows 断言文件 readonly 标志。Windows 目录用例检查子文件
+readonly 标志，不把目录 readonly 当作 ACL 代理；不能从 `Portable` 推断其他字段也会保留。

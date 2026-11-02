@@ -386,3 +386,48 @@ metadata from that same opened handle proves it is at or beyond EOF. Metadata
 is an opening observation, not a snapshot under concurrent mutation.
 Automatic `read_prefix` narrowing requires Guaranteed range support, so local
 prefix reads continue to use bounded sequential consumption.
+
+## Metadata contract
+
+The public policy matrix is maintained in the [user guide](user_guide.md#metadata-preservation).
+The adapter maps copy `None` to native `None` and `Portable` to native
+`Permissions`; `UserMetadata`, `ProviderNative`, and `All` return
+`RequirementNotMet` before native copy. Native permissions are the only
+explicitly supported copy category. The current regression covers Unix mode
+bits for the facade's portable copy path.
+
+| Policy | Copy adapter | Persist adapter/native behavior |
+| --- | --- | --- |
+| `None` | Accepted; native `None`. | Accepted; no attribute clearing. |
+| `Portable` | Accepted; native `Permissions` (Unix mode bits and Windows file readonly flag). | Accepted; same-object rename carries source permissions (Unix mode bits and Windows file readonly flag). |
+| `UserMetadata` | `RequirementNotMet` before native copy. | Accepted; no user metadata setter or verification. |
+| `ProviderNative` | `RequirementNotMet` before native copy. | Accepted; no provider-specific metadata operation. |
+| `All` | `RequirementNotMet` before native copy. | Accepted; not an all-fields guarantee. |
+
+The native permission operation is platform-specific; tests assert Unix mode
+and, on Windows, the file readonly flag. Directory readonly is not used as an
+ACL proxy; the Windows directory case sets and checks its child file's readonly
+flag. Do not infer timestamp, owner, ACL, extended attribute, or user key/value
+preservation from `Portable`.
+
+Persist differs: `local_temp_resource_spi::persist_options` maps only overwrite
+and parent-creation options. The native persist API has no metadata policy
+setter. The facade still passes all five policy values, and behavior tests
+exercise Host/Rooted file/directory cases for each value. Successful
+publication moves the same temporary object: Host file uses
+`move_file_without_replacing` or `replace_file`; Rooted file uses native rename
+or rename-without-replacement; directories use native rename. There is no
+copy-based fallback. Overwrite replaces the destination entry, so its former
+attributes are not the attributes of the published source. Tests verify source
+payload, removal of the temporary path, target reporting, and Unix source mode
+for files and directories; the overwrite regression verifies source mode wins
+over a different existing target mode.
+
+Thus persist policy values are accepted but do not change native publication.
+Successful rename carries the source object's permissions as a consequence of
+moving that object; `None` does not request attribute clearing. The adapter
+does not claim unchanged timestamps, owner, ACLs, extended attributes, or user
+metadata, and the outcome has no field-level metadata receipt. A native move
+failure remains a publish failure with the existing native recovery state; no
+category is rejected merely because the adapter does not map it to a setter.
+Metadata behavior does not imply durability.

@@ -332,6 +332,44 @@ filesystem identity with the URI. Replaying only the canonical URI through a
 host provider produces the same URI and logical path, but resolves to the
 `local-host` filesystem rather than either rooted filesystem.
 
+## Metadata preservation
+
+Copy and temporary-resource persistence have different metadata behavior. The
+table describes this provider's accepted requests and observable guarantees;
+unknown or unrepresented fields are outside the contract, not necessarily
+lost.
+
+| Policy | Copy | Successful `persist` (file and directory) |
+| --- | --- | --- |
+| `None` | Accepted; does not request source metadata copying. | Accepted; does not clear attributes already attached to the moved source object. |
+| `Portable` | Accepted; requests native permission preservation: Unix mode bits and the Windows file readonly flag. | Accepted; successful same-filesystem rename carries source native permissions (Unix mode bits; Windows file readonly flag). |
+| `UserMetadata` | Rejected with `RequirementNotMet` before native copy; user metadata is unsupported. | Accepted; no user key/value metadata is written or separately verified. |
+| `ProviderNative` | Rejected with `RequirementNotMet` before native copy; no provider-native metadata copy contract is implemented. | Accepted; native move behavior is used without a provider-specific metadata operation. |
+| `All` | Rejected with `RequirementNotMet` before native copy; every metadata category is not representable. | Accepted; native move behavior is used, not a promise to retain every observable field. |
+
+For successful `persist`, Host and Rooted files and directories use native
+move/rename paths. Overwrite replaces the old destination with the temporary
+source, so source permissions apply to the resulting entry and old destination
+attributes do not. The operation does not copy to a new file when native move
+cannot be performed; cross-device or otherwise unsupported moves fail.
+`None` does not mean “strip permissions.”
+
+For copy, `Portable` requests native permission metadata, including Unix mode
+bits and the Windows file readonly flag; timestamps, owner,
+ACLs, extended attributes, and user key/value metadata are not promised. For
+persist, source permissions carry through successful rename; timestamps,
+owner, ACLs, extended attributes, user metadata, and automatically maintained
+platform fields have no unchanged-value guarantee. A directory move carries
+the directory object and its children; it does not rewrite each child's
+metadata.
+
+Metadata preservation is independent of durability. `PersistOutcome` confirms
+publication facts, not power-loss durability or a per-field audit.
+`CopyOutcome::metadata()` reports its policy category, not field-by-field
+verification. Applications requiring a particular field should inspect the
+destination. See the [adapter design metadata contract](local_file_system_adapter_design.md#metadata-contract)
+for implementation paths and evidence.
+
 ## Errors and Diagnostics
 
 Native operation failures are reported through the `qubit-fs` error model. The
