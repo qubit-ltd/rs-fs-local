@@ -1453,7 +1453,15 @@ fn metadata_test_native_path(root: &NativePath, logical: &Path, rooted_scope: bo
     if rooted_scope {
         root.join(logical.as_str().trim_start_matches('/'))
     } else {
-        NativePath::new(logical.as_str()).to_path_buf()
+        let logical_root = host_path_to_logical(root).expect("host fixture parent");
+        let suffix = logical
+            .as_str()
+            .strip_prefix(logical_root.as_str())
+            .expect("host logical path must be under fixture root");
+        let relative = suffix
+            .strip_prefix('/')
+            .expect("host logical path must be below fixture root");
+        root.join(relative)
     }
 }
 
