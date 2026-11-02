@@ -19,9 +19,9 @@ use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_io::Input;
 
-/// Empty ranges still open and validate their requested resource.
+/// Empty ranges must still report a missing resource.
 #[test]
-fn test_local_empty_range_checks_existence_and_path() {
+fn test_local_empty_range_checks_missing_resource() {
     let root = tempfile::tempdir().expect("root");
     let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
     let error = fs
@@ -29,15 +29,37 @@ fn test_local_empty_range_checks_existence_and_path() {
             &Path::parse("/missing").expect("path"),
             ReadOptions::default().with_length(Some(0)),
         )
-        .expect_err("missing");
+        .expect_err("missing resource must fail");
     assert_eq!(error.kind(), FsErrorKind::NotFound);
-    assert!(
-        fs.open_reader(
+}
+
+/// Rooted empty ranges accept an existing relative path and return EOF.
+#[test]
+fn test_local_empty_range_accepts_rooted_relative_path() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::write(root.path().join("relative"), b"payload").expect("seed file");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::standard()).expect("rooted");
+    let mut reader = fs
+        .open_reader(
             &Path::parse("relative").expect("path"),
-            ReadOptions::default().with_length(Some(0))
+            ReadOptions::default().with_length(Some(0)),
         )
-        .is_err()
-    );
+        .expect("rooted relative path must open");
+    let mut buffer = [0_u8; 1];
+    assert_eq!(reader.read(&mut buffer).expect("empty range read"), 0);
+}
+
+/// Host empty ranges reject relative paths before resource lookup.
+#[test]
+fn test_local_empty_range_rejects_host_relative_path() {
+    let fs = LocalFileSystems::host(LocalResourcePolicy::standard()).expect("host");
+    let error = fs
+        .open_reader(
+            &Path::parse("relative").expect("path"),
+            ReadOptions::default().with_length(Some(0)),
+        )
+        .expect_err("host relative path must fail");
+    assert_eq!(error.kind(), FsErrorKind::InvalidPath);
 }
 
 /// Renaming the pathname after opening does not replace the retained resource.
