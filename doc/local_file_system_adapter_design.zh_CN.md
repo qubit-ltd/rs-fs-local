@@ -407,6 +407,10 @@ Adapter 先把原生错误持有的资源放回 session slot，再构造可移�
 显式 cleanup 报告错误，Drop 是 best effort。需要对清理工作设预算时，应在 native 层另立
 包含残留资源和恢复权属的设计，不能把普通删除预算解释为全部生命周期操作的总配额。
 
+native 临时目录 API 已支持独立 cleanup 上限，并可在不同尝试之间替换上限。adapter 通过新增入口
+公开可选的共享 control；旧构造方法仍保留无界 cleanup 行为。listing 到达所选深度后会正常结束，
+该 EOF 不表示更深层级也已完整扫描。
+
 源资格不确定而目标事实明确时，必须使用对应的 `*SourceIndeterminate` 状态并保留已知
 目标 effect。未来未知变体及无效的 `Published` + `Owned` 组合保守映射为整体
 `Indeterminate`。

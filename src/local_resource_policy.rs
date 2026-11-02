@@ -62,6 +62,10 @@ impl LocalResourcePolicy {
     /// of copied bytes. Walkers may hold 32 directories; all three operations
     /// have a cooperative 30-second deadline. These are per-operation limits,
     /// not aggregate memory quotas or interruptible I/O timeouts.
+    /// Listing stops normally at its depth boundary. That EOF covers only the
+    /// selected depth and does not establish that the full tree was scanned.
+    /// Increase the provider listing depth, and ensure the request has no
+    /// smaller depth limit, when a deeper scan is required.
     ///
     /// This method performs no I/O. Use the domain-specific overrides for
     /// larger workloads or explicitly select `unbounded` when appropriate.

@@ -12,6 +12,136 @@ use std::path::PathBuf;
 use std::path::absolute;
 use std::process::Command;
 
+fn markdown_headings_and_links(markdown: &str) -> (Vec<String>, Vec<String>) {
+    let mut headings = Vec::new();
+    let mut links = Vec::new();
+    let mut in_fence = false;
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        if let Some(title) = (1..=6).find_map(|level| {
+            let prefix = "#".repeat(level) + " ";
+            trimmed.strip_prefix(&prefix)
+        }) {
+            headings.push(title.to_owned());
+        }
+        let mut rest = line;
+        while let Some(start) = rest.find("](") {
+            let target_start = start + 2;
+            let Some(end) = rest[target_start..].find(')') else {
+                break;
+            };
+            links.push(rest[target_start..target_start + end].to_owned());
+            rest = &rest[target_start + end + 1..];
+        }
+    }
+    (headings, links)
+}
+
+fn heading_slug(title: &str) -> String {
+    let mut result = String::new();
+    let mut separator = false;
+    for ch in title.chars().filter(|ch| *ch != '`' && *ch != '*') {
+        if ch.is_alphanumeric() || ch == '-' || ch == '_' {
+            if separator && !result.is_empty() && !result.ends_with('-') {
+                result.push('-');
+            }
+            separator = false;
+            result.extend(ch.to_lowercase());
+        } else if ch.is_whitespace() {
+            separator = true;
+        }
+    }
+    result
+}
+
+fn validate_local_markdown_links(root: &Path, document: &str, markdown: &str) -> Result<(), String> {
+    let (_, links) = markdown_headings_and_links(markdown);
+    for link in links {
+        let (path, fragment) = link.split_once('#').unwrap_or((&link, ""));
+        if path.starts_with("http:") || path.starts_with("https:") || path.starts_with("mailto:") {
+            continue;
+        }
+        let source_dir = Path::new(document).parent().unwrap_or_else(|| Path::new("."));
+        let target_rel = if path.is_empty() {
+            PathBuf::from(document)
+        } else {
+            source_dir.join(path)
+        };
+        let target = root.join(target_rel);
+        let contents = fs::read_to_string(&target)
+            .map_err(|error| format!("{document}: {link}: cannot read {}: {error}", target.display()))?;
+        if !fragment.is_empty() {
+            let (target_headings, _) = markdown_headings_and_links(&contents);
+            let slugs = target_headings
+                .iter()
+                .map(|heading| heading_slug(heading))
+                .collect::<Vec<_>>();
+            if !slugs.iter().any(|slug| slug == fragment) {
+                return Err(format!("{document}: {link}: fragment does not match a target heading"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_markdown_link_helper_handles_local_heading_slugs_and_fences() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    assert!(
+        validate_local_markdown_links(
+            root,
+            "README.md",
+            "[ok](doc/user_guide.md#provider-resource-ceilings)\n"
+        )
+        .is_ok()
+    );
+    assert!(
+        validate_local_markdown_links(
+            root,
+            "README.md",
+            "[bad](doc/local_file_system_adapter_design.zh_CN.md#metadata-contract)\n"
+        )
+        .is_err()
+    );
+    assert!(
+        validate_local_markdown_links(
+            root,
+            "README.md",
+            "[ok](doc/local_file_system_adapter_design.zh_CN.md#元数据契约)\n"
+        )
+        .is_ok()
+    );
+    let (headings, links) =
+        markdown_headings_and_links("# 元数据契约\n\n### Metadata `Contract`!\n\n```md\n[ignored](missing.md)\n```\n");
+    assert_eq!(heading_slug(&headings[0]), "元数据契约");
+    assert_eq!(heading_slug(&headings[1]), "metadata-contract");
+    assert_eq!(heading_slug("Local_resource ceiling"), "local_resource-ceiling");
+    assert!(!links.iter().any(|link| link == "missing.md"));
+}
+
+#[test]
+fn test_published_local_markdown_links_resolve() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+        "doc/local_file_system_adapter_design.md",
+        "doc/local_file_system_adapter_design.zh_CN.md",
+    ] {
+        let source = fs::read_to_string(root.join(document)).expect("published document should be readable");
+        validate_local_markdown_links(root, document, &source).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExampleProfile {
     Direct,

@@ -88,6 +88,12 @@ are cooperative. Temporary cleanup, `Drop`, and native publication cleanup do
 not inherit ordinary deletion ceilings, and these settings are not aggregate
 concurrent quotas.
 
+The native temporary-directory API supports independent cleanup limits and
+replacing them between attempts. The adapter exposes that capability through
+an optional shared control on new entry points; existing constructors retain
+their unbounded cleanup behavior. Listing depth is a normal traversal boundary:
+EOF at the selected depth does not establish completeness of deeper levels.
+
 Use `standard()` for ordinary workflows; choose `unbounded()` only when accepting unlimited recursive work.
 
 ## 5. SPI implementation

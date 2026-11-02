@@ -134,6 +134,14 @@ Consequently, a prefix with no matches can still exhaust the provider walker
 ceiling. A cooperative deadline is checked around native calls and cannot
 interrupt an I/O call already in progress.
 
+Listing depth is a boundary, not a completeness check: the root is depth zero,
+and reaching the effective depth ends normally with EOF. That EOF only covers
+the selected depth; it does not prove that the full tree was scanned. The
+effective depth is the stricter request/provider value. Omitting a request
+depth does not remove the provider ceiling. `with_list_limits(None)` removes
+all provider listing ceilings, not only depth. For a deeper scan, increase the
+provider depth and retain the other listing budgets.
+
 The following values are application scenario examples, not library defaults:
 
 <!-- fs-local-example: direct -->
@@ -169,6 +177,53 @@ scope and do not inherit ordinary deletion ceilings. Explicit cleanup reports
 its own error; Drop is best effort. The local provider takes over every copy it
 can express and does not decline into a facade fallback. Copy failures after
 native work starts retain their state and partial statistics.
+
+### Temporary-directory cleanup budgets
+
+The original constructors and registry provider remain unbounded for temporary
+cleanup. Use the separate cleanup control when a temporary tree needs an
+explicit work budget and a recovery path. Clones share one setting across all
+associated directories. Each cleanup attempt reads one snapshot, so changing
+the control affects later attempts rather than interrupting work in progress.
+
+<!-- fs-local-example: direct -->
+```rust
+use std::time::Duration;
+
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::temp::TempOptions;
+use qubit_fs_local::{
+    LocalFileSystems, LocalResourcePolicy, LocalTempCleanupControl,
+    LocalTempCleanupResourceLimits,
+};
+
+let root = std::env::temp_dir();
+let control = LocalTempCleanupControl::new(Some(
+    LocalTempCleanupResourceLimits::new(8, 0, 4096, Duration::from_secs(5)),
+));
+let fs = LocalFileSystems::rooted_with_id_and_temp_cleanup(
+    FileSystemId::new("cleanup-guide")?, &root, LocalResourcePolicy::standard(), control.clone(),
+)?;
+let mut directory = fs.create_temp_directory(TempOptions::default())?;
+let cleanup_error = directory.cleanup().expect_err("zero-entry budget blocks cleanup");
+assert_eq!(directory.state(), qubit_fs::temp::TempResourceState::CleanupRequired);
+let _diagnostic = cleanup_error;
+control.set_limits(Some(LocalTempCleanupResourceLimits::new(
+    8, 100, 1 << 20, Duration::from_secs(30),
+)));
+directory.cleanup()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Keep the temporary handle and inspect the explicit cleanup error before
+increasing the relevant budget and retrying that same handle. There is no
+automatic widening. Drop cleanup can make multiple underlying attempts, each
+with its own fresh snapshot; use explicit cleanup when the result matters.
+Changing a budget cannot restore authority for a source whose ownership is
+indeterminate. Use separate controls when independent tasks need isolated
+budgets. Registry users can retain `LocalFileSystemProvider::temp_cleanup_control()`;
+direct SPI users can attach a control with `with_temp_cleanup_control` before
+building the filesystem.
 
 The adapter preserves native deletion classification: deleting a directory through
 `delete_file` reports `IsDirectory`, and deleting a regular file or final symbolic

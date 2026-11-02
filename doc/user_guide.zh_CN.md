@@ -178,6 +178,52 @@ Registry 的 `file:` URI 必须是绝对 URI。门面返回的临时资源路径
 不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
 上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
 
+listing 深度是裁剪边界，不是完整性检查：请求根深度为零，达到实际深度后正常以 EOF 结束。
+该 EOF 仅覆盖所选深度，不能证明整棵树均已扫描。实际深度取请求和 provider 上限中更严格者；
+省略请求深度不会取消 provider 上限。`with_list_limits(None)` 会取消全部 provider listing
+预算，而不只是深度。需要更深扫描时，应增大 provider 深度并保留其他 listing 预算。
+
+### 临时目录清理预算
+
+旧构造方法和 registry provider 的临时清理仍为无界。需要限制临时目录树的工作量并保留恢复路径时，
+使用独立 cleanup control。其 clone 共享同一配置，因此关联目录会共同受影响；每次 cleanup 尝试
+开始时读取一份快照，更新配置不会中断正在执行的尝试。
+
+<!-- fs-local-example: direct -->
+```rust
+use std::time::Duration;
+
+use qubit_fs::metadata::FileSystemId;
+use qubit_fs::temp::TempOptions;
+use qubit_fs_local::{
+    LocalFileSystems, LocalResourcePolicy, LocalTempCleanupControl,
+    LocalTempCleanupResourceLimits,
+};
+
+let root = std::env::temp_dir();
+let control = LocalTempCleanupControl::new(Some(
+    LocalTempCleanupResourceLimits::new(8, 0, 4096, Duration::from_secs(5)),
+));
+let fs = LocalFileSystems::rooted_with_id_and_temp_cleanup(
+    FileSystemId::new("cleanup-guide-zh")?, &root, LocalResourcePolicy::standard(), control.clone(),
+)?;
+let mut directory = fs.create_temp_directory(TempOptions::default())?;
+let cleanup_error = directory.cleanup().expect_err("zero-entry budget blocks cleanup");
+assert_eq!(directory.state(), qubit_fs::temp::TempResourceState::CleanupRequired);
+let _diagnostic = cleanup_error;
+control.set_limits(Some(LocalTempCleanupResourceLimits::new(
+    8, 100, 1 << 20, Duration::from_secs(30),
+)));
+directory.cleanup()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+保留临时句柄并检查显式 cleanup 错误，确认适合恢复后增大对应预算，再对同一句柄重试。系统不会
+自动放宽预算。Drop 清理可能触发多次底层尝试，每次都会读取新的快照；需要确定结果时应显式
+cleanup。调整预算不能恢复 source 所有权不确定时的清理权限。需要隔离的任务应分别创建 control。
+registry 用户可以保留 `LocalFileSystemProvider::temp_cleanup_control()`；直接使用 SPI 时，应在
+创建 filesystem 前调用 `with_temp_cleanup_control` 绑定 control。
+
 writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
@@ -321,7 +367,7 @@ overwrite 会用临时源替换旧目标，因此结果项采用源权限，旧�
 
 元数据保留与 durability 无关。`PersistOutcome` 确认发布事实，不代表断电持久性或逐字段验收。
 `CopyOutcome::metadata()` 报告 copy 声明的策略类别，不是逐字段验证。应用若依赖具体字段，
-应检查目标。实现路径与依据见[适配器设计中的元数据契约](local_file_system_adapter_design.zh_CN.md#metadata-contract)。
+应检查目标。实现路径与依据见[适配器设计中的元数据契约](local_file_system_adapter_design.zh_CN.md#元数据契约)。
 
 ## 错误与诊断
 

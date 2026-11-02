@@ -17,6 +17,13 @@ use qubit_local_files as native_files;
 
 /// Resource limits applied to recursive local listings.
 ///
+/// The listing root is at depth zero. Reaching `max_depth` stops descent and
+/// ends the listing normally; EOF at that boundary does not establish that
+/// deeper entries are absent. The effective depth is the stricter of the
+/// request and provider limits, so omitting a request limit does not remove a
+/// provider limit. Prefer increasing this limit while retaining the other
+/// provider ceilings when a deeper scan is required.
+///
 /// # Examples
 ///
 /// ```
