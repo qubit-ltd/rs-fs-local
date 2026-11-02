@@ -43,7 +43,7 @@ fn test_session_reads_nonsequential_offsets_from_one_opened_file() {
         .open_random_access_reader(&path, ReadOptions::default())
         .expect("open random access session");
     assert_eq!(6, reader.len());
-    assert_eq!(Some(&path), reader.info().path());
+    assert_eq!(&path, reader.info().path());
     assert_eq!(Some(6), reader.info().metadata().and_then(|metadata| metadata.len()));
 
     let mut tail = [0; 2];
