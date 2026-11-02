@@ -26,31 +26,20 @@ jobs:
       id-token: write
     uses: qubit-ltd/rs-infra-ci/.github/workflows/github-ci.yml@main
 
-  prepare-feature-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+  windows-adapter-tests:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - name: Validate and generate feature matrix
-        id: matrix
-        run: |
-          set -euo pipefail
-          config=.infra/ci/cargo-matrix.json
-          jq -e '
-            .version == 1
-            and (.checks | type == "array" and length > 0)
-            and all(.checks[];
-              (.name | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
-              and (.commands | type == "array" and length > 0)
-              and ((if has("defaultFeatures") then .defaultFeatures else true end) | type == "boolean")
-              and ((.features // []) | type == "array" and all(.[]; type == "string"))
-            )
-          ' "$config" > /dev/null
-          matrix=$(jq -c '{include: [.checks[] | {
-            name,
-            commands: (.commands | join(",")),
-            default_features: (if has("defaultFeatures") then .defaultFeatures else true end),
-            features: ((.features // []) | join(","))
-          }]}' "$config")
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.94.0
+          components: rust-src
+      - name: Prepare local path dependencies
+        run: ./.infra/bin/prepare-local-path-dependencies.sh
+      - name: Run local adapter tests on Windows
+        run: cargo test --locked --no-default-features --features registry --test path_tests --test local_file_uri_path_tests --test local_error_mapping_tests --test local_temp_resource_spi_tests
