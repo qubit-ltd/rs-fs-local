@@ -130,7 +130,7 @@ fn reject_symlink_target(path: &NativePath, description: &str) -> FixtureResult<
     }
 }
 
-/// Atomically replaces one native file name without following a final link.
+/// Replaces one native file name without following a final link.
 fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
     reject_symlink_target(path, "random-access replacement target")?;
     let parent = path
