@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::io::ErrorKind;
+use std::io::Write;
 #[cfg(unix)]
 use std::path::Component;
 use std::path::Path as NativePath;
@@ -135,28 +136,26 @@ fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
     let parent = path
         .parent()
         .ok_or_else(|| FixtureError::new("random-access replacement path has no parent"))?;
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| FixtureError::new("random-access replacement path has no file name"))?;
-    let mut replacement_name = file_name.to_os_string();
-    replacement_name.push(".random-access-replacement");
-    let replacement = parent.join(replacement_name);
-    reject_symlink_target(&replacement, "random-access replacement staging path")?;
-    if let Err(error) = fs::write(&replacement, bytes) {
-        let _ = fs::remove_file(&replacement);
-        return Err(FixtureError::with_source(
-            "random-access replacement staging write failed",
-            error,
-        ));
-    }
-    if let Err(error) = fs::rename(&replacement, path) {
-        let _ = fs::remove_file(&replacement);
-        return Err(FixtureError::with_source(
-            "random-access path replacement failed",
-            error,
-        ));
-    }
+    let mut replacement = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| FixtureError::with_source("random-access replacement staging failed", error))?;
+    replacement
+        .write_all(bytes)
+        .map_err(|error| FixtureError::with_source("random-access replacement staging write failed", error))?;
+    replacement
+        .persist(path)
+        .map_err(|error| FixtureError::with_source("random-access path replacement failed", error.error))?;
     Ok(())
+}
+
+#[test]
+fn test_replace_native_path_replaces_existing_file() {
+    let root = tempfile::tempdir().expect("create replacement test root");
+    let path = root.path().join("target");
+    fs::write(&path, b"old contents").expect("create existing target");
+
+    replace_native_path(&path, b"new contents").expect("replace existing target");
+
+    assert_eq!(fs::read(path).expect("read replacement"), b"new contents");
 }
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.

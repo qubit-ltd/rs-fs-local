@@ -486,12 +486,14 @@ mod tests {
     use qubit_fs::error::FsErrorKind;
     use qubit_fs::error::FsOperation;
     use qubit_fs::error::FsResult;
+    use qubit_fs::metadata::SymlinkPolicy;
     use qubit_fs::spi::FileSystemSpi;
     use qubit_fs::spi::ListRequest;
     use qubit_fs::spi::OpenedDirectoryStream;
     use qubit_fs::spi::ProviderProperties;
     use qubit_fs::spi::StatRequest;
     use qubit_fs::spi::StatResponse;
+    use qubit_local_files as native_files;
     use qubit_local_files::LocalFileSystem;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalCopySourceMode;
@@ -500,9 +502,38 @@ mod tests {
     use super::copy_source_options;
     use super::list;
     use super::metadata_preservation;
+    use super::native_symlink_policy;
     use crate::LocalListResourceLimits;
     use crate::LocalResourcePolicy;
     use crate::spi::LocalFileSystemSpi;
+
+    #[test]
+    fn test_symlink_policy_maps_supported_values_for_each_scope() {
+        assert!(matches!(
+            native_symlink_policy(
+                SymlinkPolicy::Reject,
+                native_files::path::LocalFileSystemScope::Host,
+                FsOperation::List,
+            ),
+            Ok(native_files::policy::LocalSymlinkPolicy::Reject)
+        ));
+        assert!(matches!(
+            native_symlink_policy(
+                SymlinkPolicy::FollowWithinFileSystem,
+                native_files::path::LocalFileSystemScope::Host,
+                FsOperation::List,
+            ),
+            Ok(native_files::policy::LocalSymlinkPolicy::FollowAcrossScope)
+        ));
+        assert!(matches!(
+            native_symlink_policy(
+                SymlinkPolicy::FollowWithinFileSystem,
+                native_files::path::LocalFileSystemScope::Rooted,
+                FsOperation::Copy,
+            ),
+            Ok(native_files::policy::LocalSymlinkPolicy::FollowWithinScope)
+        ));
+    }
 
     struct DeadlineProbe {
         inner: LocalFileSystemSpi,
