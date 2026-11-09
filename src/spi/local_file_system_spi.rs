@@ -131,6 +131,11 @@ impl LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns a provider error when portable properties cannot be assembled.
+    ///
+    /// # Parameters
+    ///
+    /// - `resource_policy`: Policy used to resolve resource limits for this
+    ///   filesystem.
     pub fn new(resource_policy: LocalResourcePolicy) -> FsResult<Self> {
         let native = native_files::LocalFileSystem::host().map_err(|error| {
             error_mapper::map_without_path(
@@ -638,6 +643,19 @@ impl FileSystemSpi for LocalFileSystemSpi {
     }
 
     /// Opens a random-access session bound to one native file handle.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Path and read options for the file to open.
+    ///
+    /// # Returns
+    ///
+    /// A random-access session and the metadata observed when its handle was
+    /// opened.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if path conversion or opening the native reader fails.
     fn open_random_access_reader(&self, request: OpenReaderRequest<'_>) -> FsResult<OpenedRandomAccessReader> {
         let path = self.native_path(request.path())?;
         let mut options = local_options_mapper::read(request.options());
@@ -1023,6 +1041,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
 }
 
 impl LocalFileSystemSpi {
+    /// Resolves native cleanup limits from the configured cleanup control.
     fn cleanup_limits(&self) -> native_files::options::LocalTempCleanupLimits {
         self.temp_cleanup_control
             .as_ref()

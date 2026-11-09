@@ -21,13 +21,22 @@ use super::error_mapper;
 
 /// Adapts one native reader to the portable random-access session contract.
 pub(crate) struct LocalRandomAccessReader {
+    /// Native file handle retained for positioned reads.
     reader: native_files::LocalFileReader,
+    /// Portable path attached to read failures.
     path: Path,
+    /// Provider identity attached to read failures.
     provider_id: String,
 }
 
 impl LocalRandomAccessReader {
     /// Retains the opened native reader and its portable error context.
+    ///
+    /// # Parameters
+    ///
+    /// - `reader`: Already-open native file handle.
+    /// - `path`: Portable path represented by the handle.
+    /// - `provider_id`: Provider identity used in mapped errors.
     pub(crate) fn new(reader: native_files::LocalFileReader, path: Path, provider_id: String) -> Self {
         Self {
             reader,
@@ -36,6 +45,12 @@ impl LocalRandomAccessReader {
         }
     }
 
+    /// Maps a standard I/O failure from a positioned read to the portable error
+    /// type.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: Native I/O error produced by seeking or reading the handle.
     fn map_io(&self, error: std::io::Error) -> qubit_fs::error::FsError {
         let native_error = native_files::error::LocalFileError::from_io(
             native_files::error::LocalFileOperation::Read,
@@ -48,6 +63,21 @@ impl LocalRandomAccessReader {
 }
 
 impl RandomAccessReadSession for LocalRandomAccessReader {
+    /// Reads bytes beginning at the requested file offset.
+    ///
+    /// # Parameters
+    ///
+    /// - `offset`: Byte offset from the beginning of the file.
+    /// - `output`: Buffer that receives the bytes read.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes copied into `output`, or zero when it is empty or at
+    /// EOF.
+    ///
+    /// # Errors
+    ///
+    /// Returns a mapped filesystem error if seeking or reading fails.
     fn read_at(&mut self, offset: u64, output: &mut [u8]) -> FsResult<usize> {
         if output.is_empty() {
             return Ok(0);

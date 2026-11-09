@@ -72,6 +72,8 @@ pub struct LocalFileSystemProvider {
 }
 
 impl Clone for LocalFileSystemProvider {
+    /// Clones the provider while preserving its mode, descriptor, policy, and
+    /// current shared cleanup configuration.
     fn clone(&self) -> Self {
         Self {
             mode: self.mode.clone(),
@@ -84,6 +86,10 @@ impl Clone for LocalFileSystemProvider {
 
 impl LocalFileSystemProvider {
     /// Creates a host-wide local provider.
+    ///
+    /// # Parameters
+    ///
+    /// - `policy`: Resource ceilings applied to local filesystem operations.
     ///
     /// # Returns
     ///

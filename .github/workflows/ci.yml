@@ -51,3 +51,5 @@ jobs:
         run: "cargo test --locked --no-default-features --features registry --lib spi::local_range_reader::tests::"
       - name: Run local URI unit tests on Windows
         run: "cargo test --locked --no-default-features --features registry --lib registry::local_file_uri_path::tests::"
+      - name: Run random-access session tests on Windows
+        run: cargo test --locked --no-default-features --features registry --test local_random_access_reader_tests

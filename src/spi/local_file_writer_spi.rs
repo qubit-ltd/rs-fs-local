@@ -78,6 +78,7 @@ impl LocalFileWriterSpi {
 }
 
 impl Output for LocalFileWriterSpi {
+    /// Byte values accepted by the writer.
     type Item = u8;
 
     /// Writes a caller-validated byte range to the native writer.

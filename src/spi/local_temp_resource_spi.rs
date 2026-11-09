@@ -105,6 +105,8 @@ impl LocalTempResourceSpi {
         }
     }
 
+    /// Applies the current cleanup control limits to an owned directory
+    /// resource.
     fn refresh_directory_cleanup_limits(&mut self) {
         let Self::Directory {
             resource: Some(resource),
@@ -153,6 +155,15 @@ impl LocalTempResourceSpi {
     /// Rejects publication before target conversion unless the retained native
     /// resource still owns its source. The failure preserves current authority
     /// and reports that this rejected call did not publish a target.
+    ///
+    /// # Parameters
+    ///
+    /// - `operation`: Portable operation to attach to a rejected-state error.
+    ///
+    /// # Errors
+    ///
+    /// Returns a failure when the resource has been released or is otherwise
+    /// not owned.
     fn require_owned(&self, operation: FsOperation) -> Result<(), SpiPersistFailure> {
         let source = match self {
             Self::File { resource, .. } => resource.as_ref().map(LocalTempFile::source_state),
@@ -313,6 +324,7 @@ impl TempResourceSpi for LocalTempResourceSpi {
 }
 
 impl Drop for LocalTempResourceSpi {
+    /// Refreshes directory cleanup limits before the resource is dropped.
     fn drop(&mut self) {
         self.refresh_directory_cleanup_limits();
     }
@@ -467,6 +479,17 @@ fn persist_directory(
 }
 
 /// Maps a native persistence failure without changing its direct source.
+///
+/// # Parameters
+///
+/// - `error`: Native failure returned by the persistence operation.
+/// - `stage`: Persistence stage at which the failure occurred.
+/// - `logical_target`: Portable target associated with the request.
+/// - `provider_id`: Provider identity attached to the mapped error.
+///
+/// # Returns
+///
+/// A portable persistence error retaining the native failure as its source.
 fn map_persist_error(
     error: LocalFileError,
     stage: LocalPersistStage,
@@ -483,6 +506,14 @@ fn map_persist_error(
 }
 
 /// Returns a stable diagnostic message for a native persistence stage.
+///
+/// # Parameters
+///
+/// - `stage`: Native persistence stage to describe.
+///
+/// # Returns
+///
+/// A static diagnostic message for the stage.
 fn persist_failure_message(stage: LocalPersistStage) -> &'static str {
     match stage {
         LocalPersistStage::ResolveTarget => "native temporary publication failed at stage ResolveTarget",
@@ -649,6 +680,22 @@ fn logical_keep_target(
 ///
 /// An unrepresentable resolved target becomes a provider-contract error that
 /// retains the original native failure and the already computed effect state.
+///
+/// # Parameters
+///
+/// - `error`: Native keep failure to map.
+/// - `resolved_target`: Native target resolved before the failure, if
+///   available.
+/// - `state`: Publication state to preserve on the mapped error.
+/// - `scope`: Filesystem authority used to translate the target path.
+/// - `projection`: Optional requested-parent projection for the target.
+/// - `message`: Diagnostic message describing the keep failure.
+/// - `provider_id`: Provider identity attached to the mapped error.
+///
+/// # Returns
+///
+/// A portable keep error with the resolved target and effect state when
+/// available.
 fn map_keep_error(
     error: LocalFileError,
     resolved_target: Option<&Path>,

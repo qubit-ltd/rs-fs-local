@@ -62,6 +62,9 @@ fn heading_slug(title: &str) -> String {
 }
 
 fn validate_local_markdown_links(root: &Path, document: &str, markdown: &str) -> Result<(), String> {
+    let repository_root = root
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve repository root: {error}"))?;
     let (_, links) = markdown_headings_and_links(markdown);
     for link in links {
         let (path, fragment) = link.split_once('#').unwrap_or((&link, ""));
@@ -75,6 +78,12 @@ fn validate_local_markdown_links(root: &Path, document: &str, markdown: &str) ->
             source_dir.join(path)
         };
         let target = root.join(target_rel);
+        let target = target
+            .canonicalize()
+            .map_err(|error| format!("{document}: {link}: cannot resolve target: {error}"))?;
+        if !target.starts_with(&repository_root) {
+            return Err(format!("{document}: {link}: local target is outside repository"));
+        }
         let contents = fs::read_to_string(&target)
             .map_err(|error| format!("{document}: {link}: cannot read {}: {error}", target.display()))?;
         if !fragment.is_empty() {
@@ -124,6 +133,37 @@ fn test_markdown_link_helper_handles_local_heading_slugs_and_fences() {
     assert_eq!(heading_slug(&headings[1]), "metadata-contract");
     assert_eq!(heading_slug("Local_resource ceiling"), "local_resource-ceiling");
     assert!(!links.iter().any(|link| link == "missing.md"));
+}
+
+#[test]
+fn test_local_markdown_links_reject_existing_sibling_file() {
+    let fixture = tempfile::tempdir().expect("temporary fixture");
+    let root = fixture.path().join("repository");
+    fs::create_dir(&root).expect("repository directory");
+    fs::write(fixture.path().join("outside.md"), "# Outside\n").expect("existing sibling document");
+    let error = validate_local_markdown_links(&root, "README.md", "[outside](../outside.md#outside)")
+        .expect_err("existing sibling must not be a repository-local target");
+    assert!(error.contains("outside repository"), "{error}");
+    assert!(
+        validate_local_markdown_links(
+            &root,
+            "README.md",
+            "[guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md)",
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn test_local_markdown_links_allow_canonical_in_repository_paths_and_validate_fragments() {
+    let fixture = tempfile::tempdir().expect("temporary fixture");
+    let root = fixture.path().join("repository");
+    fs::create_dir_all(root.join("doc")).expect("repository documentation directory");
+    fs::write(root.join("README.md"), "# Inside\n").expect("repository readme");
+
+    assert!(validate_local_markdown_links(&root, "README.md", "[inside](doc/../README.md#inside)",).is_ok());
+    assert!(validate_local_markdown_links(&root, "README.md", "[same](#inside)").is_ok());
+    assert!(validate_local_markdown_links(&root, "README.md", "[missing](#absent)").is_err());
 }
 
 #[test]

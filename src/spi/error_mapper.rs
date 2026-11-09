@@ -213,6 +213,14 @@ pub(crate) const fn rename_effect_state(state: RenameFailureState) -> FsEffectSt
 ///
 /// Native I/O sources are authoritative because the stable native category is
 /// intentionally coarser than `std::io::ErrorKind`.
+///
+/// # Parameters
+///
+/// - `error`: Native local-files failure to classify.
+///
+/// # Returns
+///
+/// The most precise portable error category available from the failure.
 #[inline]
 fn error_kind(error: &native_files::LocalFileError) -> FsErrorKind {
     let Some(cause) = error.cause_kind() else {

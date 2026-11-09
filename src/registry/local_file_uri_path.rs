@@ -92,6 +92,10 @@ pub(super) fn canonical_uri(path: &Path) -> Result<Uri, ProviderFailure<FsError>
 }
 
 /// Returns whether a scalar can appear unescaped in a URI path segment.
+///
+/// # Parameters
+///
+/// - `scalar`: Unicode scalar value to check.
 fn is_uri_pchar(scalar: char) -> bool {
     scalar.is_ascii_alphanumeric()
         || matches!(

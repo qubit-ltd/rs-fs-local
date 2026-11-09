@@ -61,6 +61,7 @@ impl LocalRangeReader {
 }
 
 impl Input for LocalRangeReader {
+    /// Byte values produced by the range reader.
     type Item = u8;
 
     /// Reports whether the wrapped reader can serve bytes from its buffer.
@@ -75,6 +76,21 @@ impl Input for LocalRangeReader {
     ///
     /// The caller must ensure `index..index + count` is a valid range in
     /// `output`.
+    ///
+    /// # Parameters
+    ///
+    /// - `output`: Destination byte slice.
+    /// - `index`: Start of the destination range to fill.
+    /// - `count`: Maximum number of bytes to read into that range.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes read, which may be less than `count` at the range
+    /// end.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the underlying file read fails.
     #[inline]
     unsafe fn read_unchecked(&mut self, output: &mut [u8], index: usize, count: usize) -> io::Result<usize> {
         // SAFETY: The caller guarantees the requested output range is valid.

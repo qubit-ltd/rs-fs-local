@@ -33,6 +33,7 @@ use crate::LocalTempCleanupResourceLimits;
 /// ```
 #[derive(Clone, Debug)]
 pub struct LocalTempCleanupControl {
+    /// Shared limits read when an associated cleanup attempt starts.
     limits: Arc<RwLock<Option<LocalTempCleanupResourceLimits>>>,
 }
 
@@ -41,6 +42,10 @@ impl LocalTempCleanupControl {
     ///
     /// `None` means no cleanup-specific ceilings. Cloning this control shares
     /// its configuration with the clone.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Optional cleanup ceilings; `None` leaves cleanup unbounded.
     #[must_use]
     pub fn new(limits: Option<LocalTempCleanupResourceLimits>) -> Self {
         Self {
@@ -59,6 +64,11 @@ impl LocalTempCleanupControl {
     ///
     /// This does not interrupt attempts already using a snapshot. Passing
     /// `None` explicitly selects unbounded cleanup for later attempts.
+    ///
+    /// # Parameters
+    ///
+    /// - `limits`: Optional ceilings to use for cleanup attempts started after
+    ///   this call.
     pub fn set_limits(&self, limits: Option<LocalTempCleanupResourceLimits>) {
         *self.limits.write().unwrap_or_else(std::sync::PoisonError::into_inner) = limits;
     }

@@ -43,6 +43,10 @@ pub enum LocalFileSystems {}
 impl LocalFileSystems {
     /// Creates the process host filesystem facade.
     ///
+    /// # Parameters
+    ///
+    /// - `policy`: Resource ceilings for local operations.
+    ///
     /// # Returns
     ///
     /// A concrete synchronous filesystem using the process host namespace.
@@ -228,6 +232,10 @@ impl LocalFileSystems {
 /// # Returns
 ///
 /// The canonical absolute logical path corresponding to `path`.
+///
+/// # Parameters
+///
+/// - `path`: Absolute host-native path to convert.
 ///
 /// # Errors
 ///

@@ -31,9 +31,13 @@ use qubit_local_files::options::LocalTempCleanupLimits;
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalTempCleanupResourceLimits {
+    /// Maximum descendant depth; the cleanup root has depth zero.
     max_depth: usize,
+    /// Maximum number of discovered entries, including the root.
     max_entries: usize,
+    /// Maximum encoded bytes held by queued native paths.
     max_pending_path_bytes: usize,
+    /// Cooperative time budget for one cleanup attempt.
     deadline: Duration,
 }
 
@@ -43,6 +47,13 @@ impl LocalTempCleanupResourceLimits {
     /// queued native paths, not total memory use. The deadline is cooperative.
     /// Every field may be zero, which can prevent cleanup work; callers that
     /// need recovery can explicitly replace the limits.
+    ///
+    /// # Parameters
+    ///
+    /// - `max_depth`: Maximum descendant depth, with the root at zero.
+    /// - `max_entries`: Maximum discovered entries, including the root.
+    /// - `max_pending_path_bytes`: Maximum encoded bytes held by queued paths.
+    /// - `deadline`: Cooperative duration budget for the cleanup attempt.
     #[must_use]
     pub const fn new(max_depth: usize, max_entries: usize, max_pending_path_bytes: usize, deadline: Duration) -> Self {
         Self {

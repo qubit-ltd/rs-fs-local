@@ -153,8 +153,8 @@ filesystem facade.
 
 - [English user guide](doc/user_guide.md)
 - [中文用户手册](doc/user_guide.zh_CN.md)
-- [Core random-access session guide](../rs-fs/doc/user_guide.md#sampling-the-same-opened-object-at-several-offsets)
-- [核心随机读取会话说明](../rs-fs/doc/user_guide.zh_CN.md#从同一已打开对象的多个位置采样)
+- [Core random-access session guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#sampling-the-same-opened-object-at-several-offsets)
+- [核心随机读取会话说明](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md#从同一已打开对象的多个位置采样)
 - [Adapter design](doc/local_file_system_adapter_design.md)
 - [中文设计文档](doc/local_file_system_adapter_design.zh_CN.md)
 - [API documentation](https://docs.rs/qubit-fs-local)
