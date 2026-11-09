@@ -122,6 +122,19 @@ native lengths, excluding allocator overhead. Deadlines are cooperative.
 `with_delete_limits(None)` explicitly removes deletion ceilings at provider
 construction time. No deletion limit is inferred from a listing or copy limit.
 
+`LocalResourcePolicy::with_open_retry_timeout` sets the maximum duration spent
+retrying Unix lease-conflicting opens for `open_reader`,
+`open_random_access_reader`, and `open_writer`. It is a retry-duration budget,
+not a retry interval or a general I/O timeout. `None` uses the native default
+behavior, which performs only the initial attempt; a zero duration also permits
+only the initial attempt. Positive durations permit retries only on Unix and
+only for lease conflicts; other open errors are returned unchanged. This
+setting does not limit the duration of later reads or writes.
+
+`LocalResourcePolicy::with_temp_max_attempts` is separate: it limits the
+number of attempts to generate a temporary name, not elapsed time or file-open
+retries.
+
 The three limit families count different work:
 
 | Limit | Counted work | Applied by |

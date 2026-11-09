@@ -46,7 +46,8 @@ pub struct LocalResourcePolicy {
     /// requests. Temporary-resource cleanup, `Drop`, and native publication
     /// cleanup use separate lifecycle semantics.
     delete: Option<LocalDeleteResourceLimits>,
-    /// Retry interval used while opening readers and writers.
+    /// Maximum duration spent retrying Unix lease-conflicting opens for
+    /// readers and writers.
     open_retry_timeout: Option<Duration>,
     /// Maximum attempts used when generating temporary names.
     temp_max_attempts: Option<NonZeroUsize>,
@@ -249,11 +250,19 @@ impl LocalResourcePolicy {
         self
     }
 
-    /// Sets the local open retry timeout used for readers and writers.
+    /// Sets the maximum duration spent retrying Unix lease-conflicting opens
+    /// for readers and writers.
+    ///
+    /// This is a retry-duration budget, not a retry interval or a general I/O
+    /// timeout. `None` uses the native default behavior, which performs only
+    /// the initial attempt; a zero duration also permits only the initial
+    /// attempt. Positive durations permit retries only on Unix, and only for
+    /// lease-conflicting opens. Other open errors are returned unchanged.
     ///
     /// # Parameters
     ///
-    /// - `timeout`: Retry interval, or `None` to use native defaults.
+    /// - `timeout`: Maximum duration spent retrying Unix lease-conflicting
+    ///   opens, or `None` to use native defaults.
     ///
     /// # Returns
     ///

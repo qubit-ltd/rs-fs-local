@@ -106,6 +106,15 @@ provider 上限不会开启递归、忽略缺失目标、创建父目录或改�
 开销。期限采用协作式检查。构造 provider 时可用 `with_delete_limits(None)` 显式取消
 删除上限；不会从 list/copy 预算推导隐藏的删除限制。
 
+`LocalResourcePolicy::with_open_retry_timeout` 设置在 `open_reader`、
+`open_random_access_reader` 和 `open_writer` 打开文件时，针对 Unix lease 冲突
+进行重试的最长时长。它是重试时长预算，不是重试间隔，也不是通用 I/O 超时。
+`None` 使用原生默认行为，只执行首次尝试；零时长也只允许首次尝试。正时长仅允许
+在 Unix 上针对 lease 冲突重试；其他打开错误原样返回。此设置不限制后续读写所花费的时长。
+
+`LocalResourcePolicy::with_temp_max_attempts` 与之独立：它限制生成临时名称的尝试
+次数，不限制经过的时长，也不控制文件打开重试。
+
 三类上限的计量对象不同：
 
 | 上限 | 计量的工作 | 执行位置 |
