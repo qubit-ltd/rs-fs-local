@@ -22,14 +22,18 @@ use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
+use qubit_fs::spi::FileSystemSpi;
+use qubit_fs::spi::ProviderOperation;
 use qubit_fs::write::WriteOptions;
-use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_local::spi::LocalFileSystemSpi;
 #[cfg(unix)]
 use qubit_fs_local::host_path_to_logical;
 use qubit_fs_testkit::FileSystemContract;
 use qubit_fs_testkit::FileSystemContractSuite;
 use qubit_fs_testkit::FileSystemFixture;
+use qubit_fs_testkit::ContractCheckId;
+use qubit_fs_testkit::ContractCheckOutcome;
 use qubit_fs_testkit::FixtureError;
 use qubit_fs_testkit::FixtureResult;
 use qubit_fs_testkit::FixtureSupport;
@@ -125,10 +129,35 @@ fn reject_symlink_target(path: &NativePath, description: &str) -> FixtureResult<
     }
 }
 
+/// Atomically replaces one native file name without following a final link.
+fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
+    reject_symlink_target(path, "random-access replacement target")?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| FixtureError::new("random-access replacement path has no parent"))?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| FixtureError::new("random-access replacement path has no file name"))?;
+    let mut replacement_name = file_name.to_os_string();
+    replacement_name.push(".random-access-replacement");
+    let replacement = parent.join(replacement_name);
+    reject_symlink_target(&replacement, "random-access replacement staging path")?;
+    if let Err(error) = fs::write(&replacement, bytes) {
+        let _ = fs::remove_file(&replacement);
+        return Err(FixtureError::with_source("random-access replacement staging write failed", error));
+    }
+    if let Err(error) = fs::rename(&replacement, path) {
+        let _ = fs::remove_file(&replacement);
+        return Err(FixtureError::with_source("random-access path replacement failed", error));
+    }
+    Ok(())
+}
+
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.
 struct RootedFixture {
     root: tempfile::TempDir,
     file_system: FileSystem,
+    random_access_operation: bool,
 }
 
 impl RootedFixture {
@@ -138,9 +167,14 @@ impl RootedFixture {
         let root = tempfile::tempdir_in(current_directory).expect("fixture root must be created");
         std::fs::create_dir(root.path().join("fixture")).expect("fixture directory must be created");
         let id = FileSystemId::new("local-contract-root").expect("fixture filesystem identity must be valid");
-        let file_system = LocalFileSystems::rooted_with_id(id, root.path(), LocalResourcePolicy::unbounded())
-            .expect("rooted fixture filesystem must open");
-        Self { root, file_system }
+        let spi = LocalFileSystemSpi::rooted(id, root.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted fixture SPI must open");
+        let random_access_operation = spi
+            .properties()
+            .operations()
+            .supports(ProviderOperation::OpenRandomAccessReader);
+        let file_system = FileSystem::from_spi(spi).expect("rooted fixture filesystem must open");
+        Self { root, file_system, random_access_operation }
     }
 
     /// Converts a rooted logical path into its independent native observation
@@ -179,6 +213,10 @@ impl RootedFixture {
 impl FileSystemFixture for RootedFixture {
     fn file_system(&self) -> &FileSystem {
         &self.file_system
+    }
+
+    fn random_access_operation(&self) -> FixtureSupport<bool> {
+        FixtureSupport::Supported(self.random_access_operation)
     }
 
     fn path(&self, relative: &str) -> FixtureResult<Path> {
@@ -236,6 +274,12 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
+    fn replace_random_access_path(&self, path: &Path, bytes: &[u8]) -> FixtureResult<FixtureSupport<()>> {
+        let native = self.native_path(path)?;
+        replace_native_path(&native, bytes)?;
+        Ok(FixtureSupport::Supported(()))
+    }
+
     fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
         Ok(())
@@ -247,6 +291,7 @@ impl FileSystemFixture for RootedFixture {
 struct HostFixture {
     root: tempfile::TempDir,
     file_system: FileSystem,
+    random_access_operation: bool,
 }
 
 #[cfg(unix)]
@@ -255,8 +300,13 @@ impl HostFixture {
     fn new() -> Self {
         let current_directory = std::env::current_dir().expect("working directory must be available");
         let root = tempfile::tempdir_in(current_directory).expect("fixture root must be created");
-        let file_system = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem must open");
-        Self { root, file_system }
+        let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded()).expect("host SPI must open");
+        let random_access_operation = spi
+            .properties()
+            .operations()
+            .supports(ProviderOperation::OpenRandomAccessReader);
+        let file_system = FileSystem::from_spi(spi).expect("host filesystem must open");
+        Self { root, file_system, random_access_operation }
     }
 
     /// Converts a fixture-relative path into the host facade's logical path.
@@ -309,6 +359,10 @@ impl HostFixture {
 impl FileSystemFixture for HostFixture {
     fn file_system(&self) -> &FileSystem {
         &self.file_system
+    }
+
+    fn random_access_operation(&self) -> FixtureSupport<bool> {
+        FixtureSupport::Supported(self.random_access_operation)
     }
 
     fn path(&self, relative: &str) -> FixtureResult<Path> {
@@ -366,6 +420,12 @@ impl FileSystemFixture for HostFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
+    fn replace_random_access_path(&self, path: &Path, bytes: &[u8]) -> FixtureResult<FixtureSupport<()>> {
+        let native = self.native_path(path)?;
+        replace_native_path(&native, bytes)?;
+        Ok(FixtureSupport::Supported(()))
+    }
+
     fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
         Ok(())
@@ -381,6 +441,27 @@ register_file_system_contract_tests! {
 register_file_system_contract_tests! {
     module: rooted_contracts,
     fixture: super::RootedFixture::new,
+}
+
+#[test]
+fn test_rooted_read_reports_random_access_contract_evidence() {
+    let fixture = RootedFixture::new();
+    let mut suite = FileSystemContractSuite::new(&fixture);
+    let run = suite.run_contract(FileSystemContract::Read);
+    for id in [
+        ContractCheckId::RandomAccessBasic,
+        ContractCheckId::RandomAccessBounds,
+        ContractCheckId::RandomAccessIdentity,
+    ] {
+        let check = run
+            .report()
+            .checks()
+            .iter()
+            .find(|check| check.id() == id)
+            .unwrap_or_else(|| panic!("read report must contain {id}"));
+        assert_eq!(check.outcome(), &ContractCheckOutcome::Passed, "{id}");
+    }
+    run.assert_satisfied();
 }
 
 /// Rooted listings preserve the namespace of a non-root request path.
