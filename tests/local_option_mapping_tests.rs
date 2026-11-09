@@ -9,15 +9,24 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyOptions;
+use qubit_fs::copy::MetadataPreservePolicy;
+use qubit_fs::copy::ServerSidePreference;
+use qubit_fs::directory::CreateDirectoryOptions;
+use qubit_fs::directory::ListFilter;
 use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
+use qubit_fs::metadata::Checksum;
+use qubit_fs::metadata::ChecksumAlgorithm;
+use qubit_fs::metadata::UserMetadata;
 #[cfg(unix)]
 use qubit_fs::metadata::DurabilityRequirement;
 use qubit_fs::path::Path;
-#[cfg(unix)]
 use qubit_fs::write::WriteOptions;
+use qubit_fs::write::WritePrecondition;
 use qubit_fs_local::LocalCopyResourceLimits;
 use qubit_fs_local::LocalDeleteResourceLimits;
 use qubit_fs_local::LocalDirectoryReopenPolicy;
@@ -233,6 +242,167 @@ fn assert_provider_zero_deadline(request_deadline: Option<Duration>) {
         .expect_err("zero provider deadline should fail while the provider opens the walker");
     assert_eq!(FsErrorKind::Timeout, error.kind());
     assert_eq!(qubit_fs::error::FsOperation::List, error.operation());
+}
+
+fn assert_refusal(error: &qubit_fs::error::FsError, operation: FsOperation, reason: &str) {
+    assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
+    assert_eq!(operation, error.operation());
+    assert!(error.to_string().contains(reason), "unexpected refusal: {error}");
+}
+
+#[test]
+fn test_unsupported_write_options_report_specific_reason_and_preserve_target() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    let target = root.path().join("existing");
+    std::fs::write(&target, b"original").expect("target should be seeded");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
+    let metadata = UserMetadata::new()
+        .with("key", "value")
+        .expect("metadata should be valid");
+    let cases = [
+        (
+            WriteOptions::default().with_precondition(WritePrecondition::IfAbsent),
+            "conditional writes",
+        ),
+        (
+            WriteOptions::default().with_content_type(Some("text/plain".to_owned())),
+            "write content type",
+        ),
+        (
+            WriteOptions::default().with_user_metadata(metadata),
+            "write user metadata",
+        ),
+        (
+            WriteOptions::default()
+                .with_checksum(Some(Checksum::new(ChecksumAlgorithm::Sha256, "00"))),
+            "write checksum",
+        ),
+    ];
+    for (options, reason) in cases {
+        let error = filesystem
+            .write_all(&path("/existing"), b"replacement", options)
+            .expect_err("unsupported write option should fail");
+        assert_refusal(error.error(), FsOperation::OpenWriter, reason);
+        assert_eq!(
+            b"original",
+            std::fs::read(&target)
+                .expect("target should remain")
+                .as_slice()
+        );
+    }
+    let error = filesystem
+        .write_all(
+            &path("/new"),
+            b"payload",
+            WriteOptions::default()
+                .with_content_type(Some("text/plain".to_owned()))
+                .with_user_metadata(
+                    UserMetadata::new()
+                        .with("key", "value")
+                        .expect("valid metadata"),
+                )
+                .with_checksum(Some(Checksum::new(
+                    ChecksumAlgorithm::Sha256,
+                    "00",
+                ))),
+        )
+        .expect_err("multiple unsupported options should fail");
+    assert_refusal(error.error(), FsOperation::OpenWriter, "write content type");
+    assert!(!root.path().join("new").exists());
+}
+
+#[test]
+fn test_unsupported_copy_options_report_specific_reason_without_effects() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    std::fs::write(root.path().join("source"), b"source").expect("source should be seeded");
+    std::fs::write(root.path().join("target"), b"original").expect("target should be seeded");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
+    for (options, reason) in [
+        (
+            CopyOptions::file().with_continue_on_error(true),
+            "continue-on-error",
+        ),
+        (
+            CopyOptions::file().with_server_side(ServerSidePreference::Require),
+            "server-side copy is required",
+        ),
+        (
+            CopyOptions::file().with_preserve_metadata(MetadataPreservePolicy::UserMetadata),
+            "user metadata",
+        ),
+        (
+            CopyOptions::file().with_preserve_metadata(MetadataPreservePolicy::ProviderNative),
+            "provider-native metadata",
+        ),
+        (
+            CopyOptions::file().with_preserve_metadata(MetadataPreservePolicy::All),
+            "all metadata",
+        ),
+    ] {
+        let failure = filesystem
+            .copy(&path("/source"), &path("/target"), options)
+            .expect_err("unsupported copy option should fail");
+        assert_refusal(failure.error(), FsOperation::Copy, reason);
+        assert_eq!(CopyFailureState::Unchanged, failure.state());
+        assert_eq!(
+            b"original",
+            std::fs::read(root.path().join("target"))
+                .expect("target should remain")
+                .as_slice()
+        );
+        assert_eq!(
+            b"source",
+            std::fs::read(root.path().join("source"))
+                .expect("source should remain")
+                .as_slice()
+        );
+    }
+    let failure = filesystem
+        .copy(
+            &path("/source"),
+            &path("/missing-target"),
+            CopyOptions::file()
+                .with_continue_on_error(true)
+                .with_preserve_metadata(MetadataPreservePolicy::All),
+        )
+        .expect_err("multiple unsupported options should fail");
+    assert_refusal(failure.error(), FsOperation::Copy, "continue-on-error");
+    assert_eq!(CopyFailureState::Unchanged, failure.state());
+    assert!(!root.path().join("missing-target").exists());
+}
+
+#[test]
+fn test_unsupported_list_and_directory_options_report_specific_reason() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    std::fs::write(root.path().join("entry"), b"data").expect("fixture entry should exist");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
+    let literal_prefix = filesystem
+        .list(
+            &ListScope::Path(path("/")),
+            ListOptions::default().with_filter(Some(ListFilter::LiteralPrefix("ent".to_owned()))),
+        )
+        .expect_err("literal-prefix filter should be rejected");
+    assert_eq!(FsErrorKind::InvalidOptions, literal_prefix.kind());
+    assert_eq!(FsOperation::List, literal_prefix.operation());
+
+    let metadata = UserMetadata::new()
+        .with("key", "value")
+        .expect("metadata should be valid");
+    let directory = filesystem
+        .create_directory(
+            &path("/new-directory"),
+            CreateDirectoryOptions::default().with_user_metadata(metadata),
+        )
+        .expect_err("directory user metadata should be rejected");
+    assert_refusal(
+        &directory,
+        FsOperation::CreateDir,
+        "directory user metadata",
+    );
+    assert!(!root.path().join("new-directory").exists());
 }
 
 /// Partial recursive deletion retains portable budget classification and

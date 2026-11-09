@@ -77,7 +77,10 @@ pub(crate) fn list(
         native = native.with_recursive();
     }
     if matches!(filter, Some(ListFilter::LiteralPrefix(_))) {
-        return Err(unsupported(FsOperation::List));
+        return Err(unsupported(
+            FsOperation::List,
+            "local adapter does not support listing literal-prefix filters",
+        ));
     }
     if let Some(policy) = options.options().symlink_policy_override() {
         native = native.with_symlink_policy(native_symlink_policy(policy, scope, FsOperation::List)?);
@@ -127,12 +130,29 @@ pub(crate) fn write(options: &ResolvedWriteOptions) -> Result<native_files::opti
     if options.create_parent() {
         native = native.with_create_parent();
     }
-    if *options.precondition() != WritePrecondition::None
-        || options.content_type().is_some()
-        || !options.user_metadata().is_empty()
-        || options.checksum().is_some()
-    {
-        return Err(unsupported(FsOperation::OpenWriter));
+    if *options.precondition() != WritePrecondition::None {
+        return Err(unsupported(
+            FsOperation::OpenWriter,
+            "local adapter does not support write preconditions",
+        ));
+    }
+    if options.content_type().is_some() {
+        return Err(unsupported(
+            FsOperation::OpenWriter,
+            "local adapter does not support write content type",
+        ));
+    }
+    if !options.user_metadata().is_empty() {
+        return Err(unsupported(
+            FsOperation::OpenWriter,
+            "local adapter does not support write user metadata",
+        ));
+    }
+    if options.checksum().is_some() {
+        return Err(unsupported(
+            FsOperation::OpenWriter,
+            "local adapter does not support write checksum",
+        ));
     }
     Ok(native)
 }
@@ -156,7 +176,10 @@ pub(crate) fn create_directory(
     options: &ResolvedCreateDirectoryOptions,
 ) -> Result<native_files::options::LocalCreateDirectoryOptions, FsError> {
     if !options.options().user_metadata().is_empty() {
-        return Err(unsupported(FsOperation::CreateDir));
+        return Err(unsupported(
+            FsOperation::CreateDir,
+            "local adapter does not support directory user metadata",
+        ));
     }
     let mut native = native_files::options::LocalCreateDirectoryOptions::new();
     if options.options().recursive() {
@@ -240,8 +263,17 @@ pub(crate) fn copy(
 ) -> Result<native_files::options::LocalCopyOptions, FsError> {
     let symlink_policy = options.symlink_policy();
     let options = options.options();
-    if options.continue_on_error() || options.server_side() == ServerSidePreference::Require {
-        return Err(unsupported(FsOperation::Copy));
+    if options.continue_on_error() {
+        return Err(unsupported(
+            FsOperation::Copy,
+            "local adapter does not support copy continue-on-error",
+        ));
+    }
+    if options.server_side() == ServerSidePreference::Require {
+        return Err(unsupported(
+            FsOperation::Copy,
+            "local adapter does not support required server-side copy",
+        ));
     }
     let mut native = native_files::options::LocalCopyOptions::new()
         .with_conflict(copy_conflict(options.conflict()))
@@ -306,7 +338,10 @@ fn native_symlink_policy(
                 native_files::policy::LocalSymlinkPolicy::FollowWithinScope
             }
         }),
-        _ => Err(unsupported(operation)),
+        _ => Err(unsupported(
+            operation,
+            "local adapter does not support the requested symlink policy override",
+        )),
     }
 }
 
@@ -349,9 +384,18 @@ fn metadata_preservation(
     match value {
         MetadataPreservePolicy::None => Ok(native_files::options::LocalMetadataPreservePolicy::None),
         MetadataPreservePolicy::Portable => Ok(native_files::options::LocalMetadataPreservePolicy::Permissions),
-        MetadataPreservePolicy::UserMetadata | MetadataPreservePolicy::ProviderNative | MetadataPreservePolicy::All => {
-            Err(unsupported(FsOperation::Copy))
-        }
+        MetadataPreservePolicy::UserMetadata => Err(unsupported(
+            FsOperation::Copy,
+            "local adapter does not support copy user metadata preservation",
+        )),
+        MetadataPreservePolicy::ProviderNative => Err(unsupported(
+            FsOperation::Copy,
+            "local adapter does not support copy provider-native metadata preservation",
+        )),
+        MetadataPreservePolicy::All => Err(unsupported(
+            FsOperation::Copy,
+            "local adapter does not support copy all metadata preservation",
+        )),
     }
 }
 
@@ -396,17 +440,14 @@ const fn durability(value: DurabilityRequirement) -> native_files::policy::Local
 /// # Parameters
 ///
 /// - `operation`: Facade operation whose requirement cannot be met.
+/// - `reason`: Static, option-specific explanation of the unsupported requirement.
 ///
 /// # Returns
 ///
 /// A `RequirementNotMet` error scoped to `operation`.
 #[inline]
-fn unsupported(operation: FsOperation) -> FsError {
-    FsError::new(
-        FsErrorKind::RequirementNotMet,
-        operation,
-        "local adapter cannot express requested option",
-    )
+fn unsupported(operation: FsOperation, reason: &'static str) -> FsError {
+    FsError::new(FsErrorKind::RequirementNotMet, operation, reason)
 }
 
 /// Applies the resolved request source mode to otherwise configured defaults.
