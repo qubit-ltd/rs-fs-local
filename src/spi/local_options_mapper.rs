@@ -479,8 +479,11 @@ mod tests {
 
     use qubit_fs::FileSystem;
     use qubit_fs::copy::CopyMode;
+    use qubit_fs::copy::MetadataPreservePolicy;
     use qubit_fs::directory::ListOptions;
     use qubit_fs::directory::ListScope;
+    use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
     use qubit_fs::error::FsResult;
     use qubit_fs::spi::FileSystemSpi;
     use qubit_fs::spi::ListRequest;
@@ -491,9 +494,11 @@ mod tests {
     use qubit_local_files::LocalFileSystem;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalCopySourceMode;
+    use qubit_local_files::options::LocalMetadataPreservePolicy;
 
     use super::copy_source_options;
     use super::list;
+    use super::metadata_preservation;
     use crate::LocalListResourceLimits;
     use crate::LocalResourcePolicy;
     use crate::spi::LocalFileSystemSpi;
@@ -590,5 +595,45 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Unsupported copy metadata categories retain their option-specific
+    /// diagnostics at the mapper boundary.
+    #[test]
+    fn test_copy_metadata_preservation_reports_specific_unsupported_category() {
+        let cases = [
+            (
+                MetadataPreservePolicy::UserMetadata,
+                "copy user metadata preservation",
+            ),
+            (
+                MetadataPreservePolicy::ProviderNative,
+                "copy provider-native metadata preservation",
+            ),
+            (
+                MetadataPreservePolicy::All,
+                "copy all metadata preservation",
+            ),
+        ];
+
+        for (policy, reason) in cases {
+            let error = metadata_preservation(policy)
+                .expect_err("unsupported metadata policy should fail");
+            assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
+            assert_eq!(FsOperation::Copy, error.operation());
+            assert!(
+                error.to_string().contains(reason),
+                "unexpected refusal: {error}"
+            );
+        }
+
+        assert_eq!(
+            LocalMetadataPreservePolicy::None,
+            metadata_preservation(MetadataPreservePolicy::None).expect("None is supported"),
+        );
+        assert_eq!(
+            LocalMetadataPreservePolicy::Permissions,
+            metadata_preservation(MetadataPreservePolicy::Portable).expect("Portable is supported"),
+        );
     }
 }
