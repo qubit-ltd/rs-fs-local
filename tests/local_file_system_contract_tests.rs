@@ -141,10 +141,12 @@ fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
     replacement
         .write_all(bytes)
         .map_err(|error| FixtureError::with_source("random-access replacement staging write failed", error))?;
-    replacement
-        .into_temp_path()
-        .persist(path)
-        .map_err(|error| FixtureError::with_source("random-access path replacement failed", error.error))?;
+    replacement.into_temp_path().persist(path).map_err(|error| {
+        FixtureError::with_source(
+            format!("random-access path replacement failed: {}", error.error),
+            error.error,
+        )
+    })?;
     Ok(())
 }
 
