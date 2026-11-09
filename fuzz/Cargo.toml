@@ -9,7 +9,7 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = "^0.4"
 qubit-fs-local = { path = "..", features = ["registry"] }
 qubit-fs = { path = "../../rs-fs", version = "0.3" }
 qubit-fs-registry = { path = "../../rs-fs-registry", version = "0.8" }

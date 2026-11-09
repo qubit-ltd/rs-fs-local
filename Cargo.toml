@@ -63,7 +63,7 @@ harness = false
 
 [dependencies]
 qubit-spi = { version = "^0.14", optional = true }
-qubit-io = "0.19"
+qubit-io = "^0.19"
 qubit-local-files = { path = "../rs-local-files", version = "0.5" }
 qubit-fs = { path = "../rs-fs", version = "0.3", default-features = false }
 qubit-fs-registry = { path = "../rs-fs-registry", version = "0.8", optional = true }
