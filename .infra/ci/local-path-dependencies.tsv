@@ -1,4 +1,4 @@
-# relative git root<TAB>repository URL<TAB>default branch
+# project-owned local path dependencies
 ../rs-fs	https://github.com/qubit-ltd/rs-fs.git	main
 ../rs-fs-registry	https://github.com/qubit-ltd/rs-fs-registry.git	main
 ../rs-local-files	https://github.com/qubit-ltd/rs-local-files.git	main
