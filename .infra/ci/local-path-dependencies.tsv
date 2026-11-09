@@ -1,1 +1,6 @@
 # relative git root<TAB>repository URL<TAB>default branch
+../rs-fs	https://github.com/qubit-ltd/rs-fs.git	main
+../rs-fs-registry	https://github.com/qubit-ltd/rs-fs-registry.git	main
+../rs-local-files	https://github.com/qubit-ltd/rs-local-files.git	main
+../rs-redact	https://github.com/qubit-ltd/rs-redact.git	main
+../rs-fs-testkit	https://github.com/qubit-ltd/rs-fs-testkit.git	main
