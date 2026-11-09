@@ -64,10 +64,10 @@ harness = false
 [dependencies]
 qubit-spi = { version = "^0.14", optional = true }
 qubit-io = "^0.19"
-qubit-local-files = { path = "../rs-local-files", version = "0.5" }
-qubit-fs = { path = "../rs-fs", version = "0.3", default-features = false }
-qubit-fs-registry = { path = "../rs-fs-registry", version = "0.8", optional = true }
-qubit-redact = { path = "../rs-redact", version = "0.10", optional = true }
+qubit-local-files = { path = "../rs-local-files", version = "^0.5" }
+qubit-fs = { path = "../rs-fs", version = "^0.3", default-features = false }
+qubit-fs-registry = { path = "../rs-fs-registry", version = "^0.8", optional = true }
+qubit-redact = { version = "^0.10", optional = true }
 
 [features]
 default = []
@@ -85,8 +85,8 @@ toml = "^1.1"
 serde_json = "^1.0"
 criterion = "^0.8"
 tempfile = "^3.27"
-qubit-fs-testkit = { path = "../rs-fs-testkit", version = "0.8" }
-qubit-local-files = { path = "../rs-local-files", version = "0.5", features = ["test-support"] }
+qubit-fs-testkit = { path = "../rs-fs-testkit", version = "^0.8" }
+qubit-local-files = { path = "../rs-local-files", version = "^0.5", features = ["test-support"] }
 
 [patch.crates-io]
 qubit-fs = { path = "../rs-fs" }

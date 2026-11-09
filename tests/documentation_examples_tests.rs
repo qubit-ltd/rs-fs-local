@@ -871,6 +871,7 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         .as_str()
         .or_else(|| native_dependency.get("version").and_then(toml::Value::as_str))
         .expect("native dependency version");
+    let native_version = native_version.strip_prefix('^').unwrap_or(native_version);
     let marker = format!("`qubit-local-files` {native_version}");
     for document in [
         "README.md",
