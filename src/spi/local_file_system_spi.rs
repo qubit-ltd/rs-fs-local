@@ -1339,18 +1339,25 @@ mod tests {
                     attempts,
                 })
                 .expect("facade");
+                let expected_id = fs.properties().info().id().clone();
+                assert_eq!(
+                    if rooted { "option-probe" } else { "local-host" },
+                    expected_id.as_str()
+                );
                 let src = if rooted {
                     LogicalPath::parse("/source").unwrap()
                 } else {
                     crate::host_path_to_logical(&root.path().join("source")).unwrap()
                 };
                 let mut reader = fs.open_reader(&src, ReadOptions::default()).unwrap();
+                assert_eq!(&expected_id, reader.info().filesystem_id());
                 let mut bytes = vec![0; payload.len()];
                 reader.read_fully(&mut bytes).unwrap();
                 assert_eq!(payload, bytes);
                 let mut random = fs
                     .open_random_access_reader(&src, ReadOptions::default())
                     .unwrap();
+                assert_eq!(&expected_id, random.info().filesystem_id());
                 let mut bytes = vec![0; payload.len()];
                 assert_eq!(payload.len(), random.read_at(0, &mut bytes).unwrap());
                 assert_eq!(payload, bytes);
@@ -1360,6 +1367,7 @@ mod tests {
                     crate::host_path_to_logical(&root.path().join("written")).unwrap()
                 };
                 let mut writer = fs.open_writer(&target, WriteOptions::default()).unwrap();
+                assert_eq!(&expected_id, writer.info().filesystem_id());
                 writer.write_fully(payload).unwrap();
                 writer.commit().unwrap();
                 assert_eq!(payload, std::fs::read(root.path().join("written")).unwrap());
