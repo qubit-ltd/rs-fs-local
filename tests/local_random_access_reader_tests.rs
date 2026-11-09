@@ -7,9 +7,6 @@
 // =============================================================================
 //! Native random-access sessions retain one opened file object.
 
-#[cfg(windows)]
-use std::io::ErrorKind;
-
 use qubit_fs::FileSystem;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -146,7 +143,7 @@ fn test_open_session_remains_bound_after_native_path_replacement() {
 
 #[cfg(windows)]
 #[test]
-fn test_open_handle_prevents_native_path_replacement_on_windows() {
+fn test_open_session_remains_bound_after_native_path_replacement() {
     let fixture = Fixture::new();
     let original = fixture._root.path().join("payload");
     let replacement = fixture._root.path().join("replacement");
@@ -158,15 +155,14 @@ fn test_open_handle_prevents_native_path_replacement_on_windows() {
         .open_random_access_reader(&path, ReadOptions::default())
         .expect("open original handle");
 
-    let error = std::fs::rename(&replacement, &original).expect_err("Windows sharing mode rejects replacement");
-    assert_eq!(
-        ErrorKind::PermissionDenied,
-        error.kind(),
-        "platform: Windows; native replacement is denied"
-    );
+    std::fs::rename(&replacement, &original).expect("Windows permits replacing an open path");
     let mut bytes = [0; 6];
     assert_eq!(6, opened.read_at(0, &mut bytes).expect("read retained handle"));
     assert_eq!(*b"AAAAAA", bytes);
-    let remaining = std::fs::read(replacement).expect("replacement remains available");
-    assert_eq!(b"BBBBBB", remaining.as_slice());
+    let mut newly_opened = fixture
+        .file_system
+        .open_random_access_reader(&path, ReadOptions::default())
+        .expect("open replacement");
+    assert_eq!(6, newly_opened.read_at(0, &mut bytes).expect("read replacement"));
+    assert_eq!(*b"BBBBBB", bytes);
 }

@@ -949,6 +949,7 @@ mod tests {
     use super::file_cleanup_error;
     use super::keep_file;
     use super::logical_persist_error;
+    #[cfg(unix)]
     use super::map_persist_error;
     use super::persist_effect_state;
     use super::persist_failure_message;

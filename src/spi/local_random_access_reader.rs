@@ -91,9 +91,12 @@ impl RandomAccessReadSession for LocalRandomAccessReader {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::error::Error;
 
+    #[cfg(unix)]
     use qubit_fs::error::FsErrorKind;
+    #[cfg(unix)]
     use qubit_fs::error::FsOperation;
     use qubit_fs::path::Path;
     use qubit_fs::spi::RandomAccessReadSession;

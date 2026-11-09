@@ -15,6 +15,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::fs::symlink;
 #[cfg(unix)]
 use std::os::unix::net::UnixListener;
+#[cfg(unix)]
 use std::path::Path as NativePath;
 
 use qubit_fs::FileSystem;
