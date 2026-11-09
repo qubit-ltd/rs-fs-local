@@ -440,7 +440,8 @@ const fn durability(value: DurabilityRequirement) -> native_files::policy::Local
 /// # Parameters
 ///
 /// - `operation`: Facade operation whose requirement cannot be met.
-/// - `reason`: Static, option-specific explanation of the unsupported requirement.
+/// - `reason`: Static, option-specific explanation of the unsupported
+///   requirement.
 ///
 /// # Returns
 ///
@@ -602,29 +603,19 @@ mod tests {
     #[test]
     fn test_copy_metadata_preservation_reports_specific_unsupported_category() {
         let cases = [
-            (
-                MetadataPreservePolicy::UserMetadata,
-                "copy user metadata preservation",
-            ),
+            (MetadataPreservePolicy::UserMetadata, "copy user metadata preservation"),
             (
                 MetadataPreservePolicy::ProviderNative,
                 "copy provider-native metadata preservation",
             ),
-            (
-                MetadataPreservePolicy::All,
-                "copy all metadata preservation",
-            ),
+            (MetadataPreservePolicy::All, "copy all metadata preservation"),
         ];
 
         for (policy, reason) in cases {
-            let error = metadata_preservation(policy)
-                .expect_err("unsupported metadata policy should fail");
+            let error = metadata_preservation(policy).expect_err("unsupported metadata policy should fail");
             assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
             assert_eq!(FsOperation::Copy, error.operation());
-            assert!(
-                error.to_string().contains(reason),
-                "unexpected refusal: {error}"
-            );
+            assert!(error.to_string().contains(reason), "unexpected refusal: {error}");
         }
 
         assert_eq!(

@@ -26,14 +26,14 @@ use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ProviderOperation;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalResourcePolicy;
-use qubit_fs_local::spi::LocalFileSystemSpi;
 #[cfg(unix)]
 use qubit_fs_local::host_path_to_logical;
+use qubit_fs_local::spi::LocalFileSystemSpi;
+use qubit_fs_testkit::ContractCheckId;
+use qubit_fs_testkit::ContractCheckOutcome;
 use qubit_fs_testkit::FileSystemContract;
 use qubit_fs_testkit::FileSystemContractSuite;
 use qubit_fs_testkit::FileSystemFixture;
-use qubit_fs_testkit::ContractCheckId;
-use qubit_fs_testkit::ContractCheckOutcome;
 use qubit_fs_testkit::FixtureError;
 use qubit_fs_testkit::FixtureResult;
 use qubit_fs_testkit::FixtureSupport;
@@ -144,11 +144,17 @@ fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
     reject_symlink_target(&replacement, "random-access replacement staging path")?;
     if let Err(error) = fs::write(&replacement, bytes) {
         let _ = fs::remove_file(&replacement);
-        return Err(FixtureError::with_source("random-access replacement staging write failed", error));
+        return Err(FixtureError::with_source(
+            "random-access replacement staging write failed",
+            error,
+        ));
     }
     if let Err(error) = fs::rename(&replacement, path) {
         let _ = fs::remove_file(&replacement);
-        return Err(FixtureError::with_source("random-access path replacement failed", error));
+        return Err(FixtureError::with_source(
+            "random-access path replacement failed",
+            error,
+        ));
     }
     Ok(())
 }
@@ -174,7 +180,11 @@ impl RootedFixture {
             .operations()
             .supports(ProviderOperation::OpenRandomAccessReader);
         let file_system = FileSystem::from_spi(spi).expect("rooted fixture filesystem must open");
-        Self { root, file_system, random_access_operation }
+        Self {
+            root,
+            file_system,
+            random_access_operation,
+        }
     }
 
     /// Converts a rooted logical path into its independent native observation
@@ -306,7 +316,11 @@ impl HostFixture {
             .operations()
             .supports(ProviderOperation::OpenRandomAccessReader);
         let file_system = FileSystem::from_spi(spi).expect("host filesystem must open");
-        Self { root, file_system, random_access_operation }
+        Self {
+            root,
+            file_system,
+            random_access_operation,
+        }
     }
 
     /// Converts a fixture-relative path into the host facade's logical path.

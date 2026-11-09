@@ -21,9 +21,9 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::Checksum;
 use qubit_fs::metadata::ChecksumAlgorithm;
-use qubit_fs::metadata::UserMetadata;
 #[cfg(unix)]
 use qubit_fs::metadata::DurabilityRequirement;
+use qubit_fs::metadata::UserMetadata;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs::write::WritePrecondition;
@@ -274,8 +274,7 @@ fn test_unsupported_write_options_report_specific_reason_and_preserve_target() {
             "write user metadata",
         ),
         (
-            WriteOptions::default()
-                .with_checksum(Some(Checksum::new(ChecksumAlgorithm::Sha256, "00"))),
+            WriteOptions::default().with_checksum(Some(Checksum::new(ChecksumAlgorithm::Sha256, "00"))),
             "write checksum",
         ),
     ];
@@ -286,9 +285,7 @@ fn test_unsupported_write_options_report_specific_reason_and_preserve_target() {
         assert_refusal(error.error(), FsOperation::OpenWriter, reason);
         assert_eq!(
             b"original",
-            std::fs::read(&target)
-                .expect("target should remain")
-                .as_slice()
+            std::fs::read(&target).expect("target should remain").as_slice()
         );
     }
     let error = filesystem
@@ -297,15 +294,8 @@ fn test_unsupported_write_options_report_specific_reason_and_preserve_target() {
             b"payload",
             WriteOptions::default()
                 .with_content_type(Some("text/plain".to_owned()))
-                .with_user_metadata(
-                    UserMetadata::new()
-                        .with("key", "value")
-                        .expect("valid metadata"),
-                )
-                .with_checksum(Some(Checksum::new(
-                    ChecksumAlgorithm::Sha256,
-                    "00",
-                ))),
+                .with_user_metadata(UserMetadata::new().with("key", "value").expect("valid metadata"))
+                .with_checksum(Some(Checksum::new(ChecksumAlgorithm::Sha256, "00"))),
         )
         .expect_err("multiple unsupported options should fail");
     assert_refusal(error.error(), FsOperation::OpenWriter, "write content type");
@@ -320,10 +310,7 @@ fn test_unsupported_copy_options_report_specific_reason_without_effects() {
     let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
         .expect("rooted filesystem should construct");
     for (options, reason) in [
-        (
-            CopyOptions::file().with_continue_on_error(true),
-            "continue-on-error",
-        ),
+        (CopyOptions::file().with_continue_on_error(true), "continue-on-error"),
         (
             CopyOptions::file().with_server_side(ServerSidePreference::Require),
             "server-side copy is required",
@@ -397,11 +384,7 @@ fn test_unsupported_list_and_directory_options_report_specific_reason() {
             CreateDirectoryOptions::default().with_user_metadata(metadata),
         )
         .expect_err("directory user metadata should be rejected");
-    assert_refusal(
-        &directory,
-        FsOperation::CreateDir,
-        "directory user metadata",
-    );
+    assert_refusal(&directory, FsOperation::CreateDir, "directory user metadata");
     assert!(!root.path().join("new-directory").exists());
 }
 
