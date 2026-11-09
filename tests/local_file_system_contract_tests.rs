@@ -141,17 +141,13 @@ fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
     replacement
         .write_all(bytes)
         .map_err(|error| FixtureError::with_source("random-access replacement staging write failed", error))?;
-    replacement.into_temp_path().persist(path).map_err(|error| {
-        eprintln!(
-            "random-access replacement OS error: {:?}: {}",
-            error.error.kind(),
-            error.error
-        );
-        FixtureError::with_source(
-            format!("random-access path replacement failed: {}", error.error),
-            error.error,
-        )
-    })?;
+    let replacement = replacement.into_temp_path();
+    #[cfg(windows)]
+    fs::remove_file(path)
+        .map_err(|error| FixtureError::with_source("random-access replacement target removal failed", error))?;
+    replacement
+        .persist(path)
+        .map_err(|error| FixtureError::with_source("random-access path replacement failed", error.error))?;
     Ok(())
 }
 
