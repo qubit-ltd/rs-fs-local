@@ -29,9 +29,9 @@ fn test_windows_host_and_rooted_listing_root_boundaries() {
         .expect("Windows Host has no global root");
     assert_eq!(FsErrorKind::InvalidPath, error.kind());
 
-    let native = std::fs::canonicalize(fixture.path()).expect("absolute fixture path");
-    let host_root = host_path_to_logical(&native).expect("convert native host path");
-    let rooted = LocalFileSystems::rooted(&native, LocalResourcePolicy::standard()).expect("rooted filesystem");
+    let native = fixture.path();
+    let host_root = host_path_to_logical(native).expect("convert native host path");
+    let rooted = LocalFileSystems::rooted(native, LocalResourcePolicy::standard()).expect("rooted filesystem");
     for (filesystem, root) in [(&host, host_root), (&rooted, Path::root())] {
         let mut stream = filesystem
             .list(&ListScope::Path(root), ListOptions::default())
