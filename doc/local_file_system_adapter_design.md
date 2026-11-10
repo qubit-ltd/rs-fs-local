@@ -161,6 +161,7 @@ scope. Diagnostic paths never replace provider identity or enter canonical URIs.
 | `StatRequest` | `metadata` |
 | `ListRequest` | `LocalDirectoryWalker` / directory stream |
 | `OpenReaderRequest` | `open_reader` |
+| `OpenReaderRequest (open_random_access_reader)` | `LocalFileReader` + `LocalRandomAccessReader` |
 | `OpenWriterRequest` | `LocalFileWriter` |
 | `CreateDirectoryRequest` | `create_directory` |
 | `DeleteFileRequest` | `delete_file` |
@@ -176,7 +177,33 @@ symlink; the latter is not removed. `PublicationIncomplete` maps to
 `FsEffectState::PartiallyApplied`; missing evidence is not `Unchanged`. Generic
 options are not revalidated; unsupported fields return a contract error.
 
-### 8.1 Copy fast path and states
+### 8.1 Random-access reader
+
+`open_random_access_reader` resolves the logical path, maps read options
+(including the open retry timeout), opens one native reader, and retains that
+handle in `LocalRandomAccessReader`. Each `read_at` uses the retained handle;
+it does not reopen the path. The returned length and metadata describe the
+observation made at open time. The `qubit-fs` facade clips requests to that
+length, so later growth does not extend this session's boundary; truncation can
+produce a short read. Replacing the path does not switch an open session to a
+new object, but this does not promise consistency against concurrent writes.
+
+The facade checks range overflow and provider resource limits before calling
+the session; an empty buffer or a request clipped to zero can return without an
+SPI call. Overflow is a facade `InvalidOptions` error. For a non-empty request,
+the SPI seeks with `SeekFrom::Start` and reads from the retained handle; seek or
+read errors are mapped by `error_mapper` with `Read`, the logical path, provider
+identity, and source. Open failures carry `OpenReader` context. These native
+seek failures must not be described as the facade's range-validation error.
+
+See the [random-access regression tests](../tests/local_random_access_reader_tests.rs)
+and [SPI session implementation](../src/spi/local_random_access_reader.rs).
+The tests distinguish shared session semantics from platform-specific path
+replacement and seek-error cases; Linux/Unix and Windows coverage is guarded
+separately in the test source, and this document makes no claim that an
+unexecuted platform test passed.
+
+### 8.2 Copy fast path and states
 
 `try_copy` converts both paths and classifies options before side effects. An
 unrepresentable request is `RequirementNotMet`/`Unchanged` with zero partial
@@ -193,7 +220,7 @@ native copy fails        → SpiCopyFailure(mapped state + partial stats)
 Indeterminate}` maps one-to-one with native resource-limit statistics; staging
 cleanup errors remain typed diagnostics.
 
-### 8.2 Rename primitive and states
+### 8.3 Rename primitive and states
 
 Rename always calls native rename, never copy-plus-delete. Its
 `LocalRenameFailureState::{Unchanged, Renamed, Indeterminate}` maps to

@@ -199,7 +199,7 @@ explicit work budget and a recovery path. Clones share one setting across all
 associated directories. Each cleanup attempt reads one snapshot, so changing
 the control affects later attempts rather than interrupting work in progress.
 
-<!-- fs-local-example: direct -->
+<!-- fs-local-example: direct-cleanup -->
 ```rust
 use std::time::Duration;
 
@@ -210,14 +210,15 @@ use qubit_fs_local::{
     LocalTempCleanupResourceLimits,
 };
 
-let root = std::env::temp_dir();
+let root = tempfile::tempdir()?;
 let control = LocalTempCleanupControl::new(Some(
     LocalTempCleanupResourceLimits::new(8, 0, 4096, Duration::from_secs(5)),
 ));
 let fs = LocalFileSystems::rooted_with_id_and_temp_cleanup(
-    FileSystemId::new("cleanup-guide")?, &root, LocalResourcePolicy::standard(), control.clone(),
+    FileSystemId::new("cleanup-guide")?, root.path(), LocalResourcePolicy::standard(), control.clone(),
 )?;
 let mut directory = fs.create_temp_directory(TempOptions::default())?;
+assert!(root.path().read_dir()?.next().is_some());
 let cleanup_error = directory.cleanup().expect_err("zero-entry budget blocks cleanup");
 assert_eq!(directory.state(), qubit_fs::temp::TempResourceState::CleanupRequired);
 let _diagnostic = cleanup_error;
@@ -225,8 +226,13 @@ control.set_limits(Some(LocalTempCleanupResourceLimits::new(
     8, 100, 1 << 20, Duration::from_secs(30),
 )));
 directory.cleanup()?;
+assert_eq!(root.path().read_dir()?.count(), 0);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+This runnable test/example needs `tempfile` as a development dependency:
+`cargo add --dev tempfile@3.27`. For a regular application binary, use
+`cargo add tempfile@3.27` instead so the dependency is available outside test builds.
 
 Keep the temporary handle and inspect the explicit cleanup error before
 increasing the relevant budget and retrying that same handle. There is no

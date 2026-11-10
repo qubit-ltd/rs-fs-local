@@ -198,7 +198,7 @@ listing 深度是裁剪边界，不是完整性检查：请求根深度为零，
 使用独立 cleanup control。其 clone 共享同一配置，因此关联目录会共同受影响；每次 cleanup 尝试
 开始时读取一份快照，更新配置不会中断正在执行的尝试。
 
-<!-- fs-local-example: direct -->
+<!-- fs-local-example: direct-cleanup -->
 ```rust
 use std::time::Duration;
 
@@ -209,14 +209,15 @@ use qubit_fs_local::{
     LocalTempCleanupResourceLimits,
 };
 
-let root = std::env::temp_dir();
+let root = tempfile::tempdir()?;
 let control = LocalTempCleanupControl::new(Some(
     LocalTempCleanupResourceLimits::new(8, 0, 4096, Duration::from_secs(5)),
 ));
 let fs = LocalFileSystems::rooted_with_id_and_temp_cleanup(
-    FileSystemId::new("cleanup-guide-zh")?, &root, LocalResourcePolicy::standard(), control.clone(),
+    FileSystemId::new("cleanup-guide-zh")?, root.path(), LocalResourcePolicy::standard(), control.clone(),
 )?;
 let mut directory = fs.create_temp_directory(TempOptions::default())?;
+assert!(root.path().read_dir()?.next().is_some());
 let cleanup_error = directory.cleanup().expect_err("zero-entry budget blocks cleanup");
 assert_eq!(directory.state(), qubit_fs::temp::TempResourceState::CleanupRequired);
 let _diagnostic = cleanup_error;
@@ -224,8 +225,13 @@ control.set_limits(Some(LocalTempCleanupResourceLimits::new(
     8, 100, 1 << 20, Duration::from_secs(30),
 )));
 directory.cleanup()?;
+assert_eq!(root.path().read_dir()?.count(), 0);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+此可运行的测试/示例需要将 `tempfile` 加为开发依赖：
+`cargo add --dev tempfile@3.27`。普通应用 binary 应使用 `cargo add tempfile@3.27`，
+以便在测试构建之外也能使用该依赖。
 
 保留临时句柄并检查显式 cleanup 错误，确认适合恢复后增大对应预算，再对同一句柄重试。系统不会
 自动放宽预算。Drop 清理可能触发多次底层尝试，每次都会读取新的快照；需要确定结果时应显式

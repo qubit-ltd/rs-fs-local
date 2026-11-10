@@ -55,3 +55,5 @@ jobs:
         run: cargo test --locked --no-default-features --features registry --test local_random_access_reader_tests
       - name: Run local filesystem contract tests on Windows
         run: cargo test --locked --no-default-features --features registry --test local_file_system_contract_tests
+      - name: Run listing namespace regression tests on Windows
+        run: cargo test --locked --no-default-features --features registry --test local_listing_namespace_regression_tests

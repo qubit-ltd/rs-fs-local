@@ -243,6 +243,7 @@ credential-free canonical URI。
 | `StatRequest` | `metadata` |
 | `ListRequest` | `LocalDirectoryWalker` 或直接目录 stream |
 | `OpenReaderRequest` | `open_reader` |
+| `OpenReaderRequest (open_random_access_reader)` | `LocalFileReader` + `LocalRandomAccessReader` |
 | `OpenWriterRequest` | `LocalFileWriter` |
 | `CreateDirectoryRequest` | `create_directory` |
 | `DeleteFileRequest` | `delete_file` |
@@ -268,7 +269,25 @@ disposition；只有 properties 声明 append 且 resolved atomicity 不是 `Req
 才能创建 native append writer。未知或不可表示的字段返回 contract error，不能静默
 忽略。
 
-### 8.1 Copy fast path
+### 8.1 随机读取器
+
+`open_random_access_reader` 解析逻辑路径、映射读取选项（包括打开重试超时），打开一个
+native reader，并将该 handle 保留在 `LocalRandomAccessReader` 中。每次 `read_at` 都使用此
+handle，不会按路径重新打开。返回的长度和 metadata 是打开时观察到的结果。`qubit-fs` 门面
+会按该长度裁剪请求，因此后续增长不会扩大本会话边界；截断可能产生短读。替换路径不会让已打开
+的会话切换到新对象，但这不承诺并发写入时的一致性。
+
+门面在调用 session 前检查范围溢出和 provider 资源上限；空 buffer 或裁剪为零的请求可以直接
+返回而不调用 SPI。范围溢出属于门面的 `InvalidOptions`。非空请求由 SPI 使用
+`SeekFrom::Start` seek 后从保留的 handle 读取；`error_mapper` 为 seek/read 错误保留
+`Read` 操作、逻辑路径、provider 身份和 source。打开失败携带 `OpenReader` 上下文。不能将
+native seek 错误描述为门面的范围校验错误。
+
+参见[随机读取回归测试](../tests/local_random_access_reader_tests.rs)和
+[SPI session 实现](../src/spi/local_random_access_reader.rs)。测试源码分别标明共享会话语义与
+平台专属的路径替换、seek 错误用例；本设计文档不声称尚未执行的平台测试已经通过。
+
+### 8.2 Copy fast path
 
 Local SPI 的 `try_copy` 采用两阶段规则：
 

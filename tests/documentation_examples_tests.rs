@@ -185,14 +185,22 @@ fn test_published_local_markdown_links_resolve() {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ExampleProfile {
     Direct,
+    DirectCleanup,
     Registry,
     Selection,
 }
 
 impl ExampleProfile {
+    /// Returns whether this profile uses the isolated, non-registry dependency
+    /// graph.
+    fn is_direct(self) -> bool {
+        matches!(self, Self::Direct | Self::DirectCleanup)
+    }
+
     fn parse(value: &str) -> Option<Self> {
         match value {
             "direct" => Some(Self::Direct),
+            "direct-cleanup" => Some(Self::DirectCleanup),
             "registry" => Some(Self::Registry),
             "selection" => Some(Self::Selection),
             _ => None,
@@ -224,6 +232,7 @@ fn example_profiles(markdown: &str) -> Result<Vec<ExampleProfile>, String> {
 fn profile_dependencies(profile: ExampleProfile) -> Vec<&'static str> {
     match profile {
         ExampleProfile::Direct => vec!["qubit-fs", "qubit-fs-local"],
+        ExampleProfile::DirectCleanup => vec!["qubit-fs", "qubit-fs-local", "tempfile"],
         ExampleProfile::Registry => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry"],
         ExampleProfile::Selection => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry", "qubit-spi"],
     }
@@ -241,9 +250,39 @@ fn should_run_example(document: &str, block_index: usize, profile: ExampleProfil
                 ]
                 .contains(&document)
         }
+        ExampleProfile::DirectCleanup => document == "doc/user_guide.md" || document == "doc/user_guide.zh_CN.md",
         ExampleProfile::Registry | ExampleProfile::Selection => {
             document == "doc/user_guide.md" || document == "doc/user_guide.zh_CN.md"
         }
+    }
+}
+
+#[test]
+fn test_cleanup_profile_is_explicit_and_runnable() {
+    assert_eq!(
+        ExampleProfile::parse("direct-cleanup"),
+        Some(ExampleProfile::DirectCleanup)
+    );
+    for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        assert!(should_run_example(document, 99, ExampleProfile::DirectCleanup));
+    }
+    assert_eq!(
+        profile_dependencies(ExampleProfile::DirectCleanup),
+        ["qubit-fs", "qubit-fs-local", "tempfile"]
+    );
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        let source = fs::read_to_string(root.join(document)).unwrap();
+        let blocks = profiled_rust_blocks(&source).unwrap();
+        let cleanup = blocks
+            .iter()
+            .filter(|(profile, _)| *profile == ExampleProfile::DirectCleanup)
+            .collect::<Vec<_>>();
+        assert_eq!(cleanup.len(), 1, "{document}");
+        assert!(cleanup[0].1.contains("tempfile::tempdir()"), "{document}");
+        assert!(cleanup[0].1.contains("CleanupRequired"), "{document}");
+        assert!(cleanup[0].1.contains("control.set_limits"), "{document}");
+        assert!(should_run_example(document, 99, cleanup[0].0), "{document}");
     }
 }
 
@@ -439,6 +478,9 @@ fn test_readme_and_user_guide_examples_compile() {
     let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
     let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
     let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
+    let tempfile_requirement = package["dev-dependencies"]["tempfile"]
+        .as_str()
+        .expect("tempfile development dependency requirement");
     let sibling_root = root.parent().expect("candidate checkout has a parent");
     let mut patches = Vec::new();
     for (package, sibling) in [
@@ -479,6 +521,7 @@ fn test_readme_and_user_guide_examples_compile() {
     }
     for profile in [
         ExampleProfile::Direct,
+        ExampleProfile::DirectCleanup,
         ExampleProfile::Registry,
         ExampleProfile::Selection,
     ] {
@@ -497,22 +540,26 @@ fn test_readme_and_user_guide_examples_compile() {
             "[package]\nname = \"local-documentation-{}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[dependencies]\nqubit-fs = {filesystem}\nqubit-fs-local = {{ version = \"{}\", path = \"{}\"{} }}\n",
             match profile {
                 ExampleProfile::Direct => "direct",
+                ExampleProfile::DirectCleanup => "direct-cleanup",
                 ExampleProfile::Registry => "registry",
                 ExampleProfile::Selection => "selection",
             },
             package["package"]["version"].as_str().expect("local version"),
             toml_path(root),
-            if profile == ExampleProfile::Direct {
+            if profile.is_direct() {
                 String::new()
             } else {
                 ", features = [\"registry\"]".to_owned()
             },
         );
-        if profile != ExampleProfile::Direct {
+        if !profile.is_direct() {
             manifest.push_str(&format!("qubit-fs-registry = {registry}\n"));
         }
         if profile == ExampleProfile::Selection {
             manifest.push_str(&format!("qubit-spi = {spi}\n"));
+        }
+        if profile == ExampleProfile::DirectCleanup {
+            manifest.push_str(&format!("tempfile = \"{tempfile_requirement}\"\n"));
         }
         if !patches.is_empty() {
             manifest.push_str("\n[patch.crates-io]\n");
@@ -543,7 +590,7 @@ fn test_readme_and_user_guide_examples_compile() {
         let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
         let mut expected_graph = expected.clone();
         expected_graph.extend(["qubit-fs-local", "qubit-local-files", "qubit-io"]);
-        if profile != ExampleProfile::Direct {
+        if !profile.is_direct() {
             expected_graph.extend(["qubit-fs-registry", "qubit-spi"]);
         }
         expected_graph.sort_unstable();
@@ -571,6 +618,7 @@ fn test_readme_and_user_guide_examples_compile() {
                         "local-documentation-{}",
                         match profile {
                             ExampleProfile::Direct => "direct",
+                            ExampleProfile::DirectCleanup => "direct-cleanup",
                             ExampleProfile::Registry => "registry",
                             ExampleProfile::Selection => "selection",
                         }
@@ -596,7 +644,7 @@ fn test_readme_and_user_guide_examples_compile() {
             resolved_direct_dependencies, expected_dependencies,
             "resolved direct dependencies for {profile:?}"
         );
-        if profile == ExampleProfile::Direct {
+        if profile.is_direct() {
             for forbidden in ["qubit-fs-registry", "qubit-spi"] {
                 assert!(
                     !graph["packages"]
@@ -631,7 +679,7 @@ fn test_readme_and_user_guide_examples_compile() {
             local_features
                 .iter()
                 .any(|feature| feature.as_str() == Some("registry")),
-            profile != ExampleProfile::Direct,
+            !profile.is_direct(),
             "local feature isolation for {profile:?}"
         );
         let status = Command::new(env!("CARGO"))
