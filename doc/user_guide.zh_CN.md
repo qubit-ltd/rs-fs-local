@@ -445,8 +445,11 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
 - rooted containment 与原生文件系统行为属于 provider 边界；应保留 rooted 门面，而非在应用中反复拼接原生路径。
 - 将 `file:` URI 视为仅本地输入。远程 authority 和 URI options 有意不作为该 provider 的配置通道。
 - 如果需要 replay rooted resolution，应将 provider selection 和 filesystem identity 与 canonical URI 一起保存；URI 本身不能标识其保留的原生 authority。
-- 列举时传入 `ListScope::Path(path)`；已配置的层级根目录使用
-  `ListScope::Path(Path::root())`。`ListScope::Namespace` 会在 native I/O 前被拒绝。
+- 列举时传入 `ListScope::Path(path)`。Rooted 文件系统使用
+  `ListScope::Path(Path::root())` 表示保留的权限根；Unix Host 中它表示原生 `/`。
+  Windows Host 不提供跨盘全局根：应选择原生盘符根，经 `host_path_to_logical`
+  转换后，将所得逻辑路径传入 `ListScope::Path`。`ListScope::Namespace` 会在
+  native I/O 前被拒绝。
 - 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开
   句柄上的 `LocalFileReader` 外层包装 `LimitInput`，不会重新打开路径。它在同一 native
   句柄上 seek 和读取，metadata 仍描述完整资源。资源打开后，零长度窗口不执行 seek，直接

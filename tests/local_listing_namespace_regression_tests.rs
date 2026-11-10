@@ -9,9 +9,37 @@
 
 use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
+#[cfg(windows)]
+use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
+#[cfg(windows)]
+use qubit_fs_local::host_path_to_logical;
+
+#[cfg(windows)]
+#[test]
+fn test_windows_host_and_rooted_listing_root_boundaries() {
+    let fixture = tempfile::tempdir().expect("fixture root");
+    std::fs::write(fixture.path().join("item"), b"x").expect("fixture file");
+    let host = LocalFileSystems::host(LocalResourcePolicy::standard()).expect("host");
+    let error = host
+        .list(&ListScope::Path(Path::root()), ListOptions::default())
+        .err()
+        .expect("Windows Host has no global root");
+    assert_eq!(FsErrorKind::InvalidPath, error.kind());
+
+    let native = std::fs::canonicalize(fixture.path()).expect("absolute fixture path");
+    let host_root = host_path_to_logical(&native).expect("convert native host path");
+    let rooted = LocalFileSystems::rooted(&native, LocalResourcePolicy::standard()).expect("rooted filesystem");
+    for (filesystem, root) in [(&host, host_root), (&rooted, Path::root())] {
+        let mut stream = filesystem
+            .list(&ListScope::Path(root), ListOptions::default())
+            .expect("list explicit filesystem root");
+        assert!(stream.next_entry().expect("fixture entry").is_some());
+        assert!(stream.next_entry().expect("end of listing").is_none());
+    }
+}
 
 /// Relative and absolute rooted scopes retain their request namespace.
 #[test]

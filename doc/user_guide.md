@@ -525,8 +525,11 @@ the direct error source.
 - Keep the provider selection and filesystem identity alongside a canonical URI
   when a rooted resolution must be replayed; the URI alone does not identify
   its retained native authority.
-- Listing requires `ListScope::Path(path)`; use `ListScope::Path(Path::root())`
-  for the configured hierarchical root. `ListScope::Namespace` is rejected before
+- Listing requires `ListScope::Path(path)`. For Rooted filesystems, use
+  `ListScope::Path(Path::root())` for the retained authority root; on Unix Host it
+  denotes the native `/`. Windows Host has no cross-drive global root: choose a
+  native drive root, convert it with `host_path_to_logical`, and pass the resulting
+  logical path to `ListScope::Path`. `ListScope::Namespace` is rejected before
   native I/O.
 - This provider advertises Conditional `RangeRead` for native regular-file windows.
   The adapter wraps the already opened `LocalFileReader` in `LimitInput`; it does
