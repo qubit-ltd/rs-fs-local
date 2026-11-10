@@ -15,6 +15,9 @@ use criterion::Throughput;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use qubit_fs::copy::CopyOptions;
+use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
+use qubit_fs::path::Path;
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
@@ -66,5 +69,44 @@ fn bench_local_facade_copy(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_local_facade_read_prefix, bench_local_facade_copy);
+fn bench_local_facade_list(c: &mut Criterion) {
+    let mut group = c.benchmark_group("local_facade_list");
+    for entry_count in [1_000, 10_000] {
+        let directory = tempdir().expect("benchmark directory should be created");
+        for index in 0..entry_count {
+            fs::write(directory.path().join(format!("entry-{index:05}")), b"x")
+                .expect("benchmark entry should be written");
+        }
+        let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host facade should construct");
+        let host_root = host_path_to_logical(directory.path()).expect("host directory should map");
+        let rooted = LocalFileSystems::rooted(directory.path(), LocalResourcePolicy::unbounded())
+            .expect("rooted facade should construct");
+        let rooted_root = Path::parse("/").expect("absolute rooted listing should parse");
+        for (mode, filesystem, root) in [("host", &host, &host_root), ("rooted_absolute", &rooted, &rooted_root)] {
+            group.throughput(Throughput::Elements(entry_count as u64));
+            group.bench_function(format!("{mode}/{entry_count}"), |bench| {
+                bench.iter(|| {
+                    let scope = ListScope::Path(root.clone());
+                    let mut stream = filesystem
+                        .list(black_box(&scope), ListOptions::default())
+                        .expect("benchmark listing should open");
+                    let mut count = 0;
+                    while stream.next_entry().expect("benchmark entry should read").is_some() {
+                        count += 1;
+                    }
+                    assert_eq!(count, entry_count);
+                    black_box(count);
+                });
+            });
+        }
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_local_facade_read_prefix,
+    bench_local_facade_copy,
+    bench_local_facade_list
+);
 criterion_main!(benches);

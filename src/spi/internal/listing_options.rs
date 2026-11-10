@@ -49,6 +49,13 @@ impl ListingOptions {
         self.include_metadata
     }
 
+    /// Reports whether entry matching requires a canonical relative path.
+    #[inline]
+    #[must_use]
+    pub(in crate::spi) const fn has_filter(&self) -> bool {
+        self.filter.is_some()
+    }
+
     /// Tests a canonical relative logical path against the configured prefix.
     ///
     /// # Parameters

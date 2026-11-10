@@ -132,18 +132,30 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
                 return Ok(None);
             };
             let entry = entry.map_err(|error| entry_error(error, provider_id))?;
-            let logical_relative = local_path_mapper::logical(
-                native_files::path::LocalFileSystemScope::Rooted,
-                &PathBuf::from(std::path::MAIN_SEPARATOR_STR).join(entry.relative_path()),
-                FsOperation::List,
-            )?;
-            if !options.matches(&logical_relative) {
+            let logical_relative = if options.has_filter() || relative_root.is_some() {
+                Some(local_path_mapper::logical(
+                    native_files::path::LocalFileSystemScope::Rooted,
+                    &PathBuf::from(std::path::MAIN_SEPARATOR_STR).join(entry.relative_path()),
+                    FsOperation::List,
+                )?)
+            } else {
+                None
+            };
+            if let Some(relative) = logical_relative.as_ref()
+                && !options.matches(relative)
+            {
                 continue;
             }
             let path = match relative_root {
-                Some(root) => {
-                    LogicalPath::from_components(false, root.components().chain(logical_relative.components()))?
-                }
+                Some(root) => LogicalPath::from_components(
+                    false,
+                    root.components().chain(
+                        logical_relative
+                            .as_ref()
+                            .expect("relative rooted listing prepares its relative path")
+                            .components(),
+                    ),
+                )?,
                 None => local_path_mapper::logical(scope, entry.path(), FsOperation::List)?,
             };
             let mut result = DirEntry::new(path, local_outcome_mapper::file_kind(entry.metadata().kind()));

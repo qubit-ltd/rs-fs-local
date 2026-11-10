@@ -40,22 +40,29 @@ fn test_rooted_listing_preserves_requested_path_form() {
             ),
         ] {
             let scope = ListScope::Path(Path::parse(root).expect("logical root"));
-            let mut stream = filesystem
-                .list(&scope, options.with_include_metadata(true))
-                .expect("open listing");
-            let mut actual = Vec::new();
-            while let Some(entry) = stream.next_entry().expect("entry in requested scope") {
-                assert!(entry.metadata.is_some(), "metadata for {}", entry.path);
-                assert_eq!(entry.path.is_absolute(), root.starts_with('/'));
-                actual.push(entry.path.as_str().to_owned());
+            for include_metadata in [false, true] {
+                let mut stream = filesystem
+                    .list(&scope, options.clone().with_include_metadata(include_metadata))
+                    .expect("open listing");
+                let mut actual = Vec::new();
+                while let Some(entry) = stream.next_entry().expect("entry in requested scope") {
+                    assert_eq!(
+                        entry.metadata.is_some(),
+                        include_metadata,
+                        "metadata for {}",
+                        entry.path
+                    );
+                    assert_eq!(entry.path.is_absolute(), root.starts_with('/'));
+                    actual.push(entry.path.as_str().to_owned());
+                }
+                actual.sort();
+                let mut expected = suffixes
+                    .iter()
+                    .map(|suffix| format!("{root}/{suffix}"))
+                    .collect::<Vec<_>>();
+                expected.sort();
+                assert_eq!(actual, expected, "scope {root}, metadata={include_metadata}");
             }
-            actual.sort();
-            let mut expected = suffixes
-                .iter()
-                .map(|suffix| format!("{root}/{suffix}"))
-                .collect::<Vec<_>>();
-            expected.sort();
-            assert_eq!(actual, expected, "scope {root}");
         }
     }
 }
@@ -120,4 +127,33 @@ fn test_host_alias_listing_stays_inside_requested_logical_root() {
             .path
     );
     assert!(stream.next_entry().expect("listing should finish").is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_host_listing_preserves_non_utf8_entry_names() {
+    use std::os::unix::ffi::OsStrExt;
+
+    use qubit_fs_local::host_path_to_logical;
+
+    let fixture = tempfile::tempdir().expect("fixture root");
+    let native_path = fixture.path().join(std::ffi::OsStr::from_bytes(b"entry-\xff"));
+    std::fs::write(&native_path, b"x").expect("non-UTF-8 entry");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let root = host_path_to_logical(fixture.path()).expect("host listing root");
+    let expected = host_path_to_logical(&native_path).expect("host entry path");
+    let mut stream = filesystem
+        .list(&ListScope::Path(root), ListOptions::default())
+        .expect("open listing");
+
+    let entry = stream
+        .next_entry()
+        .expect("non-UTF-8 entry should be readable")
+        .expect("entry should exist");
+    assert_eq!(expected, entry.path);
+    assert_eq!(
+        Some(1),
+        filesystem.stat(&entry.path).expect("returned path is reusable").len()
+    );
+    assert!(stream.next_entry().expect("listing completes").is_none());
 }
