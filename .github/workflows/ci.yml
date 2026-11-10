@@ -59,3 +59,5 @@ jobs:
         run: cargo test --locked --no-default-features --features registry --test local_file_system_contract_tests
       - name: Run listing namespace regression tests on Windows
         run: cargo test --locked --no-default-features --features registry --test local_listing_namespace_regression_tests
+      - name: Run path limits and filesystem behavior regressions on Windows
+        run: cargo test --locked --no-default-features --features registry --test local_path_limits_tests --test local_file_system_behavior_tests
