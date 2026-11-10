@@ -27,10 +27,18 @@ fn test_control_clone_observes_explicit_budget_replacement() {
 
 #[test]
 fn test_independent_controls_do_not_share_limits() {
-    let limits = LocalTempCleanupResourceLimits::new(1, 2, 3, Duration::from_secs(4));
-    let first = LocalTempCleanupControl::new(Some(limits));
-    let second = LocalTempCleanupControl::new(None);
+    let a = LocalTempCleanupResourceLimits::new(1, 2, 3, Duration::from_secs(4));
+    let b = LocalTempCleanupResourceLimits::new(5, 6, 7, Duration::from_secs(8));
+    let first = LocalTempCleanupControl::new(Some(a));
+    let second = LocalTempCleanupControl::new(Some(b));
+    assert_eq!(first.limits(), Some(a));
+    assert_eq!(second.limits(), Some(b));
     first.set_limits(None);
+    assert_eq!(first.limits(), None);
+    assert_eq!(second.limits(), Some(b));
+    first.set_limits(Some(a));
+    second.set_limits(None);
+    assert_eq!(first.limits(), Some(a));
     assert_eq!(second.limits(), None);
 }
 
