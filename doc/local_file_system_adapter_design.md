@@ -292,6 +292,23 @@ source-indeterminate state and preserves the known target effect. Future unknown
 variants and the invalid `Published` + `Owned` combination fall back
 conservatively to `Indeterminate`.
 
+Temporary-directory cleanup has native limits separate from ordinary
+`delete_file`/`delete_directory` budgets. `LocalTempCleanupControl` is shared by
+its clones and associated adapter directories; `None` means unbounded native
+cleanup. Existing constructors (including the registry provider) keep their
+unbounded behavior. New temporary directories receive the current limits at
+creation; the adapter refreshes them again before `persist`, `keep`, explicit
+`cleanup`, and `Drop`. A control update therefore affects subsequent adapter
+operations that refresh those limits; it does not
+interrupt an operation already using its native snapshot, and native internal
+cleanup retries do not reread the shared control. Explicit cleanup failure
+retains the handle for retry after changing the control, provided source
+ownership is still known. A budget change cannot restore cleanup authority
+when source ownership is indeterminate. Native `Drop` cleanup is best effort
+and makes at most one further attempt; it provides neither guaranteed cleanup
+nor one total budget across prior explicit attempts and `Drop`. See the
+[English user-guide cleanup-budget section](user_guide.md#temporary-directory-cleanup-budgets).
+
 ## 11. Async boundary
 
 Version 0.11.0 implements synchronous `FileSystemSpi` only: no

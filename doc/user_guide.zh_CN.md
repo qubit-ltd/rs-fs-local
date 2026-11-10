@@ -195,8 +195,10 @@ listing 深度是裁剪边界，不是完整性检查：请求根深度为零，
 ### 临时目录清理预算
 
 旧构造方法和 registry provider 的临时清理仍为无界。需要限制临时目录树的工作量并保留恢复路径时，
-使用独立 cleanup control。其 clone 共享同一配置，因此关联目录会共同受影响；每次 cleanup 尝试
-开始时读取一份快照，更新配置不会中断正在执行的尝试。
+使用独立 cleanup control。其 clone 共享同一配置，因此关联目录会共同受影响。新建临时目录时会应用
+当前上限；adapter 还会在 `persist`、`keep`、显式 `cleanup` 和 `Drop` 前刷新 native 目录上限。
+更新 control 会影响之后刷新上限的 adapter 操作；不会中断已经使用 native 快照的操作，native 内部清理重试也不会重新
+读取共享 control。`None` 表示 native cleanup 无界。这些限制与普通递归删除预算互相独立。
 
 <!-- fs-local-example: direct-cleanup -->
 ```rust
@@ -234,10 +236,11 @@ assert_eq!(root.path().read_dir()?.count(), 0);
 以便在测试构建之外也能使用该依赖。
 
 保留临时句柄并检查显式 cleanup 错误，确认适合恢复后增大对应预算，再对同一句柄重试。系统不会
-自动放宽预算。Drop 清理可能触发多次底层尝试，每次都会读取新的快照；需要确定结果时应显式
-cleanup。调整预算不能恢复 source 所有权不确定时的清理权限。需要隔离的任务应分别创建 control。
-registry 用户可以保留 `LocalFileSystemProvider::temp_cleanup_control()`；直接使用 SPI 时，应在
-创建 filesystem 前调用 `with_temp_cleanup_control` 绑定 control。
+自动放宽预算。native 目录的 `Drop` cleanup 属于尽力而为，最多再尝试一次，使用的是此前应用到
+该 native 句柄的上限。需要确定结果时应显式 cleanup；显式操作和 Drop 都不保证清理成功，也不
+保证多个尝试共用一个总预算。调整预算不能恢复 source 所有权不确定时的清理权限。需要隔离的任务
+应分别创建 control。registry 用户可以保留 `LocalFileSystemProvider::temp_cleanup_control()`；
+直接使用 SPI 时，应在创建 filesystem 前调用 `with_temp_cleanup_control` 绑定 control。
 
 writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。

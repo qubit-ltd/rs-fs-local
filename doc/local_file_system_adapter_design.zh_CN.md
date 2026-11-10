@@ -423,12 +423,21 @@ Adapter 先把原生错误持有的资源放回 session slot，再构造可移�
 
 普通 `delete_file`/`delete_directory` 的预算不自动应用于 temporary session 的
 `cleanup`、Drop 或 publication 失败后的 native 清理。cleanup 仍可能执行同步递归工作；
-显式 cleanup 报告错误，Drop 是 best effort。需要对清理工作设预算时，应在 native 层另立
-包含残留资源和恢复权属的设计，不能把普通删除预算解释为全部生命周期操作的总配额。
+显式 cleanup 报告错误，Drop 是 best effort。适配层可通过独立共享 control 配置 native
+临时目录清理上限；普通删除预算不代表全部生命周期操作的总配额。
 
-native 临时目录 API 已支持独立 cleanup 上限，并可在不同尝试之间替换上限。adapter 通过新增入口
-公开可选的共享 control；旧构造方法仍保留无界 cleanup 行为。listing 到达所选深度后会正常结束，
-该 EOF 不表示更深层级也已完整扫描。
+临时目录 cleanup 使用 native 层独立于普通 `delete_file`/`delete_directory` 的上限。
+`LocalTempCleanupControl` 的 clone 共享配置，关联的 adapter 目录也共用该 control；`None` 表示
+native cleanup 无界。旧构造方法（包括 registry provider）仍保持无界行为。adapter 在
+创建临时目录时使用当前上限，并在 `persist`、`keep`、显式 `cleanup` 和 `Drop` 前再次刷新，
+因此更新 control 会影响
+之后会刷新上限的 adapter 操作；不会中断已经使用 native 快照的操作，native 内部清理重试也
+不会重新读取共享 control。显式 cleanup 失败后，只要源所有权仍可确认，就能在调整 control 后
+保留同一句柄重试。若源所有权已不确定，调整预算不能恢复 cleanup 权限。native `Drop` cleanup
+属于尽力而为，最多再尝试一次；它不保证清理成功，也不保证此前显式尝试与 Drop 共用一个总预算。
+详见[中文版用户指南的临时目录清理预算](user_guide.zh_CN.md#临时目录清理预算)。
+
+listing 到达所选深度后会正常结束，该 EOF 不表示更深层级也已完整扫描。
 
 源资格不确定而目标事实明确时，必须使用对应的 `*SourceIndeterminate` 状态并保留已知
 目标 effect。未来未知变体及无效的 `Published` + `Owned` 组合保守映射为整体

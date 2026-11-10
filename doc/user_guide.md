@@ -196,8 +196,13 @@ native work starts retain their state and partial statistics.
 The original constructors and registry provider remain unbounded for temporary
 cleanup. Use the separate cleanup control when a temporary tree needs an
 explicit work budget and a recovery path. Clones share one setting across all
-associated directories. Each cleanup attempt reads one snapshot, so changing
-the control affects later attempts rather than interrupting work in progress.
+associated directories. New temporary directories receive the current limits
+at creation; the adapter refreshes them again before `persist`, `keep`, explicit
+`cleanup`, and `Drop`. A control update affects
+subsequent adapter operations that refresh those limits; it does not interrupt
+an operation already using its native snapshot, and native internal cleanup
+retries do not reread the shared control. `None` selects unbounded native
+cleanup. These limits are independent of ordinary recursive delete budgets.
 
 <!-- fs-local-example: direct-cleanup -->
 ```rust
@@ -236,13 +241,15 @@ This runnable test/example needs `tempfile` as a development dependency:
 
 Keep the temporary handle and inspect the explicit cleanup error before
 increasing the relevant budget and retrying that same handle. There is no
-automatic widening. Drop cleanup can make multiple underlying attempts, each
-with its own fresh snapshot; use explicit cleanup when the result matters.
-Changing a budget cannot restore authority for a source whose ownership is
-indeterminate. Use separate controls when independent tasks need isolated
-budgets. Registry users can retain `LocalFileSystemProvider::temp_cleanup_control()`;
-direct SPI users can attach a control with `with_temp_cleanup_control` before
-building the filesystem.
+automatic widening. Native directory `Drop` cleanup is best effort and makes
+at most one further attempt using the limits currently applied to that native
+handle. Use explicit cleanup when the result matters; neither it nor `Drop`
+provides guaranteed cleanup or one total budget across attempts. Changing a
+budget cannot restore authority for a source whose ownership is indeterminate.
+Use separate controls when independent tasks need isolated budgets. Registry
+users can retain `LocalFileSystemProvider::temp_cleanup_control()`; direct SPI
+users can attach a control with `with_temp_cleanup_control` before building
+the filesystem.
 
 The adapter preserves native deletion classification: deleting a directory through
 `delete_file` reports `IsDirectory`, and deleting a regular file or final symbolic
