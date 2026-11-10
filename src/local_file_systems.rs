@@ -41,7 +41,10 @@ static ROOTED_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub enum LocalFileSystems {}
 
 impl LocalFileSystems {
-    /// Creates the process host filesystem facade.
+    /// Creates a filesystem in the process host namespace.
+    ///
+    /// This does not snapshot the process working directory. Host paths passed
+    /// to this adapter must be absolute logical paths.
     ///
     /// # Parameters
     ///
@@ -63,8 +66,10 @@ impl LocalFileSystems {
     ///
     /// # Errors
     ///
-    /// Returns an error if the static host SPI cannot be assembled into a
-    /// concrete filesystem.
+    /// Returns an error if native host construction fails, or if the resource
+    /// policy and portable filesystem properties cannot be assembled. The
+    /// current native host constructor is infallible; its result type is
+    /// retained to report initialization failures on targets that need them.
     pub fn host(policy: LocalResourcePolicy) -> FsResult<FileSystem> {
         FileSystem::from_spi(LocalFileSystemSpi::new(policy)?)
     }

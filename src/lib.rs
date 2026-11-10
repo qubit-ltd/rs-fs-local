@@ -6,6 +6,43 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Thin local-files adapter for [`qubit_fs`].
+//!
+//! # Choose a filesystem namespace
+//!
+//! [`LocalFileSystems::host`] accesses the process host namespace and accepts
+//! absolute logical paths. [`LocalFileSystems::rooted`] opens a native root
+//! with a process-local identity; [`LocalFileSystems::rooted_with_id`] uses an
+//! identity supplied by the caller. Rooted paths are resolved from the
+//! virtual working directory, which starts at `/`.
+//!
+//! # Convert host paths
+//!
+//! Convert native host paths with [`host_path_to_logical`] before passing them
+//! to a filesystem facade. This preserves native path representation; avoid
+//! lossy string conversion.
+//!
+//! # Resource policy
+//!
+//! Each facade constructor takes an explicit [`LocalResourcePolicy`]. Its
+//! [`standard` policy](LocalResourcePolicy::standard) sets finite per-operation
+//! budgets. These are not a shared concurrency quota and do not automatically
+//! limit temporary-directory cleanup.
+//!
+//! # Quick start
+//!
+//! ```
+//! use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+//!
+//! let fs = LocalFileSystems::host(LocalResourcePolicy::standard())?;
+//! assert_eq!(fs.properties().info().id().as_str(), "local-host");
+//! # Ok::<(), qubit_fs::error::FsError>(())
+//! ```
+//!
+//! # Optional registry integration
+//!
+//! Enable the `registry` feature to include the provider and inventory
+//! integration. See the [user guide](https://github.com/qubit-ltd/rs-fs-local/blob/main/doc/user_guide.md)
+//! for registry setup and provider selection.
 
 #![deny(missing_docs)]
 

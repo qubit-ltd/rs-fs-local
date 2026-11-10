@@ -169,7 +169,11 @@ impl LocalFileSystemSpi {
         }
     }
 
-    /// Creates the fixed host filesystem implementation.
+    /// Creates the host filesystem implementation in the process host
+    /// namespace.
+    ///
+    /// This does not snapshot the process working directory. Host paths passed
+    /// to this adapter must be absolute logical paths.
     ///
     /// # Returns
     ///
@@ -190,7 +194,10 @@ impl LocalFileSystemSpi {
     ///
     /// # Errors
     ///
-    /// Returns a provider error when portable properties cannot be assembled.
+    /// Returns a provider error if native host construction or portable
+    /// properties cannot be assembled. The current native host constructor is
+    /// infallible; its result type is retained to report initialization
+    /// failures on targets that need them.
     ///
     /// # Parameters
     ///
