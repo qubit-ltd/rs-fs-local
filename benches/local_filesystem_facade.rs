@@ -41,11 +41,7 @@ fn sample_offsets(sample_count: usize, sample_size: usize, file_size: usize) -> 
         .collect()
 }
 
-fn read_samples(
-    reader: &mut qubit_fs::read::RandomAccessReader,
-    offsets: &[u64],
-    sample_size: usize,
-) -> usize {
+fn read_samples(reader: &mut qubit_fs::read::RandomAccessReader, offsets: &[u64], sample_size: usize) -> usize {
     let mut total = 0;
     let mut buffer = vec![0_u8; sample_size];
     for offset in offsets {
@@ -65,17 +61,13 @@ fn bench_local_facade_random_access(c: &mut Criterion) {
     let expected: Vec<u8> = (0..FILE_SIZE).map(|index| (index % 251) as u8).collect();
     fs::write(&native_path, &expected).expect("random access payload should be written");
     let logical_path = host_path_to_logical(&native_path).expect("logical path should map");
-    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded())
-        .expect("host facade should construct");
+    let host = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host facade should construct");
     let rooted = LocalFileSystems::rooted(directory.path(), LocalResourcePolicy::unbounded())
         .expect("rooted facade should construct");
     let rooted_path = Path::parse("/random-payload").expect("rooted path should parse");
     let mut group = c.benchmark_group("local_facade_random_access");
 
-    for (mode, filesystem, path) in [
-        ("host", &host, &logical_path),
-        ("rooted", &rooted, &rooted_path),
-    ] {
+    for (mode, filesystem, path) in [("host", &host, &logical_path), ("rooted", &rooted, &rooted_path)] {
         for sample_size in [512, 4096] {
             for sample_count in [1, 8, 32] {
                 let offsets = sample_offsets(sample_count, sample_size, FILE_SIZE);
@@ -85,14 +77,9 @@ fn bench_local_facade_random_access(c: &mut Criterion) {
                     .expect("random access reader should open");
                 for offset in &offsets {
                     let mut actual = vec![0; sample_size];
-                    let read = check_reader
-                        .read_at(*offset, &mut actual)
-                        .expect("sample should read");
+                    let read = check_reader.read_at(*offset, &mut actual).expect("sample should read");
                     assert_eq!(read, sample_size);
-                    assert_eq!(
-                        actual,
-                        expected[*offset as usize..*offset as usize + sample_size]
-                    );
+                    assert_eq!(actual, expected[*offset as usize..*offset as usize + sample_size]);
                 }
 
                 let bytes = (sample_size * sample_count) as u64;
@@ -112,12 +99,9 @@ fn bench_local_facade_random_access(c: &mut Criterion) {
                 let mut reused = filesystem
                     .open_random_access_reader(path, ReadOptions::default())
                     .expect("reused random access reader should open");
-                group.bench_function(
-                    format!("{mode}/reuse_session/{sample_count}x{sample_size}"),
-                    |bench| {
-                        bench.iter(|| black_box(read_samples(&mut reused, &offsets, sample_size)));
-                    },
-                );
+                group.bench_function(format!("{mode}/reuse_session/{sample_count}x{sample_size}"), |bench| {
+                    bench.iter(|| black_box(read_samples(&mut reused, &offsets, sample_size)));
+                });
             }
         }
     }
@@ -134,23 +118,15 @@ fn bench_local_facade_filtered_list(c: &mut Criterion) {
         for index in 0..unrelated_descendants {
             let sibling = directory.path().join(format!("other-{index:04}"));
             fs::create_dir_all(sibling.join("deep")).expect("unrelated subtree should be created");
-            fs::write(sibling.join("deep/leaf"), b"unrelated")
-                .expect("unrelated file should be written");
+            fs::write(sibling.join("deep/leaf"), b"unrelated").expect("unrelated file should be written");
         }
         // Leave room for observing every root sibling and the wanted tree;
         // unfiltered descent through the unrelated descendants exceeds this.
         let provider_entry_budget = 1032;
-        let list_limits = LocalListResourceLimits::new(
-            8,
-            provider_entry_budget,
-            1 << 20,
-            16,
-            Duration::from_secs(30),
-        )
-        .expect("finite provider list limits should be valid");
+        let list_limits = LocalListResourceLimits::new(8, provider_entry_budget, 1 << 20, 16, Duration::from_secs(30))
+            .expect("finite provider list limits should be valid");
         let policy = LocalResourcePolicy::standard().with_list_limits(Some(list_limits));
-        let filesystem = LocalFileSystems::rooted(directory.path(), policy)
-            .expect("rooted facade should construct");
+        let filesystem = LocalFileSystems::rooted(directory.path(), policy).expect("rooted facade should construct");
         let root = Path::parse("/").expect("rooted listing path should parse");
         let options = ListOptions::default()
             .with_recursive(true)
@@ -163,10 +139,7 @@ fn bench_local_facade_filtered_list(c: &mut Criterion) {
             .list(&scope, options.clone())
             .expect("filtered listing should open");
         let mut expected_entries = Vec::new();
-        while let Some(entry) = check_stream
-            .next_entry()
-            .expect("filtered entry should read")
-        {
+        while let Some(entry) = check_stream.next_entry().expect("filtered entry should read") {
             expected_entries.push(entry.path.as_str().to_owned());
         }
         expected_entries.sort();
@@ -197,28 +170,26 @@ fn bench_local_facade_filtered_list(c: &mut Criterion) {
                 }
             }
             assert_eq!(
-                error.expect("unfiltered traversal should exceed provider entry budget").kind(),
+                error
+                    .expect("unfiltered traversal should exceed provider entry budget")
+                    .kind(),
                 FsErrorKind::ResourceLimitExceeded
             );
         }
         group.throughput(Throughput::Elements(3));
-        group.bench_function(
-            format!("unrelated_descendants_{unrelated_descendants}"),
-            |bench| {
-                bench.iter(|| {
-                    let mut stream = filesystem
-                        .list(black_box(&scope), options.clone())
-                        .expect("filtered listing should open");
-                    let mut entries = Vec::new();
-                    while let Some(entry) = stream.next_entry().expect("filtered entry should read")
-                    {
-                        entries.push(entry.path.as_str().to_owned());
-                    }
-                    entries.sort();
-                    black_box(entries);
-                });
-            },
-        );
+        group.bench_function(format!("unrelated_descendants_{unrelated_descendants}"), |bench| {
+            bench.iter(|| {
+                let mut stream = filesystem
+                    .list(black_box(&scope), options.clone())
+                    .expect("filtered listing should open");
+                let mut entries = Vec::new();
+                while let Some(entry) = stream.next_entry().expect("filtered entry should read") {
+                    entries.push(entry.path.as_str().to_owned());
+                }
+                entries.sort();
+                black_box(entries);
+            });
+        });
     }
     group.finish();
 }
