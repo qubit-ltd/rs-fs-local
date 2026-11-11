@@ -7,6 +7,7 @@
 // =============================================================================
 //! Random reads through one already-open native file handle.
 
+use std::io::Result;
 use std::io::Seek;
 use std::io::SeekFrom;
 
@@ -45,6 +46,39 @@ impl LocalRandomAccessReader {
         }
     }
 
+    /// Seeks to an offset and reads through the supplied native read operation.
+    ///
+    /// # Parameters
+    ///
+    /// - `offset`: Byte offset from the beginning of the file.
+    /// - `output`: Buffer that receives the bytes read.
+    /// - `read`: Operation used to read from the already-open native handle.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `F`: One-shot read operation for the native file handle.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes copied into `output`, or zero when it is empty or at
+    /// EOF.
+    ///
+    /// # Errors
+    ///
+    /// Returns a mapped filesystem error if seeking or reading fails.
+    fn read_at_with<F>(&mut self, offset: u64, output: &mut [u8], read: F) -> FsResult<usize>
+    where
+        F: FnOnce(&mut native_files::LocalFileReader, &mut [u8]) -> Result<usize>,
+    {
+        if output.is_empty() {
+            return Ok(0);
+        }
+        self.reader
+            .seek(SeekFrom::Start(offset))
+            .map_err(|error| self.map_io(error))?;
+        read(&mut self.reader, output).map_err(|error| self.map_io(error))
+    }
+
     /// Maps a standard I/O failure from a positioned read to the portable error
     /// type.
     ///
@@ -79,24 +113,15 @@ impl RandomAccessReadSession for LocalRandomAccessReader {
     ///
     /// Returns a mapped filesystem error if seeking or reading fails.
     fn read_at(&mut self, offset: u64, output: &mut [u8]) -> FsResult<usize> {
-        if output.is_empty() {
-            return Ok(0);
-        }
-        self.reader
-            .seek(SeekFrom::Start(offset))
-            .map_err(|error| self.map_io(error))?;
-        Input::read(&mut self.reader, output).map_err(|error| self.map_io(error))
+        self.read_at_with(offset, output, Input::read)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use std::error::Error;
 
-    #[cfg(unix)]
     use qubit_fs::error::FsErrorKind;
-    #[cfg(unix)]
     use qubit_fs::error::FsOperation;
     use qubit_fs::path::Path;
     use qubit_fs::spi::RandomAccessReadSession;
@@ -142,23 +167,37 @@ mod tests {
         assert_eq!(*b"ab", output);
     }
 
-    #[cfg(target_os = "linux")]
     #[test]
     fn test_native_read_error_preserves_context_and_source() {
-        let logical_path = Path::parse("/proc/self/mem").expect("logical path");
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let native_path = directory.path().join("payload");
+        std::fs::write(&native_path, b"abcdef").expect("seed file");
+        let logical_path = Path::parse("/payload").expect("logical path");
         let native_fs = native_files::LocalFileSystem::host().expect("host filesystem");
-        let reader = native_fs
-            .open_reader(std::path::Path::new("/proc/self/mem"))
-            .expect("open process memory file");
+        let reader = native_fs.open_reader(&native_path).expect("open native file");
         let mut session = LocalRandomAccessReader::new(reader, logical_path.clone(), "local-test".to_owned());
 
+        let mut invoked = false;
         let error = session
-            .read_at(0, &mut [0; 1])
-            .expect_err("unmapped process memory must fail to read");
+            .read_at_with(0, &mut [0; 1], |_, _| {
+                invoked = true;
+                Err(std::io::Error::other("injected read failure"))
+            })
+            .expect_err("injected read must fail");
+        assert!(invoked, "seek must reach the injected read step");
         assert_eq!(FsErrorKind::Io, error.kind());
         assert_eq!(FsOperation::Read, error.operation());
         assert_eq!(Some(&logical_path), error.path());
         assert_eq!(Some("local-test"), error.provider());
-        assert!(error.source().is_some());
+        assert!(
+            error
+                .source()
+                .is_some_and(|source| source.to_string().contains("injected read failure")),
+            "native error source must retain the injected read message",
+        );
+
+        let mut output = [0; 2];
+        assert_eq!(2, session.read_at(0, &mut output).expect("read after injected failure"));
+        assert_eq!(*b"ab", output);
     }
 }
