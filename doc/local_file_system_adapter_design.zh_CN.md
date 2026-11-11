@@ -373,7 +373,11 @@ Adapter 不自行执行 rename、fsync 或 staging cleanup。
 Native lazy walker/stream 被包装为 `DirectoryStreamSpi`。Adapter 把每个 native entry
 转换为 `DirEntry`，公开门面随后再次验证 namespace contract。
 
-不把整个目录预加载进 `Vec`，不向上暴露 native continuation 或 directory handle。
+不把整个目录预加载进 `Vec`，不向上暴露 native continuation 或 directory handle。使用
+`Subtree` 列举过滤时，`LocalFileSystemSpi` 通过 rooted path codec 将 canonical 逻辑 prefix 转为
+原生相对路径，并配置 native walker 剪枝；stream 仍负责结果过滤和路径投影。深度和预算仍以原请求根
+为准。原生条目预算统计实际观察到的条目，包括祖先及已遇到的兄弟条目；被剪掉的后代不计数。
+被剪枝目录下的错误不会被观察到；已访问条目上的错误仍可能导致 stream 失败。
 
 ## 10. Temporary resource
 

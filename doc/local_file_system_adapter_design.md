@@ -249,7 +249,14 @@ preserved. The adapter does not rename, fsync, or clean staging itself.
 ### 9.3 Directory stream
 
 The lazy native walker is adapted entry by entry to `DirEntry`; it is not
-preloaded into `Vec`, and native continuation handles are not exposed.
+preloaded into `Vec`, and native continuation handles are not exposed. For a
+`Subtree` listing filter, `LocalFileSystemSpi` converts the canonical logical
+prefix through the rooted path codec and configures native descent pruning;
+the stream still applies the result filter and path projection. The original
+listing root remains in force for depth and budgets. The native entry budget
+counts observed entries, including ancestors and siblings already encountered,
+while pruned descendants consume no entries. Errors below pruned directories
+are not observed; errors on entries already visited can still fail the stream.
 
 ## 10. Temporary resources
 

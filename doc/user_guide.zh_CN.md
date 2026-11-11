@@ -119,12 +119,20 @@ provider 上限不会开启递归、忽略缺失目标、创建父目录或改�
 
 | 上限 | 计量的工作 | 执行位置 |
 | --- | --- | --- |
-| provider list `max_entries` | adapter prefix 过滤前由 walker 产出的条目 | 原生 walker |
+| provider list `max_entries` | 原生 walker 实际观察到的条目，包括祖先及已遇到的兄弟条目 | 原生 walker |
 | request list `max_entries` | prefix 过滤后返回的条目 | 门面 |
 | copy/delete 上限 | 对应操作的原生遍历和 payload 工作 | 原生操作 |
 
-因此，即使 prefix 没有匹配项，也可能耗尽 provider walker 上限。协作式 deadline
-会在原生调用前后检查，不能中断已经开始的 I/O 调用。
+### 列举子树
+
+`ListOptions` 使用子树 prefix 时，适配层仍以原请求根启动列举，并保留结果过滤；同时会告知
+原生 walker 可以进入哪些目录。Walker 会经过通往 prefix 的路径组件并列举其后代，跳过无关目录的
+后代。目录树很大而目标子树较小时，这能减少遍历工作；匹配到的 prefix 条目仍会出现在结果中。
+
+Provider 深度仍从原请求根计算。Provider 条目预算统计 walker 实际观察到的条目，包括查找 prefix
+时经过的祖先和已遇到的兄弟条目；被剪枝的后代不计入预算。目录枚举顺序仍会影响结果，因此预算可能在
+walker 到达目标 prefix 前耗尽。目标不存在时返回空列举。被剪枝后代上的错误不再可见；walker 已经
+遇到的兄弟条目仍可能因错误导致列举失败。协作式 deadline 无法中断已经开始的 I/O 调用。
 
 下面的数值是应用场景示例，不是库默认值：
 

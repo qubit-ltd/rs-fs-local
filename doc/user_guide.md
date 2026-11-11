@@ -139,13 +139,28 @@ The three limit families count different work:
 
 | Limit | Counted work | Applied by |
 | --- | --- | --- |
-| Provider list `max_entries` | Entries yielded before adapter prefix filtering | Native walker |
+| Provider list `max_entries` | Entries actually observed by the native walker, including ancestors and observed siblings | Native walker |
 | Request list `max_entries` | Entries returned after prefix filtering | Facade |
 | Copy/delete limits | Native traversal and payload work for that operation | Native operation |
 
-Consequently, a prefix with no matches can still exhaust the provider walker
-ceiling. A cooperative deadline is checked around native calls and cannot
-interrupt an I/O call already in progress.
+### Listing a subtree
+
+When `ListOptions` uses a subtree prefix, the adapter keeps the requested
+listing root and result filter, and also tells the native walker which
+directories it may enter. The walker visits the path components leading to the
+prefix and its descendants, while pruning unrelated directory descendants.
+This reduces traversal work when a large tree contains a small requested
+subtree. The matching prefix entry itself remains in the results.
+
+Provider depth is still measured from the original listing root. The provider
+entry budget counts entries the walker actually observes, including ancestors
+and siblings it encounters while locating the prefix; pruned descendants do
+not consume entries. Enumeration order still matters, so the budget can run out
+before the walker reaches the requested prefix. A missing prefix returns an
+empty listing. Errors from pruned descendants are no longer observable, while
+an error on a sibling entry that the walker has already encountered can still
+fail the listing. A cooperative deadline cannot interrupt an I/O call already
+in progress.
 
 Listing depth is a boundary, not a completeness check: the root is depth zero,
 and reaching the effective depth ends normally with EOF. That EOF only covers

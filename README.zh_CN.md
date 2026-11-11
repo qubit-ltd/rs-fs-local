@@ -16,6 +16,7 @@
 本版本使用 `qubit-fs` 0.3 和 `qubit-local-files` 0.5.1。provider 上限只收紧资源预算，不改变请求行为；
 writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
+子树 prefix 还会跳过无关目录的后代，同时保留原请求根；详见[子树列举行为](doc/user_guide.zh_CN.md#列举子树)。
 需要限制临时目录清理并保留恢复路径的应用，可绑定独立的共享可调预算，详见[清理预算指南](doc/user_guide.zh_CN.md#临时目录清理预算)。
 
 ## 安装
