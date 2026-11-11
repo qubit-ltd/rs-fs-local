@@ -468,6 +468,7 @@ fn test_rooted_read_reports_random_access_contract_evidence() {
     for id in [
         ContractCheckId::RandomAccessBasic,
         ContractCheckId::RandomAccessBounds,
+        ContractCheckId::RandomAccessRangeLimit,
         ContractCheckId::RandomAccessIdentity,
     ] {
         let check = run
@@ -476,9 +477,19 @@ fn test_rooted_read_reports_random_access_contract_evidence() {
             .iter()
             .find(|check| check.id() == id)
             .unwrap_or_else(|| panic!("read report must contain {id}"));
-        assert_eq!(check.outcome(), &ContractCheckOutcome::Passed, "{id}");
+        if id == ContractCheckId::RandomAccessRangeLimit {
+            assert!(
+                matches!(check.outcome(), ContractCheckOutcome::NotApplicable { reason } if !reason.trim().is_empty()),
+                "unknown provider range limit should be reported as not applicable"
+            );
+        } else {
+            assert_eq!(check.outcome(), &ContractCheckOutcome::Passed, "{id}");
+        }
     }
-    run.assert_satisfied();
+    run.assert_satisfied_with(&[
+        ContractCheckId::RandomAccessBounds,
+        ContractCheckId::RandomAccessRangeLimit,
+    ]);
 }
 
 /// Rooted listings preserve the namespace of a non-root request path.
