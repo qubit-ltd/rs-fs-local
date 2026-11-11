@@ -12,6 +12,7 @@ use qubit_fs::directory::ListFilter;
 use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
+use qubit_fs::error::FsOperation;
 use qubit_fs::path::Path;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalCopyResourceLimits;
@@ -153,6 +154,106 @@ fn test_prefix_does_not_bypass_provider_walker_budget() {
         assert_eq!(Some(&Path::root()), error.path());
         assert_eq!(Some("local-file"), error.provider());
     }
+}
+
+/// Native descent pruning keeps a bounded provider budget available for the
+/// selected subtree when unrelated sibling trees are large.
+#[test]
+fn test_prefix_prunes_large_unrelated_subtrees_within_provider_budget() {
+    let root = tempfile::tempdir().expect("root");
+    for sibling in 0..16 {
+        let branch = root.path().join(format!("other-{sibling:02}/deep"));
+        std::fs::create_dir_all(&branch).expect("sibling branch");
+        for descendant in 0..32 {
+            std::fs::write(branch.join(format!("item-{descendant:02}")), b"x").expect("sibling item");
+        }
+    }
+    std::fs::create_dir(root.path().join("wanted")).expect("wanted directory");
+    std::fs::write(root.path().join("wanted/item"), b"x").expect("wanted item");
+
+    let fs = LocalFileSystems::rooted(
+        root.path(),
+        bounded_list_policy(64, 64, LocalDirectoryReopenPolicy::Reopen),
+    )
+    .expect("rooted");
+    let mut stream = fs
+        .list(
+            &ListScope::Path((Path::root()).clone()),
+            ListOptions::default().with_prefix(Some("wanted/item".to_owned())),
+        )
+        .expect("list");
+    let mut actual = Vec::new();
+    while let Some(entry) = stream.next_entry().expect("unrelated descendants are pruned") {
+        actual.push(entry.path.as_str().to_owned());
+    }
+    assert_eq!(vec!["/wanted/item".to_owned()], actual);
+}
+
+/// Subtree boundaries remain component-aware and preserve file/missing-prefix
+/// behavior after native descent is restricted.
+#[test]
+fn test_prefix_component_boundary_and_file_or_missing_targets() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::create_dir_all(root.path().join("wanted-other/deep")).expect("similar sibling");
+    std::fs::write(root.path().join("wanted-other/deep/item"), b"x").expect("sibling item");
+    std::fs::create_dir(root.path().join("wanted")).expect("wanted directory");
+    std::fs::write(root.path().join("wanted/item"), b"x").expect("wanted item");
+    std::fs::write(root.path().join("wanted-file"), b"x").expect("file target");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+
+    for (prefix, expected) in [
+        ("wanted-file", vec!["/wanted-file".to_owned()]),
+        ("missing", vec![]),
+        ("wanted", vec!["/wanted".to_owned(), "/wanted/item".to_owned()]),
+    ] {
+        let mut stream = fs
+            .list(
+                &ListScope::Path((Path::root()).clone()),
+                ListOptions::default().with_prefix(Some(prefix.to_owned())),
+            )
+            .expect("list");
+        let mut actual = Vec::new();
+        while let Some(entry) = stream.next_entry().expect("filtered listing") {
+            actual.push(entry.path.as_str().to_owned());
+        }
+        assert_eq!(expected, actual, "prefix {prefix}");
+    }
+}
+
+/// The requested listing root remains the origin for max-depth accounting.
+#[test]
+fn test_subtree_prefix_does_not_reset_max_depth_origin() {
+    let root = tempfile::tempdir().expect("root");
+    std::fs::create_dir_all(root.path().join("ancestor/target")).expect("target directories");
+    std::fs::write(root.path().join("ancestor/target/item"), b"x").expect("target item");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let mut stream = fs
+        .list(
+            &ListScope::Path((Path::root()).clone()),
+            ListOptions::default()
+                .with_prefix(Some("ancestor/target/item".to_owned()))
+                .with_max_depth(Some(1)),
+        )
+        .expect("list");
+    assert!(stream.next_entry().expect("target lies below max depth").is_none());
+}
+
+/// Rooted codec failures retain list operation, request path, and provider
+/// context.
+#[test]
+fn test_subtree_prefix_conversion_error_retains_list_context() {
+    let root = tempfile::tempdir().expect("root");
+    let fs = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let error = fs
+        .list(
+            &ListScope::Path((Path::root()).clone()),
+            ListOptions::default().with_prefix(Some("invalid%2Fcomponent".to_owned())),
+        )
+        .expect_err("encoded separator cannot be a native component");
+
+    assert_eq!(FsOperation::List, error.operation());
+    assert_eq!(Some(&Path::root()), error.path());
+    assert_eq!(Some("local-file"), error.provider());
 }
 
 #[test]

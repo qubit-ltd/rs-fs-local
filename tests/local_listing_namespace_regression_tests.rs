@@ -34,10 +34,27 @@ fn test_windows_host_and_rooted_listing_root_boundaries() {
     let rooted = LocalFileSystems::rooted(native, LocalResourcePolicy::standard()).expect("rooted filesystem");
     for (filesystem, root) in [(&host, host_root), (&rooted, Path::root())] {
         let mut stream = filesystem
-            .list(&ListScope::Path(root), ListOptions::default())
+            .list(&ListScope::Path(root.clone()), ListOptions::default())
             .expect("list explicit filesystem root");
         assert!(stream.next_entry().expect("fixture entry").is_some());
         assert!(stream.next_entry().expect("end of listing").is_none());
+
+        let mut filtered = filesystem
+            .list(
+                &ListScope::Path(root),
+                ListOptions::default().with_prefix(Some("item".to_owned())),
+            )
+            .expect("Windows subtree prefix should map through rooted codec");
+        assert!(
+            filtered
+                .next_entry()
+                .expect("filtered entry")
+                .expect("matching file")
+                .path
+                .as_str()
+                .ends_with("/item")
+        );
+        assert!(filtered.next_entry().expect("filtered listing ends").is_none());
     }
 }
 
@@ -119,6 +136,44 @@ fn test_rooted_relative_listing_preserves_components_and_percent_names() {
         Some(1)
     );
     assert!(stream.next_entry().expect("complete listing").is_none());
+
+    let mut filtered = filesystem
+        .list(
+            &ListScope::Path(Path::parse("base/dir").expect("relative root")),
+            ListOptions::default().with_prefix(Some("100%25".to_owned())),
+        )
+        .expect("percent-encoded subtree prefix must open");
+    assert_eq!(
+        Some("base/dir/100%25"),
+        filtered
+            .next_entry()
+            .expect("percent-encoded entry is readable")
+            .as_ref()
+            .map(|entry| entry.path.as_str())
+    );
+    assert!(filtered.next_entry().expect("filtered listing completes").is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_rooted_subtree_prefix_decodes_non_utf8_components() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let fixture = tempfile::tempdir().expect("fixture root");
+    std::fs::write(fixture.path().join(std::ffi::OsStr::from_bytes(b"entry-\xff")), b"x").expect("non-UTF-8 entry");
+    let filesystem = LocalFileSystems::rooted(fixture.path(), LocalResourcePolicy::unbounded()).expect("rooted");
+    let mut stream = filesystem
+        .list(
+            &ListScope::Path(Path::root()),
+            ListOptions::default().with_prefix(Some("entry-%FF".to_owned())),
+        )
+        .expect("non-UTF-8 subtree prefix must open");
+    let entry = stream
+        .next_entry()
+        .expect("non-UTF-8 target is readable")
+        .expect("matching target");
+    assert_eq!("/entry-%FF", entry.path.as_str());
+    assert!(stream.next_entry().expect("filtered listing completes").is_none());
 }
 
 #[cfg(unix)]

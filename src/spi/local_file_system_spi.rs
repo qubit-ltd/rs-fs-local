@@ -17,6 +17,7 @@ use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyStats;
 use qubit_fs::directory::CreateDirectoryOutcome;
 use qubit_fs::directory::DeleteOutcome;
+use qubit_fs::directory::ListFilter;
 use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
@@ -653,18 +654,51 @@ impl FileSystemSpi for LocalFileSystemSpi {
             self.native.scope(),
             *self.native.default_list_options(),
         )?;
+        let descend_subtree = match request.options().options().filter() {
+            Some(ListFilter::Subtree(prefix)) => {
+                let logical_prefix = Path::parse(prefix).map_err(|error| {
+                    FsError::with_source(
+                        error.kind(),
+                        FsOperation::List,
+                        "local subtree prefix could not be parsed",
+                        error,
+                    )
+                    .with_path(logical_path.clone())
+                    .with_provider(&self.provider_id)
+                })?;
+                Some(
+                    local_path_mapper::native(native_files::path::LocalFileSystemScope::Rooted, &logical_prefix)
+                        .map_err(|error| {
+                            FsError::with_source(
+                                error.kind(),
+                                FsOperation::List,
+                                "local subtree prefix could not be converted",
+                                error,
+                            )
+                            .with_path(logical_path.clone())
+                            .with_provider(&self.provider_id)
+                        })?,
+                )
+            }
+            _ => None,
+        };
         let rooted = self.is_rooted();
-        self.native
+        let walker = self
+            .native
             .list_with_options(&path, &options)
-            .map(|value| {
-                let stream = if rooted {
-                    LocalDirectoryStreamSpi::rooted(value, request.options(), &self.provider_id, logical_path)
-                } else {
-                    LocalDirectoryStreamSpi::host(value, request.options(), &self.provider_id)
-                };
-                OpenedDirectoryStream::new(Box::new(stream))
-            })
-            .map_err(|error| self.map(error, FsOperation::List, logical_path))
+            .map_err(|error| self.map(error, FsOperation::List, logical_path))?;
+        let walker = match descend_subtree.as_deref() {
+            Some(subtree) => walker
+                .with_descend_subtree(subtree)
+                .map_err(|error| self.map(error, FsOperation::List, logical_path))?,
+            None => walker,
+        };
+        let stream = if rooted {
+            LocalDirectoryStreamSpi::rooted(walker, request.options(), &self.provider_id, logical_path)
+        } else {
+            LocalDirectoryStreamSpi::host(walker, request.options(), &self.provider_id)
+        };
+        Ok(OpenedDirectoryStream::new(Box::new(stream)))
     }
 
     /// Opens a file for reading through the configured local authority.
