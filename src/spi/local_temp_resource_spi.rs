@@ -490,6 +490,8 @@ fn persist_directory(
 /// # Returns
 ///
 /// A portable persistence error retaining the native failure as its source.
+/// The error carries the publication target; the facade supplies the temporary
+/// source path.
 fn map_persist_error(
     error: LocalFileError,
     stage: LocalPersistStage,
@@ -502,7 +504,7 @@ fn map_persist_error(
         persist_failure_message(stage),
         provider_id,
     )
-    .with_path(logical_target.clone())
+    .with_target(logical_target.clone())
 }
 
 /// Returns a stable diagnostic message for a native persistence stage.
