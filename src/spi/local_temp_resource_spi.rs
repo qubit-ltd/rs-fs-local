@@ -849,8 +849,9 @@ fn cleanup_error(
     provider_id: &str,
 ) -> FsError {
     if source == LocalTempSourceState::Indeterminate {
-        // Losing source identity prevents deletion; preserve any stronger native
-        // effect claim independently from the now-uncertain source authority.
+        // Losing source identity prevents deletion; preserve any stronger
+        // native effect claim independently from the now-uncertain source
+        // authority.
         let effect = match error.effect_state() {
             None | Some(LocalFileEffectState::Unchanged) => FsEffectState::Unchanged,
             Some(LocalFileEffectState::PartiallyApplied) => FsEffectState::PartiallyApplied,

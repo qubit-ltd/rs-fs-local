@@ -71,7 +71,8 @@ fn bench_local_facade_random_access(c: &mut Criterion) {
         for sample_size in [512, 4096] {
             for sample_count in [1, 8, 32] {
                 let offsets = sample_offsets(sample_count, sample_size, FILE_SIZE);
-                // Validate all positions and expected bytes outside the timed regions.
+                // Validate all positions and expected bytes outside the timed
+                // regions.
                 let mut check_reader = filesystem
                     .open_random_access_reader(path, ReadOptions::default())
                     .expect("random access reader should open");
