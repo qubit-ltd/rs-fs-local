@@ -43,19 +43,5 @@ jobs:
         run: ./.infra/bin/prepare-local-path-dependencies.sh
       - name: Compile all local adapter tests on Windows
         run: cargo check --locked --no-default-features --features registry --tests
-      - name: Run local adapter tests on Windows
-        run: cargo test --locked --no-default-features --features registry --test path_tests --test local_file_uri_path_tests --test local_error_mapping_tests --test local_temp_resource_spi_tests --test local_range_read_tests --test listing_options_tests
-      - name: Run resource policy regressions on Windows
-        run: cargo test --locked --no-default-features --features registry --test local_standard_policy_tests --test local_resource_policy_tests --test local_resource_scope_tests --test local_copy_dispatch_tests --test local_option_mapping_tests
-      - name: Run temporary cleanup budget tests on Windows
-        run: cargo test --locked --no-default-features --features registry --test local_temp_cleanup_policy_tests
-      - name: Run library unit tests on Windows
-        run: cargo test --locked --no-default-features --features registry --lib
-      - name: Run random-access session tests on Windows
-        run: cargo test --locked --no-default-features --features registry --test local_random_access_reader_tests
-      - name: Run local filesystem contract tests on Windows
-        run: cargo test --locked --no-default-features --features registry --test local_file_system_contract_tests
-      - name: Run listing namespace regression tests on Windows
-        run: cargo test --locked --no-default-features --features registry --test local_listing_namespace_regression_tests
-      - name: Run path limits and filesystem behavior regressions on Windows
-        run: cargo test --locked --no-default-features --features registry --test local_path_limits_tests --test local_file_system_behavior_tests
+      - name: Run all local adapter unit and integration tests on Windows
+        run: cargo test --locked --no-default-features --features registry --lib --tests
