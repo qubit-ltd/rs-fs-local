@@ -12,9 +12,9 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
-This README documents `qubit-fs-local` 0.11.0 (package version `0.11.0`).
+This README documents `qubit-fs-local` 0.11.2 (package version `0.11.2`).
 
-This version uses `qubit-fs` 0.3 and `qubit-local-files` 0.5.1. Provider ceilings tighten resources
+This version uses `qubit-fs` 0.3 and `qubit-local-files` 0.5.3. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).

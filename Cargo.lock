@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.11.1"
+version = "0.11.2"
 dependencies = [
  "criterion",
  "proptest",
@@ -655,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-local-files"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "getrandom",
  "libc",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.10.2"
+version = "0.10.3"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
