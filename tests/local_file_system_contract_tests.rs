@@ -142,9 +142,9 @@ fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
         .write_all(bytes)
         .map_err(|error| FixtureError::with_source("random-access replacement staging write failed", error))?;
     let replacement = replacement.into_temp_path();
-    #[cfg(windows)]
-    fs::remove_file(path)
-        .map_err(|error| FixtureError::with_source("random-access replacement target removal failed", error))?;
+    // `persist` replaces an existing file atomically on both Unix and Windows.
+    // Removing the destination first would create a gap and lose the old file
+    // if the persist operation then failed.
     replacement
         .persist(path)
         .map_err(|error| FixtureError::with_source("random-access path replacement failed", error.error))?;
