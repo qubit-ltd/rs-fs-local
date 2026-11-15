@@ -14,11 +14,6 @@ qubit-fs-local = { path = "../", features = ["registry"] , version = "^0.11" }
 qubit-fs = { version = "^0.3" }
 qubit-fs-registry = { version = "^0.8" }
 
-[patch.crates-io]
-qubit-fs = { path = "../../rs-fs" }
-qubit-local-files = { path = "../../rs-local-files" }
-qubit-redact = { path = "../../rs-redact" }
-
 [[bin]]
 name = "registry_uri_resolution"
 path = "fuzz_targets/registry_uri_resolution.rs"

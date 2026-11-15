@@ -288,9 +288,17 @@ impl FileSystemFixture for RootedFixture {
     }
 
     fn replace_random_access_path(&self, path: &Path, bytes: &[u8]) -> FixtureResult<FixtureSupport<()>> {
-        let native = self.native_path(path)?;
-        replace_native_path(&native, bytes)?;
-        Ok(FixtureSupport::Supported(()))
+        #[cfg(windows)]
+        {
+            let _ = (path, bytes);
+            return Ok(FixtureSupport::Unsupported);
+        }
+        #[cfg(not(windows))]
+        {
+            let native = self.native_path(path)?;
+            replace_native_path(&native, bytes)?;
+            Ok(FixtureSupport::Supported(()))
+        }
     }
 
     fn teardown(&self) -> FixtureResult<()> {
@@ -481,6 +489,11 @@ fn test_rooted_read_reports_random_access_contract_evidence() {
             assert!(
                 matches!(check.outcome(), ContractCheckOutcome::NotApplicable { reason } if !reason.trim().is_empty()),
                 "unknown provider range limit should be reported as not applicable"
+            );
+        } else if id == ContractCheckId::RandomAccessIdentity && cfg!(windows) {
+            assert!(
+                matches!(check.outcome(), ContractCheckOutcome::SkippedOptional { reason } if !reason.trim().is_empty()),
+                "Windows rooted fixture cannot replace an open random-access path"
             );
         } else {
             assert_eq!(check.outcome(), &ContractCheckOutcome::Passed, "{id}");

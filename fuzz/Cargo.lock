@@ -184,7 +184,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs"
-version = "0.3.1"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9a33da41769effbc67acbe34227f81360a77107e65849aa33d17507b2f371aa"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
@@ -236,7 +238,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-local-files"
-version = "0.5.2"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13bbb3eb69b794590262e4f3ef7573bc4ec3fe9924d7e46d6f51f82c2290906a"
 dependencies = [
  "getrandom",
  "libc",
@@ -249,7 +253,9 @@ dependencies = [
 
 [[package]]
 name = "qubit-redact"
-version = "0.10.2"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d217d6f987adc5f32b9daa5d506e99c5a435f99b1493d5ab3ef55caf27a3c86"
 dependencies = [
  "fluent-uri",
  "qubit-budget",
