@@ -39,8 +39,6 @@ jobs:
         with:
           toolchain: 1.94.0
           components: rust-src
-      - name: Prepare local path dependencies
-        run: ./.infra/bin/prepare-local-path-dependencies.sh
       - name: Compile all local adapter tests on Windows
         run: cargo check --locked --no-default-features --features registry --tests
       - name: Run all local adapter unit and integration tests on Windows

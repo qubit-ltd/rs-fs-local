@@ -85,14 +85,9 @@ toml = "^1.2"
 serde_json = "^1.0"
 criterion = "^0.8"
 tempfile = "^3.27"
-qubit-fs-testkit = { path = "../rs-fs-testkit", version = "^0.9" }
+qubit-fs-testkit = "^0.9"
 qubit-local-files = { version = "^0.5", features = ["test-support"] }
 
-[patch.crates-io]
-qubit-fs = { path = "../rs-fs" }
-qubit-local-files = { path = "../rs-local-files" }
-qubit-redact = { path = "../rs-redact" }
-qubit-fs-testkit = { path = "../rs-fs-testkit" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
