@@ -464,9 +464,13 @@ fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
     file_system
         .write_all(&file, b"payload", WriteOptions::default())
         .expect("file fixture must be written");
-    file_system
-        .create_directory(&directory, CreateDirectoryOptions::default())
-        .expect("directory fixture must be created");
+    assert!(
+        !(file_system
+            .create_directory(&directory, CreateDirectoryOptions::default())
+            .expect("directory fixture must be created"))
+        .already_existed(),
+        "directory fixture must be created"
+    );
 
     let tree_error = file_system
         .copy(&file, &path("/tree-target"), CopyOptions::tree())

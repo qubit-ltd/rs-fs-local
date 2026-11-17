@@ -57,9 +57,13 @@ fn test_listing_options_filter_prefix_and_include_metadata() {
     let sibling_file = Path::parse("/reports/nested-other/report.txt").expect("sibling file path must be valid");
 
     for directory in [&list_root, &matching_directory, &sibling_directory] {
-        file_system
-            .create_directory(directory, CreateDirectoryOptions::default())
-            .expect("fixture directory must be created");
+        assert!(
+            !(file_system
+                .create_directory(directory, CreateDirectoryOptions::default())
+                .expect("fixture directory must be created"))
+            .already_existed(),
+            "fixture directory must be created"
+        );
     }
     for file in [&matching_file, &sibling_file] {
         file_system

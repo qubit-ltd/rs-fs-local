@@ -64,26 +64,38 @@ fn test_temp_resources_preserve_requested_parent_alias() {
             .persist(&target, PersistOptions::default())
             .expect("publish through alias");
         assert_eq!(outcome.target(), &target);
-        filesystem
-            .delete_file(&target, DeleteOptions::default())
-            .expect("remove publication");
+        assert!(
+            !(filesystem
+                .delete_file(&target, DeleteOptions::default())
+                .expect("remove publication"))
+            .already_missing(),
+            "remove publication"
+        );
         let mut kept_file = filesystem
             .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
             .expect("create file to keep through alias");
         let outcome = kept_file.keep().expect("keep file under requested parent");
         assert!(outcome.target().as_str().starts_with(&prefix));
-        filesystem
-            .delete_file(outcome.target(), DeleteOptions::default())
-            .expect("remove kept file");
+        assert!(
+            !(filesystem
+                .delete_file(outcome.target(), DeleteOptions::default())
+                .expect("remove kept file"))
+            .already_missing(),
+            "remove kept file"
+        );
         let mut directory = filesystem
             .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent)))
             .expect("create aliased temporary directory");
         assert!(directory.path().as_str().starts_with(&prefix));
         let outcome = directory.keep().expect("keep under requested parent");
         assert!(outcome.target().as_str().starts_with(&prefix));
-        filesystem
-            .delete_directory(outcome.target(), DeleteOptions::default())
-            .expect("remove kept directory");
+        assert!(
+            !(filesystem
+                .delete_directory(outcome.target(), DeleteOptions::default())
+                .expect("remove kept directory"))
+            .already_missing(),
+            "remove kept directory"
+        );
     }
 
     let relative_alias = Path::parse("alias").expect("relative rooted alias");
@@ -96,18 +108,26 @@ fn test_temp_resources_preserve_requested_parent_alias() {
         .persist(&relative_file_target, PersistOptions::default())
         .expect("publish through relative alias");
     assert_eq!(outcome.target(), &relative_file_target);
-    rooted
-        .delete_file(&relative_file_target, DeleteOptions::default())
-        .expect("remove relative alias publication");
+    assert!(
+        !(rooted
+            .delete_file(&relative_file_target, DeleteOptions::default())
+            .expect("remove relative alias publication"))
+        .already_missing(),
+        "remove relative alias publication"
+    );
     let mut relative_directory = rooted
         .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(relative_alias)))
         .expect("create temporary directory through relative alias");
     assert!(relative_directory.path().as_str().starts_with("/alias/"));
     let outcome = relative_directory.keep().expect("keep through relative alias");
     assert!(outcome.target().as_str().starts_with("/alias/"));
-    rooted
-        .delete_directory(outcome.target(), DeleteOptions::default())
-        .expect("remove relative alias kept directory");
+    assert!(
+        !(rooted
+            .delete_directory(outcome.target(), DeleteOptions::default())
+            .expect("remove relative alias kept directory"))
+        .already_missing(),
+        "remove relative alias kept directory"
+    );
 }
 
 /// Relative Rooted parents project to usable absolute logical paths.
@@ -132,9 +152,13 @@ fn test_rooted_temp_file_relative_parent() {
                 let outcome = resource.keep().expect("keep temporary file");
                 assert!(outcome.target().as_str().starts_with(prefix));
                 filesystem.stat(outcome.target()).expect("kept target is usable");
-                filesystem
-                    .delete_file(outcome.target(), DeleteOptions::default())
-                    .expect("remove kept file");
+                assert!(
+                    !(filesystem
+                        .delete_file(outcome.target(), DeleteOptions::default())
+                        .expect("remove kept file"))
+                    .already_missing(),
+                    "remove kept file"
+                );
             } else {
                 resource.cleanup().expect("explicit cleanup");
                 assert_eq!(
@@ -175,9 +199,13 @@ fn test_rooted_temp_directory_relative_parent() {
                 let outcome = resource.keep().expect("keep temporary directory");
                 assert!(outcome.target().as_str().starts_with(prefix));
                 filesystem.stat(outcome.target()).expect("kept target is usable");
-                filesystem
-                    .delete_directory(outcome.target(), DeleteOptions::default())
-                    .expect("remove kept directory");
+                assert!(
+                    !(filesystem
+                        .delete_directory(outcome.target(), DeleteOptions::default())
+                        .expect("remove kept directory"))
+                    .already_missing(),
+                    "remove kept directory"
+                );
             } else {
                 resource.cleanup().expect("explicit cleanup");
                 assert_eq!(
@@ -486,9 +514,13 @@ fn test_temp_file_persist_conflict_retains_resource_for_retry() {
     );
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
-    file_system
-        .delete_file(&target, DeleteOptions::default())
-        .expect("conflicting target must be removed");
+    assert!(
+        !(file_system
+            .delete_file(&target, DeleteOptions::default())
+            .expect("conflicting target must be removed"))
+        .already_missing(),
+        "conflicting target must be removed"
+    );
     let outcome = temporary
         .persist(&target, PersistOptions::default())
         .expect("retained temporary file must be persistable after conflict removal");
@@ -547,9 +579,13 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         .expect("rooted filesystem must be created");
     let target = Path::parse("/published-directory").expect("target path must be valid");
 
-    file_system
-        .create_directory(&target, CreateDirectoryOptions::default())
-        .expect("conflicting target directory must be created");
+    assert!(
+        !(file_system
+            .create_directory(&target, CreateDirectoryOptions::default())
+            .expect("conflicting target directory must be created"))
+        .already_existed(),
+        "conflicting target directory must be created"
+    );
     let mut temporary = file_system
         .create_temp_directory(TempDirectoryOptions::default())
         .expect("temporary directory must be created");
@@ -577,9 +613,13 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
     );
     assert_eq!(temporary.state(), TempResourceState::Owned);
 
-    file_system
-        .delete_directory(&target, DeleteOptions::default())
-        .expect("conflicting target directory must be removed");
+    assert!(
+        !(file_system
+            .delete_directory(&target, DeleteOptions::default())
+            .expect("conflicting target directory must be removed"))
+        .already_missing(),
+        "conflicting target directory must be removed"
+    );
     let outcome = temporary
         .persist(&target, PersistOptions::default())
         .expect("retained temporary directory must be persistable after conflict removal");
@@ -593,8 +633,13 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
         host_parent.as_str().trim_end_matches('/')
     ))
     .expect("host target directory");
-    host.create_directory(&host_target, CreateDirectoryOptions::default())
-        .expect("host conflict directory");
+    assert!(
+        !(host
+            .create_directory(&host_target, CreateDirectoryOptions::default())
+            .expect("host conflict directory"))
+        .already_existed(),
+        "host conflict directory"
+    );
     let mut temporary = host
         .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(host_parent)))
         .expect("host temporary directory");
@@ -618,8 +663,13 @@ fn test_temp_directory_persist_conflict_retains_resource_for_retry() {
             .is_some()
     );
     assert_eq!(temporary.state(), TempResourceState::Owned);
-    host.delete_directory(&host_target, DeleteOptions::default())
-        .expect("remove host conflict directory");
+    assert!(
+        !(host
+            .delete_directory(&host_target, DeleteOptions::default())
+            .expect("remove host conflict directory"))
+        .already_missing(),
+        "remove host conflict directory"
+    );
     assert_eq!(
         &host_target,
         temporary
@@ -639,9 +689,13 @@ fn test_temp_directory_persist_overwrites_empty_destination() {
         .expect("rooted filesystem must be created");
     let target = Path::parse("/published-directory").expect("target path must be valid");
 
-    file_system
-        .create_directory(&target, CreateDirectoryOptions::default())
-        .expect("empty destination directory must be created");
+    assert!(
+        !(file_system
+            .create_directory(&target, CreateDirectoryOptions::default())
+            .expect("empty destination directory must be created"))
+        .already_existed(),
+        "empty destination directory must be created"
+    );
     let mut temporary = file_system
         .create_temp_directory(TempDirectoryOptions::default())
         .expect("temporary directory must be created");
@@ -806,9 +860,13 @@ fn test_temp_file_persist_install_failure_is_indeterminate() {
         .expect("rooted filesystem must be created");
     let target = Path::parse("/directory-target").expect("target path must be valid");
 
-    file_system
-        .create_directory(&target, CreateDirectoryOptions::default())
-        .expect("incompatible destination directory must be created");
+    assert!(
+        !(file_system
+            .create_directory(&target, CreateDirectoryOptions::default())
+            .expect("incompatible destination directory must be created"))
+        .already_existed(),
+        "incompatible destination directory must be created"
+    );
     let mut temporary = file_system
         .create_temp_file(TempFileOptions::default())
         .expect("temporary file must be created");
@@ -889,9 +947,13 @@ fn test_temp_directory_cleanup_failure_rejects_replacement_path() {
         .expect("temporary directory must be created");
     let path = temporary.path().clone();
 
-    file_system
-        .delete_directory(&path, DeleteOptions::default())
-        .expect("temporary directory fixture must be removed");
+    assert!(
+        !(file_system
+            .delete_directory(&path, DeleteOptions::default())
+            .expect("temporary directory fixture must be removed"))
+        .already_missing(),
+        "temporary directory fixture must be removed"
+    );
     let error = temporary
         .cleanup()
         .expect_err("missing temporary directory must make cleanup fail");
@@ -921,9 +983,13 @@ fn test_temp_file_cleanup_failure_preserves_source_uncertainty() {
         .expect("temporary file must be created");
     let path = temporary.path().clone();
 
-    file_system
-        .delete_file(&path, DeleteOptions::default())
-        .expect("temporary file fixture must be removed");
+    assert!(
+        !(file_system
+            .delete_file(&path, DeleteOptions::default())
+            .expect("temporary file fixture must be removed"))
+        .already_missing(),
+        "temporary file fixture must be removed"
+    );
     let error = temporary
         .cleanup()
         .expect_err("missing temporary file must make cleanup fail");

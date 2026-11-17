@@ -511,10 +511,14 @@ fn test_rooted_list_keeps_entry_paths_below_requested_root() {
     let fixture = RootedFixture::new();
     let requested_root = Path::parse("/fixture/listed").expect("requested listing root must be valid");
     let child = Path::parse("/fixture/listed/child").expect("listed child path must be valid");
-    fixture
-        .file_system()
-        .create_directory(&requested_root, CreateDirectoryOptions::default())
-        .expect("requested listing root must be created");
+    assert!(
+        !(fixture
+            .file_system()
+            .create_directory(&requested_root, CreateDirectoryOptions::default())
+            .expect("requested listing root must be created"))
+        .already_existed(),
+        "requested listing root must be created"
+    );
     fixture
         .file_system()
         .write_all(&child, b"listed", WriteOptions::default())
@@ -569,10 +573,14 @@ fn test_rooted_copy_auto_detects_directory_sources() {
     let source = fixture.path("copy-source").expect("source path must be valid");
     let child = fixture.path("copy-source/child.txt").expect("child path must be valid");
     let target = fixture.path("copy-target").expect("target path must be valid");
-    fixture
-        .file_system()
-        .create_directory(&source, CreateDirectoryOptions::default())
-        .expect("source directory must be created");
+    assert!(
+        !(fixture
+            .file_system()
+            .create_directory(&source, CreateDirectoryOptions::default())
+            .expect("source directory must be created"))
+        .already_existed(),
+        "source directory must be created"
+    );
     fixture
         .file_system()
         .write_all(&child, b"contents", WriteOptions::default())
@@ -625,10 +633,14 @@ fn test_rooted_list_matches_canonical_escaped_prefix() {
     let matching = fixture
         .path("escaped-prefix/report%25name.txt")
         .expect("path must be valid");
-    fixture
-        .file_system()
-        .create_directory(&root, CreateDirectoryOptions::default())
-        .expect("listing root must be created");
+    assert!(
+        !(fixture
+            .file_system()
+            .create_directory(&root, CreateDirectoryOptions::default())
+            .expect("listing root must be created"))
+        .already_existed(),
+        "listing root must be created"
+    );
     fixture
         .file_system()
         .write_all(&matching, b"escaped", WriteOptions::default())
