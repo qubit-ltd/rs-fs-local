@@ -263,7 +263,7 @@ fn test_unsupported_write_options_report_specific_reason_and_preserve_target() {
     let cases = [
         (
             WriteOptions::default().with_precondition(WritePrecondition::IfAbsent),
-            "conditional writes",
+            "conditional write",
         ),
         (
             WriteOptions::default().with_content_type(Some("text/plain".to_owned())),

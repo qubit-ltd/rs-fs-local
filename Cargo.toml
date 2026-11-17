@@ -65,8 +65,8 @@ harness = false
 qubit-spi = { version = "^0.14", optional = true }
 qubit-io = "^0.19"
 qubit-local-files = { version = "^0.5" }
-qubit-fs = { version = "^0.3", default-features = false }
-qubit-fs-registry = { version = "^0.8", optional = true }
+qubit-fs = { version = "^0.4", path = "../rs-fs", default-features = false }
+qubit-fs-registry = { version = "^0.8", path = "../rs-fs-registry", optional = true }
 qubit-redact = { version = "^0.10", optional = true }
 
 [features]
@@ -85,7 +85,7 @@ toml = "^1.2"
 serde_json = "^1.0"
 criterion = "^0.8"
 tempfile = "^3.27"
-qubit-fs-testkit = "^0.9"
+qubit-fs-testkit = { version = "^0.9", path = "../rs-fs-testkit" }
 qubit-local-files = { version = "^0.5", features = ["test-support"] }
 
 
