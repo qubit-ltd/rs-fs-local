@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-registry"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "qubit-fs",
  "qubit-redact",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "qubit-fs-testkit"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "qubit-fs",
  "qubit-io",
