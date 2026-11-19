@@ -550,10 +550,20 @@ fn test_candidate_local_files_identity_requires_candidate_path_version_and_sourc
     assert!(validate_candidate_local_files_edge(&graph, "consumer 1.0.0", &manifest).is_ok());
 
     let registry_graph = serde_json::json!({
-        "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.5.3", "name":"qubit-local-files", "version":"0.5.3", "manifest_path":"/registry/qubit-local-files-0.5.3/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"}],
+        "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.5.3", "name":"qubit-local-files", "version":"0.5.3", "manifest_path":manifest.to_str().unwrap(), "source":"registry+https://github.com/rust-lang/crates.io-index"}],
         "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.5.3"}]}]}
     });
-    assert!(validate_candidate_local_files_edge(&registry_graph, "consumer 1.0.0", &manifest).is_err());
+    let version_error = validate_candidate_local_files_edge(&registry_graph, "consumer 1.0.0", &manifest)
+        .expect_err("old registry version must be rejected");
+    assert!(version_error.contains("0.5.3") && version_error.contains("expected 0.6.0"), "{version_error}");
+
+    let registry_source_graph = serde_json::json!({
+        "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.0", "name":"qubit-local-files", "version":"0.6.0", "manifest_path":manifest.to_str().unwrap(), "source":"registry+https://github.com/rust-lang/crates.io-index"}],
+        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.0"}]}]}
+    });
+    let source_error = validate_candidate_local_files_edge(&registry_source_graph, "consumer 1.0.0", &manifest)
+        .expect_err("registry source must be rejected");
+    assert!(source_error.contains("candidate source must be a path package"), "{source_error}");
 }
 
 #[test]
