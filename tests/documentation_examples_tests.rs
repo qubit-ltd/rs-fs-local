@@ -470,6 +470,92 @@ fn toml_path(path: &Path) -> String {
         .replace('"', "\\\"")
 }
 
+fn dependency_package_id(
+    graph: &serde_json::Value,
+    consumer_id: &str,
+    name: &str,
+) -> Result<String, String> {
+    graph["resolve"]["nodes"]
+        .as_array()
+        .and_then(|nodes| nodes.iter().find(|node| node["id"].as_str() == Some(consumer_id)))
+        .and_then(|node| node["deps"].as_array())
+        .and_then(|deps| {
+            deps.iter().find(|dep| {
+                dep["name"]
+                    .as_str()
+                    .is_some_and(|dep_name| dep_name.replace('_', "-") == name)
+            })
+        })
+        .and_then(|dep| dep["pkg"].as_str())
+        .map(str::to_owned)
+        .ok_or_else(|| format!("{consumer_id} has no {name} dependency edge"))
+}
+
+fn validate_candidate_local_files_edge(
+    graph: &serde_json::Value,
+    consumer_id: &str,
+    candidate_manifest: &Path,
+) -> Result<(), String> {
+    let packages = graph["packages"]
+        .as_array()
+        .ok_or("metadata packages missing")?;
+    let package_id = dependency_package_id(graph, consumer_id, "qubit-local-files")?;
+    let package = packages
+        .iter()
+        .find(|package| package["id"].as_str() == Some(package_id.as_str()))
+        .ok_or_else(|| format!("package for edge {package_id} missing"))?;
+    let actual_manifest = PathBuf::from(
+        package["manifest_path"]
+            .as_str()
+            .ok_or("package manifest path missing")?,
+    )
+    .canonicalize()
+    .map_err(|error| format!("cannot resolve dependency manifest: {error}"))?;
+    let expected_manifest = candidate_manifest
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve candidate manifest: {error}"))?;
+    if actual_manifest != expected_manifest {
+        return Err(format!(
+            "dependency resolved to {} instead of {}",
+            actual_manifest.display(),
+            expected_manifest.display()
+        ));
+    }
+    if package["version"].as_str() != Some("0.6.0") {
+        return Err(format!(
+            "candidate version is {}, expected 0.6.0",
+            package["version"]
+        ));
+    }
+    if !package["source"].is_null() {
+        return Err(format!(
+            "candidate source must be a path package, got {}",
+            package["source"]
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_candidate_local_files_identity_requires_candidate_path_version_and_source() {
+    let fixture = tempfile::tempdir().expect("candidate identity fixture");
+    let candidate_root = fixture.path().join("rs-local-files");
+    fs::create_dir(&candidate_root).expect("candidate root");
+    let manifest = candidate_root.join("Cargo.toml");
+    fs::write(&manifest, "[package]\nname='qubit-local-files'\nversion='0.6.0'\n").unwrap();
+    let graph = serde_json::json!({
+        "packages": [{"id":"path+file:///candidate/rs-local-files#qubit-local-files@0.6.0", "name":"qubit-local-files", "version":"0.6.0", "manifest_path":manifest.to_str().unwrap(), "source":null}],
+        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"path+file:///candidate/rs-local-files#qubit-local-files@0.6.0"}]}]}
+    });
+    assert!(validate_candidate_local_files_edge(&graph, "consumer 1.0.0", &manifest).is_ok());
+
+    let registry_graph = serde_json::json!({
+        "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.5.3", "name":"qubit-local-files", "version":"0.5.3", "manifest_path":"/registry/qubit-local-files-0.5.3/Cargo.toml", "source":"registry+https://github.com/rust-lang/crates.io-index"}],
+        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.5.3"}]}]}
+    });
+    assert!(validate_candidate_local_files_edge(&registry_graph, "consumer 1.0.0", &manifest).is_err());
+}
+
 #[test]
 fn test_readme_and_user_guide_examples_compile() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -482,6 +568,11 @@ fn test_readme_and_user_guide_examples_compile() {
         .as_str()
         .expect("tempfile development dependency requirement");
     let sibling_root = root.parent().expect("candidate checkout has a parent");
+    let candidate_manifest =
+        std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST").map(PathBuf::from);
+    let candidate_root = candidate_manifest
+        .as_ref()
+        .map(|manifest| manifest.parent().expect("candidate manifest parent").to_path_buf());
     let mut patches = Vec::new();
     for (package, sibling) in [
         ("qubit-fs", "rs-fs"),
@@ -491,7 +582,13 @@ fn test_readme_and_user_guide_examples_compile() {
         ("qubit-io", "rs-io"),
         ("qubit-spi", "rs-spi"),
     ] {
-        let path = sibling_root.join(sibling);
+        let path = if package == "qubit-local-files" {
+            candidate_root
+                .clone()
+                .unwrap_or_else(|| sibling_root.join(sibling))
+        } else {
+            sibling_root.join(sibling)
+        };
         if path.join("Cargo.toml").is_file() {
             patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
         }
@@ -587,7 +684,32 @@ fn test_readme_and_user_guide_examples_compile() {
             "{}",
             String::from_utf8_lossy(&metadata.stderr)
         );
-        let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
+        let graph: serde_json::Value =
+            serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
+        if let Some(candidate_manifest) = &candidate_manifest {
+            let consumer_id = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|package| {
+                    package["name"]
+                        == format!(
+                            "local-documentation-{}",
+                            match profile {
+                                ExampleProfile::Direct => "direct",
+                                ExampleProfile::DirectCleanup => "direct-cleanup",
+                                ExampleProfile::Registry => "registry",
+                                ExampleProfile::Selection => "selection",
+                            }
+                        )
+                })
+                .unwrap()["id"]
+                .as_str()
+                .unwrap();
+            let local_id = dependency_package_id(&graph, consumer_id, "qubit-fs-local").unwrap();
+            validate_candidate_local_files_edge(&graph, &local_id, candidate_manifest)
+                .unwrap_or_else(|error| panic!("candidate identity for {profile:?}: {error}"));
+        }
         let mut expected_graph = expected.clone();
         expected_graph.extend(["qubit-fs-local", "qubit-local-files", "qubit-io"]);
         if !profile.is_direct() {
@@ -705,6 +827,28 @@ fn test_readme_and_user_guide_examples_compile() {
                 "{document} example {block_index} for {profile:?} must run"
             );
         }
+    }
+    if let Some(candidate_manifest) = candidate_manifest {
+        let metadata = Command::new(env!("CARGO"))
+            .args(["metadata", "--locked", "--all-features", "--format-version", "1"])
+            .current_dir(root)
+            .output()
+            .expect("resolve outer documentation test consumer graph");
+        assert!(
+            metadata.status.success(),
+            "{}",
+            String::from_utf8_lossy(&metadata.stderr)
+        );
+        let graph: serde_json::Value =
+            serde_json::from_slice(&metadata.stdout).expect("parse outer dependency graph");
+        let fs_local_id = graph["packages"].as_array().unwrap()
+            .iter()
+            .find(|package| package["name"] == "qubit-fs-local")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap();
+        validate_candidate_local_files_edge(&graph, fs_local_id, &candidate_manifest)
+            .unwrap_or_else(|error| panic!("outer candidate identity: {error}"));
     }
 }
 
