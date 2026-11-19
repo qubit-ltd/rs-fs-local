@@ -117,6 +117,7 @@ mod tests {
             .open_reader(&path)
             .expect("reader");
         let mut reader = LocalRangeReader::new(file, 1, Some(3)).expect("range");
+        assert!(!reader.is_buffered());
         let mut bytes = [b'!'; 7];
         // SAFETY: 2..5 is a valid output range.
         let count = unsafe { reader.read_unchecked(&mut bytes, 2, 3) }.expect("read");

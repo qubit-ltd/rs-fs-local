@@ -470,11 +470,7 @@ fn toml_path(path: &Path) -> String {
         .replace('"', "\\\"")
 }
 
-fn dependency_package_id(
-    graph: &serde_json::Value,
-    consumer_id: &str,
-    name: &str,
-) -> Result<String, String> {
+fn dependency_package_id(graph: &serde_json::Value, consumer_id: &str, name: &str) -> Result<String, String> {
     graph["resolve"]["nodes"]
         .as_array()
         .and_then(|nodes| nodes.iter().find(|node| node["id"].as_str() == Some(consumer_id)))
@@ -496,9 +492,7 @@ fn validate_candidate_local_files_edge(
     consumer_id: &str,
     candidate_manifest: &Path,
 ) -> Result<(), String> {
-    let packages = graph["packages"]
-        .as_array()
-        .ok_or("metadata packages missing")?;
+    let packages = graph["packages"].as_array().ok_or("metadata packages missing")?;
     let package_id = dependency_package_id(graph, consumer_id, "qubit-local-files")?;
     let package = packages
         .iter()
@@ -522,10 +516,7 @@ fn validate_candidate_local_files_edge(
         ));
     }
     if package["version"].as_str() != Some("0.6.0") {
-        return Err(format!(
-            "candidate version is {}, expected 0.6.0",
-            package["version"]
-        ));
+        return Err(format!("candidate version is {}, expected 0.6.0", package["version"]));
     }
     if !package["source"].is_null() {
         return Err(format!(
@@ -555,7 +546,10 @@ fn test_candidate_local_files_identity_requires_candidate_path_version_and_sourc
     });
     let version_error = validate_candidate_local_files_edge(&registry_graph, "consumer 1.0.0", &manifest)
         .expect_err("old registry version must be rejected");
-    assert!(version_error.contains("0.5.3") && version_error.contains("expected 0.6.0"), "{version_error}");
+    assert!(
+        version_error.contains("0.5.3") && version_error.contains("expected 0.6.0"),
+        "{version_error}"
+    );
 
     let registry_source_graph = serde_json::json!({
         "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.0", "name":"qubit-local-files", "version":"0.6.0", "manifest_path":manifest.to_str().unwrap(), "source":"registry+https://github.com/rust-lang/crates.io-index"}],
@@ -563,7 +557,10 @@ fn test_candidate_local_files_identity_requires_candidate_path_version_and_sourc
     });
     let source_error = validate_candidate_local_files_edge(&registry_source_graph, "consumer 1.0.0", &manifest)
         .expect_err("registry source must be rejected");
-    assert!(source_error.contains("candidate source must be a path package"), "{source_error}");
+    assert!(
+        source_error.contains("candidate source must be a path package"),
+        "{source_error}"
+    );
 }
 
 #[test]
@@ -578,8 +575,7 @@ fn test_readme_and_user_guide_examples_compile() {
         .as_str()
         .expect("tempfile development dependency requirement");
     let sibling_root = root.parent().expect("candidate checkout has a parent");
-    let candidate_manifest =
-        std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST").map(PathBuf::from);
+    let candidate_manifest = std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST").map(PathBuf::from);
     let candidate_root = candidate_manifest
         .as_ref()
         .map(|manifest| manifest.parent().expect("candidate manifest parent").to_path_buf());
@@ -594,9 +590,7 @@ fn test_readme_and_user_guide_examples_compile() {
         ("qubit-spi", "rs-spi"),
     ] {
         let path = if package == "qubit-local-files" {
-            candidate_root
-                .clone()
-                .unwrap_or_else(|| sibling_root.join(sibling))
+            candidate_root.clone().unwrap_or_else(|| sibling_root.join(sibling))
         } else {
             sibling_root.join(sibling)
         };
@@ -695,8 +689,7 @@ fn test_readme_and_user_guide_examples_compile() {
             "{}",
             String::from_utf8_lossy(&metadata.stderr)
         );
-        let graph: serde_json::Value =
-            serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
+        let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
         if let Some(candidate_manifest) = &candidate_manifest {
             let consumer_id = graph["packages"]
                 .as_array()
@@ -850,9 +843,10 @@ fn test_readme_and_user_guide_examples_compile() {
             "{}",
             String::from_utf8_lossy(&metadata.stderr)
         );
-        let graph: serde_json::Value =
-            serde_json::from_slice(&metadata.stdout).expect("parse outer dependency graph");
-        let fs_local_id = graph["packages"].as_array().unwrap()
+        let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse outer dependency graph");
+        let fs_local_id = graph["packages"]
+            .as_array()
+            .unwrap()
             .iter()
             .find(|package| package["name"] == "qubit-fs-local")
             .unwrap()["id"]
