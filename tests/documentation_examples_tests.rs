@@ -588,7 +588,8 @@ fn test_readme_and_user_guide_examples_compile() {
         ("qubit-fs", "rs-fs"),
         ("qubit-local-files", "rs-local-files"),
         ("qubit-fs-registry", "rs-fs-registry"),
-        ("qubit-redact", "rs-redact"),
+        // Registry examples use APIs newer than the compatibility-pinned rs-redact checkout.
+        ("qubit-redact", "rs-redact-compatible"),
         ("qubit-io", "rs-io"),
         ("qubit-spi", "rs-spi"),
     ] {

@@ -22,6 +22,8 @@ Before candidate integration, both base lockfiles resolved `qubit-local-files 0.
 
 The provider documentation test checks the outer provider dependency edge and each enabled nested documentation consumer edge against the candidate manifest path, version, and source. Its helper tests accept the candidate identity and reject the old registry 0.5.3 package.
 
+For nested registry examples, the provider harness patches `qubit-redact` to the compatible sibling checkout `rs-redact-compatible` (revision `e87ae9adbbee4fd7c219cb03de4846b8b9f2b89e`). The pinned `rs-redact` checkout lacks an API used by the assigned `rs-fs-registry` sibling.
+
 ## Commands and results
 
 From each assigned repository root:
