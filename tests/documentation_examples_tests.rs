@@ -241,14 +241,8 @@ fn profile_dependencies(profile: ExampleProfile) -> Vec<&'static str> {
 fn should_run_example(document: &str, block_index: usize, profile: ExampleProfile) -> bool {
     match profile {
         ExampleProfile::Direct => {
-            block_index == 0
-                && [
-                    "README.md",
-                    "README.zh_CN.md",
-                    "doc/user_guide.md",
-                    "doc/user_guide.zh_CN.md",
-                ]
-                .contains(&document)
+            (block_index == 0 && ["README.md", "README.zh_CN.md"].contains(&document))
+                || ["doc/user_guide.md", "doc/user_guide.zh_CN.md"].contains(&document)
         }
         ExampleProfile::DirectCleanup => document == "doc/user_guide.md" || document == "doc/user_guide.zh_CN.md",
         ExampleProfile::Registry | ExampleProfile::Selection => {
@@ -420,6 +414,16 @@ fn test_all_published_rust_examples_have_supported_profiles() {
     ] {
         let source = fs::read_to_string(root.join(document)).unwrap();
         assert!(example_profiles(&source).is_ok(), "{document}");
+        for (_, block) in profiled_rust_blocks(&source).unwrap() {
+            assert!(
+                block.trim_start().starts_with("fn main()"),
+                "{document} examples must be complete main functions"
+            );
+            assert!(
+                !block.lines().any(|line| line.starts_with("# ")),
+                "{document} must not use hidden rustdoc lines"
+            );
+        }
     }
     for document in [
         "doc/local_file_system_adapter_design.md",
@@ -643,7 +647,11 @@ fn test_readme_and_user_guide_examples_compile() {
             if *example_profile != profile {
                 continue;
             }
-            let code = format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n");
+            let code = if block.trim_start().starts_with("fn main()") {
+                format!("{block}\n")
+            } else {
+                format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{block}\n}}\n")
+            };
             fs::write(bin.join(format!("doc_{document_index}_{block_index}.rs")), code)
                 .expect("example source should be written");
         }
@@ -1055,6 +1063,40 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         assert!(
             stale_local_versions.iter().all(|token| !text.contains(token)),
             "{document} must not describe an obsolete API version"
+        );
+    }
+    let core_version = manifest["dependencies"]["qubit-fs"]["version"]
+        .as_str()
+        .expect("core dependency version")
+        .trim_start_matches('^');
+    let local_version = manifest["package"]["version"]
+        .as_str()
+        .expect("local package version")
+        .split('.')
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(".");
+    let registry_version = manifest["dependencies"]["qubit-fs-registry"]["version"]
+        .as_str()
+        .expect("registry dependency version")
+        .trim_start_matches('^');
+    for document in ["README.md", "README.zh_CN.md", "doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+        let text = fs::read_to_string(root.join(document)).expect("installation docs should be readable");
+        assert!(
+            text.contains(&format!("cargo add qubit-fs@{core_version} qubit-fs-local@{local_version}")),
+            "{document} core and adapter install command must use matching candidate versions"
+        );
+        assert!(
+            text.contains(&format!("cargo add qubit-fs-local@{local_version} --features registry")),
+            "{document} registry command must use the current adapter version"
+        );
+        assert!(
+            text.contains(&format!("cargo add qubit-fs-registry@{registry_version}")),
+            "{document} must declare the current registry requirement"
+        );
+        assert!(
+            text.contains("candidate") || text.contains("候选"),
+            "{document} must distinguish candidate validation from a published install"
         );
     }
     for document in ["README.md", "README.zh_CN.md"] {

@@ -1,7 +1,7 @@
 # Qubit FS Local Adapter Design
 
-> Approved target design for `qubit-fs-local` 0.11.0 (package version `0.11.0`), reviewed against the public
-> `qubit-fs` 0.3 and `qubit-local-files` 0.6.0 boundaries. Implementation and regression
+> Approved target design for `qubit-fs-local` 0.12.0 (package version `0.12.0`), reviewed against the public
+> `qubit-fs` 0.4 and `qubit-local-files` 0.6.0 boundaries. Implementation and regression
 > tests converge on the contracts below.
 >
 > [中文设计文档](local_file_system_adapter_design.zh_CN.md) · [User guide](user_guide.md)
@@ -11,12 +11,15 @@
 `qubit-fs-local` is a thin adapter between `qubit-fs` and `qubit-local-files`:
 
 ```text
-qubit-fs facade and SPI contract
-             ▲
-             │ implements FileSystemSpi
-       qubit-fs-local
-             │ delegates
-             ▼
+qubit-fs FileSystem facade
+          │ FileSystemSpi
+          ▼
+LocalFileSystemSpi ──► LocalPathMapper / path projection
+       │              ├─ LocalRandomAccessReader
+       │              └─ LocalRangeReader
+       └─► LocalTempResourceSpi ──► LocalTempCleanupControl
+          │ native operations and cleanup lifecycle
+          ▼
 qubit-local-files native semantics and platform implementation
 ```
 
@@ -67,6 +70,7 @@ native path text. Every constructor requires an explicit policy.
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::Path as LogicalPath;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 use std::path::Path as NativePath;
@@ -75,8 +79,9 @@ let fs = LocalFileSystems::rooted(
     NativePath::new("/data"), LocalResourcePolicy::standard(),
 )?;
 let metadata = fs.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
-# let _ = metadata;
-# Ok::<(), Box<dyn std::error::Error>>(())
+let _ = metadata;
+    Ok(())
+}
 ```
 
 `LocalResourcePolicy::bounded(list, copy, delete)` sets independent per-request
@@ -316,9 +321,17 @@ and makes at most one further attempt; it provides neither guaranteed cleanup
 nor one total budget across prior explicit attempts and `Drop`. See the
 [English user-guide cleanup-budget section](user_guide.md#temporary-directory-cleanup-budgets).
 
+Cleanup errors describe the effect of the current call. If cleanup removes an
+Owned source and then fails to release its private sandbox, the error reports
+`PartiallyApplied` and retains the sandbox-pending recovery state. A retry that
+only releases that sandbox reports its own effect and does not claim that it
+removed the source again. Explicit cleanup errors retain the resource handle so
+the caller can adjust its cleanup control and retry when source ownership is
+known.
+
 ## 11. Async boundary
 
-Version 0.11.0 implements synchronous `FileSystemSpi` only: no
+Version 0.12.0 implements synchronous `FileSystemSpi` only: no
 `AsyncFileSystemSpi`, boxed futures, runtime tasks, or automatic async registry
 provider around blocking I/O. Async copy is verified by providers implementing
 the async SPI.
@@ -350,6 +363,14 @@ caller descriptor and aliases. Rooted authority and `FileSystemId` are absent
 from canonical URIs, so replay must persist them with provider selection.
 Named selection chooses one provider; fallback requires an explicit chain, auto
 selection, or registry default selection.
+
+Host URI decoding validates that the path can be represented by the native
+platform before constructing a resolution. On Windows, Host `file:` URIs need
+an absolute drive path such as `file:///C:/reports/summary.csv`; a drive-less
+path such as `file:///tmp/data` is invalid. Rooted URIs are decoded inside the
+registered authority. Canonical URI replay must preserve provider selection
+and filesystem identity because neither the Rooted authority nor its identity
+is encoded in the URI.
 
 The opt-in `registry` feature also submits one process-host provider to the
 synchronous filesystem inventory. Its factory selects the finite
@@ -428,7 +449,7 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the `qubit-fs` 0.3 `OpenFailure` contract.
+Opening writer or temporary sessions follows the `qubit-fs` 0.4 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md#opening-failures-and-recovery).
 

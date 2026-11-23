@@ -4,7 +4,7 @@
 > `qubit-local-files` 0.6.0 公共边界复核。本文定义 `qubit-fs-local` 重构后的职责和映射
 > 契约；实现与回归测试以本文定义的公共边界和映射契约为收敛目标。
 >
-> 适用于 `qubit-fs-local` 0.11.0（包版本 `0.11.0`）与 `qubit-fs` 0.3 · [English design](local_file_system_adapter_design.md) ·
+> 适用于 `qubit-fs-local` 0.12.0（包版本 `0.12.0`）与 `qubit-fs` 0.4 · [English design](local_file_system_adapter_design.md) ·
 > [用户手册](user_guide.zh_CN.md)
 
 ## 1. 定位
@@ -12,12 +12,15 @@
 `qubit-fs-local` 是 `qubit-fs` 与 `qubit-local-files` 之间的薄适配层：
 
 ```text
-qubit-fs 门面与 SPI 契约
-            ▲
-            │ implements FileSystemSpi
-      qubit-fs-local
-            │ delegates
-            ▼
+qubit-fs FileSystem 门面
+          │ FileSystemSpi
+          ▼
+LocalFileSystemSpi ──► LocalPathMapper / 路径投影
+       │              ├─ LocalRandomAccessReader
+       │              └─ LocalRangeReader
+       └─► LocalTempResourceSpi ──► LocalTempCleanupControl
+          │ native 操作与清理生命周期
+          ▼
 qubit-local-files 本地语义与平台实现
 ```
 
@@ -93,6 +96,7 @@ impl LocalFileSystems {
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::Path as LogicalPath;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
@@ -104,7 +108,8 @@ let file_system = LocalFileSystems::rooted(
 )?;
 let path = LogicalPath::parse("/reports/summary.csv")?;
 let _metadata = file_system.stat(&path)?;
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 `LocalFileSystems` 只组织 factory，不包含文件算法。每个 factory 都要求显式 `LocalResourcePolicy`；
@@ -489,6 +494,11 @@ failure 通过独立的 typed `LocalCopyFailure` 映射路径保留完整状态�
 
 门面会补齐并规范化通用上下文，adapter 不伪造其他 provider identity。
 
+Cleanup error 描述本次调用的效果。若 cleanup 已移除 Owned 源资源，随后释放私有 sandbox
+失败，错误会报告 `PartiallyApplied` 并保留 sandbox-pending 恢复状态。只释放 sandbox 的后续重试
+会报告本次自身效果，不会再次声称移除了源。显式 cleanup error 保留资源句柄；源所有权明确时，
+调用方可调整 cleanup control 后重试。
+
 ## 13. Registry 集成
 
 `registry` feature 提供 `LocalFileSystemProvider`。它负责：
@@ -513,6 +523,11 @@ failure 通过独立的 typed `LocalCopyFailure` 映射路径保留完整状态�
 - 返回具体 `FileSystemResolution`。
 
 Provider 返回的是 `FileSystem` 门面，不是 `Arc<dyn FileSystem>` 或 operation SPI。
+
+Host URI 解码会在创建 resolution 前检查路径能否由本机表示。Windows Host `file:` URI 必须
+包含绝对盘符路径，例如 `file:///C:/reports/summary.csv`；`file:///tmp/data` 等无盘符路径非法。
+Rooted URI 在注册 authority 内解码。Canonical URI 不包含 Rooted authority 或其 identity，重放时
+必须同时保存 provider selection 和 filesystem identity。
 
 非 `file` 请求属于 provider 不适用的情况，返回 `Unsupported`，因此可以在
 `OnAbsence` fallback chain 中交给其他 provider。已经识别为 `file` 的请求如果包含
@@ -622,7 +637,7 @@ src/
 不改变其他操作预算。期限采用协作式检查，不能打断阻塞的原生调用；预算不等于进程 RSS
 上限，也不是并发请求的累计配额。临时资源的生命周期清理仍独立于普通删除预算。
 
-writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+writer 和临时会话的打开遵循 `qubit-fs` 0.4 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 本地 provider 为原生普通文件窗口声明 Conditional `RangeRead`。适配层在同一个已打开

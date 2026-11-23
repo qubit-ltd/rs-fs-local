@@ -5,8 +5,8 @@
 ## 手册目标与读者
 
 本手册面向需要使用本地主机提供同步文件系统的 `qubit-fs` Rust 应用，覆盖当前
-`qubit-fs-local` 0.11.2 版本（包版本 `0.11.2`）：直接创建 host/rooted 门面，以及可选的
-registry provider。本版本集成 `qubit-fs` 0.3 与 `qubit-local-files` 0.6.0。
+`qubit-fs-local` 0.12.0 版本（包版本 `0.12.0`）：直接创建 host/rooted 门面，以及可选的
+registry provider。本版本集成 `qubit-fs` 0.4 与 `qubit-local-files` 0.6.0。
 
 ## 概念模型
 
@@ -36,20 +36,26 @@ canonical URI。
 ## 安装与最小配置
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-local@0.11
+cargo add qubit-fs@0.4 qubit-fs-local@0.12
 ```
 
 如需 registry，请启用 feature，并在应用中添加 registry crate：
 
 ```bash
 cargo add qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs-local@0.12 --features registry
 ```
+
+这些命令描述候选版本约束。crates.io 安装需要等待兼容的 `qubit-fs` 0.4、
+`qubit-local-files` 0.6 和 `qubit-fs-registry` 0.8 发布；当前验证使用已登记的候选 path
+依赖图。使用 `qubit-fs-local` 0.11 的客户端必须同时迁移 core 与 adapter，因为公开 core
+类型会跨越这条依赖边界。启用 registry 的客户端还应同步 registry crate。
 
 ## 核心工作流
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
@@ -76,7 +82,8 @@ let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
 assert_eq!(metadata.len(), Some(b"name,total\nsample,1\n".len() as u64));
 println!("{metadata:?}");
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 所有构造函数都需要 `LocalResourcePolicy`；普通递归工作流应传入完整的列表、复制和删除上限，
@@ -134,6 +141,55 @@ Provider 深度仍从原请求根计算。Provider 条目预算统计 walker 实
 walker 到达目标 prefix 前耗尽。目标不存在时返回空列举。被剪枝后代上的错误不再可见；walker 已经
 遇到的兄弟条目仍可能因错误导致列举失败。协作式 deadline 无法中断已经开始的 I/O 调用。
 
+以下完整 Host 示例以明确的逻辑根列举报表子树。匹配 prefix 本身会返回，迭代以正常 EOF
+结束；若请求预算不足以返回所选条目，stream 会报告错误。
+
+<!-- fs-local-example: direct -->
+```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use qubit_fs::directory::{ListFilter, ListOptions, ListScope};
+    use qubit_fs::Path;
+    use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
+
+    let temp = std::env::temp_dir().join(format!("qubit-fs-local-subtree-{}", std::process::id()));
+    if temp.exists() {
+        std::fs::remove_dir_all(&temp)?;
+    }
+    std::fs::create_dir_all(temp.join("reports/archive"))?;
+    std::fs::write(temp.join("reports/summary.csv"), b"total\n1\n")?;
+    std::fs::write(temp.join("outside.txt"), b"ignored")?;
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+    let root = host_path_to_logical(&temp)?;
+    let prefix = Path::parse(&format!("{}/reports", root.as_str()))?;
+    let report = Path::parse(&format!("{}/reports/summary.csv", root.as_str()))?;
+    let outside = Path::parse(&format!("{}/outside.txt", root.as_str()))?;
+    let mut listing = filesystem.list(
+        &ListScope::Path(root.clone()),
+        ListOptions::default()
+            .with_recursive(true)
+            .with_filter(Some(ListFilter::Subtree("reports".to_owned()))),
+    )?;
+    let mut paths = Vec::new();
+    while let Some(entry) = listing.next_entry()? {
+        paths.push(entry.path);
+    }
+    assert!(paths.contains(&prefix));
+    assert!(paths.contains(&report));
+    assert!(!paths.contains(&outside));
+
+    let mut limited = filesystem.list(
+        &ListScope::Path(root),
+        ListOptions::default()
+            .with_recursive(true)
+            .with_filter(Some(ListFilter::Subtree("reports".to_owned())))
+            .with_max_entries(Some(1)),
+    )?;
+    let _prefix = limited.next_entry()?.expect("子树 prefix 会返回");
+    assert!(limited.next_entry().is_err(), "条目预算耗尽会返回错误");
+    Ok(())
+}
+```
+
 列举正常返回 EOF 不代表整棵树已扫描完。深度边界及预算调整方式见
 [标准预算与显式覆盖](#标准预算与显式覆盖)。
 
@@ -141,6 +197,7 @@ walker 到达目标 prefix 前耗尽。目标不存在时返回空列举。被�
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::time::Duration;
 use qubit_fs_local::{
     LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
@@ -159,8 +216,9 @@ let policy = LocalResourcePolicy::bounded(
     ),
 );
 let file_system = LocalFileSystems::host(policy)?;
-# let _ = file_system;
-# Ok::<(), Box<dyn std::error::Error>>(())
+let _ = file_system;
+    Ok(())
+}
 ```
 
 逻辑路径文本上限报告为 `Unknown`，因为原生 component 上限无法涵盖百分号展开和非 UTF-8
@@ -213,6 +271,7 @@ listing 深度是裁剪边界，不是完整性检查：请求根深度为零，
 
 <!-- fs-local-example: direct-cleanup -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::time::Duration;
 
 use qubit_fs::metadata::FileSystemId;
@@ -239,7 +298,8 @@ control.set_limits(Some(LocalTempCleanupResourceLimits::new(
 )));
 directory.cleanup()?;
 assert_eq!(root.path().read_dir()?.count(), 0);
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 此可运行的测试/示例需要将 `tempfile` 加为开发依赖：
@@ -253,7 +313,7 @@ assert_eq!(root.path().read_dir()?.count(), 0);
 应分别创建 control。registry 用户可以保留 `LocalFileSystemProvider::temp_cleanup_control()`；
 直接使用 SPI 时，应在创建 filesystem 前调用 `with_temp_cleanup_control` 绑定 control。
 
-writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。应保留恢复会话与显式清理
+writer 和临时会话的打开遵循 `qubit-fs` 0.4 的 `OpenFailure` 契约。应保留恢复会话与显式清理
 错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 ## 进阶用法
@@ -264,12 +324,14 @@ writer 和临时会话的打开遵循 `qubit-fs` 0.3 的 `OpenFailure` 契约。
 
 <!-- fs-local-example: registry -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs_local as _;
 use qubit_fs_registry::FileSystemRegistry;
 
 let registry = FileSystemRegistry::from_inventory()?;
 assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 rooted provider 持有已打开的原生 authority，必须由应用传入 root 和 policy 显式构造并注册。
@@ -278,6 +340,7 @@ rooted provider 持有已打开的原生 authority，必须由应用传入 root 
 
 <!-- fs-local-example: registry -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
@@ -298,7 +361,8 @@ let resolution = registry.resolve_config(&config)?;
 assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
 assert_eq!(resolution.file_system().properties().info().id().as_str(), "guide-reports");
 assert_eq!(resolution.file_system().stat(resolution.path())?.len(), Some(payload.len() as u64));
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 如改用 `LocalFileSystemProvider::rooted(id, root, policy)` 注册 provider，它会在构造阶段打开给定的
@@ -320,6 +384,7 @@ cargo add qubit-spi@0.14
 
 <!-- fs-local-example: selection -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::{metadata::FileSystemId, path::ConnectionUri};
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
@@ -361,7 +426,8 @@ assert_ne!(
 );
 assert_eq!(first.file_system().stat(first.path())?.len(), Some(payload_a.len() as u64));
 assert_eq!(second.file_system().stat(second.path())?.len(), Some(payload_b.len() as u64));
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 两个 resolution 的 canonical URI 都是 `file:///reports/summary.csv`：其中只有 provider
@@ -415,6 +481,11 @@ options 和 credentials。
 provider。scheme 已经是 `file` 后，远程 authority、query、options、credentials 或非法路径
 等配置错误仍然是终止错误；`OnAbsence` 不会跳过这些错误。rooted authority 无法打开时也会
 以终止性的 initialization failure 结束。
+
+Windows Host provider 的 `file:` URI 必须带绝对盘符路径，例如
+`file:///C:/reports/summary.csv`；`file:///tmp/data` 等无盘符路径属于非法 Host 配置。
+Rooted URI 则在已注册的 rooted authority 内解释。重放 Rooted resolution 时，应将 provider
+selection 和 filesystem identity 与 canonical URI 一并保存。
 
 只有显式的 `ProviderSelection::chain`、自动的 `ProviderSelection::auto()`，或经由 registry
 默认 selection 的解析才会启用 fallback。`FileSystemConfig` 未设置 selection 时，

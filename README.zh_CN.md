@@ -11,9 +11,9 @@
 主机文件系统，或希望把一个原生目录固定为 rooted 文件系统的 authority，同时不想在业务代码中
 重复处理 URI 解析和原生路径转换时，可以使用本 crate。
 
-本文档适用于 `qubit-fs-local` 0.11.2（包版本 `0.11.2`）。
+本文档适用于 `qubit-fs-local` 0.12.0（包版本 `0.12.0`）。
 
-本版本使用 `qubit-fs` 0.3 和 `qubit-local-files` 0.6.0。provider 上限只收紧资源预算，不改变请求行为；
+本版本使用 `qubit-fs` 0.4 和 `qubit-local-files` 0.6.0。provider 上限只收紧资源预算，不改变请求行为；
 writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 子树 prefix 还会跳过无关目录的后代，同时保留原请求根；详见[子树列举行为](doc/user_guide.zh_CN.md#列举子树)。
@@ -22,15 +22,20 @@ writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵�
 ## 安装
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-local@0.11
+cargo add qubit-fs@0.4 qubit-fs-local@0.12
 ```
 
 只有需要通过 `qubit-fs-registry` 注册可选的 `file` provider 时，才需要启用 registry 集成：
 
 ```bash
 cargo add qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs-local@0.12 --features registry
 ```
+
+这些命令描述候选版本约束。crates.io 安装仍需等待兼容的 `qubit-fs` 0.4、
+`qubit-local-files` 0.6 和 `qubit-fs-registry` 0.8 发布；当前验证使用已登记的候选 path
+依赖图。使用 `qubit-fs-local` 0.11 的客户端必须同时迁移 core 与 adapter，因为公开类型会
+跨越这条依赖边界。
 
 ## 快速开始
 
@@ -40,6 +45,7 @@ cargo add qubit-fs-local@0.11 --features registry
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
@@ -55,7 +61,8 @@ let file_system = LocalFileSystems::rooted_with_id(
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 访问进程主机命名空间时使用 `LocalFileSystems::host(policy)`；`rooted(root, policy)` 生成进程内
@@ -69,6 +76,7 @@ println!("{metadata:?}");
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
 
@@ -78,7 +86,8 @@ let native = std::env::current_dir()?.join("Cargo.toml");
 let path = host_path_to_logical(&native)?;
 let prefix = file_system.read_prefix(&path, ReadOptions::default(), 4096)?;
 assert!(prefix.bytes().len() <= 4096);
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 provider 上限、发布恢复、registry fallback，以及列举和范围读取契约详见
