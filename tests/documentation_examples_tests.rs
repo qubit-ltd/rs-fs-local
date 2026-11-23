@@ -557,7 +557,7 @@ fn test_candidate_local_files_identity_requires_candidate_path_version_and_sourc
     let version_error = validate_candidate_local_files_edge(&registry_graph, "consumer 1.0.0", &manifest)
         .expect_err("old registry version must be rejected");
     assert!(
-        version_error.contains("0.5.3") && version_error.contains("expected 0.6.0"),
+        version_error.contains("0.5.3") && version_error.contains("expected 0.6.1"),
         "{version_error}"
     );
 
