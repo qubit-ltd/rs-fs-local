@@ -110,6 +110,114 @@ pub struct LocalFileSystemSpi {
     temp_cleanup_control: Option<LocalTempCleanupControl>,
 }
 
+mod native_option_call_recording {
+    use qubit_local_files::options::LocalReadOptions;
+    use qubit_local_files::options::LocalTempDirectoryOptions;
+    use qubit_local_files::options::LocalTempFileOptions;
+    use qubit_local_files::options::LocalWriteOptions;
+
+    #[cfg(test)]
+    use std::cell::RefCell;
+    #[cfg(test)]
+    use std::path::PathBuf;
+    #[cfg(test)]
+    use std::time::Duration;
+
+    #[cfg(test)]
+    use qubit_local_files::options::LocalTempCleanupLimits;
+
+    #[cfg(test)]
+    #[derive(Debug, Eq, PartialEq)]
+    pub(super) enum NativeOptionCall {
+        Read {
+            open_retry_timeout: Option<Duration>,
+        },
+        Write {
+            open_retry_timeout: Option<Duration>,
+        },
+        TempFile {
+            max_attempts: Option<usize>,
+            prefix: Option<String>,
+            suffix: Option<String>,
+            parent: Option<PathBuf>,
+            creates_parent: bool,
+        },
+        TempDirectory {
+            max_attempts: Option<usize>,
+            prefix: Option<String>,
+            suffix: Option<String>,
+            parent: Option<PathBuf>,
+            creates_parent: bool,
+            cleanup_limits: LocalTempCleanupLimits,
+        },
+    }
+
+    #[cfg(test)]
+    thread_local! {
+        static CALLS: RefCell<Vec<NativeOptionCall>> = const { RefCell::new(Vec::new()) };
+    }
+
+    #[cfg(test)]
+    pub(super) fn take() -> Vec<NativeOptionCall> {
+        CALLS.with_borrow_mut(std::mem::take)
+    }
+
+    #[inline(always)]
+    pub(super) fn read(options: &LocalReadOptions) -> &LocalReadOptions {
+        #[cfg(test)]
+        CALLS.with_borrow_mut(|calls| {
+            calls.push(NativeOptionCall::Read {
+                open_retry_timeout: options.open_retry_timeout(),
+            });
+        });
+        options
+    }
+
+    #[inline(always)]
+    pub(super) fn write(options: &LocalWriteOptions) -> &LocalWriteOptions {
+        #[cfg(test)]
+        CALLS.with_borrow_mut(|calls| {
+            calls.push(NativeOptionCall::Write {
+                open_retry_timeout: options.open_retry_timeout(),
+            });
+        });
+        options
+    }
+
+    #[inline(always)]
+    pub(super) fn temp_file(options: &LocalTempFileOptions) -> &LocalTempFileOptions {
+        #[cfg(test)]
+        CALLS.with_borrow_mut(|calls| {
+            calls.push(NativeOptionCall::TempFile {
+                max_attempts: options.max_attempts(),
+                prefix: options.prefix().map(str::to_owned),
+                suffix: options.suffix().map(str::to_owned),
+                parent: options.parent().map(|path| path.to_path_buf()),
+                creates_parent: options.creates_parent(),
+            });
+        });
+        options
+    }
+
+    #[inline(always)]
+    pub(super) fn temp_directory(
+        options: &LocalTempDirectoryOptions,
+    ) -> &LocalTempDirectoryOptions {
+        #[cfg(test)]
+        CALLS.with_borrow_mut(|calls| {
+            calls.push(NativeOptionCall::TempDirectory {
+                max_attempts: options.max_attempts(),
+                prefix: options.prefix().map(str::to_owned),
+                suffix: options.suffix().map(str::to_owned),
+                parent: options.parent().map(|path| path.to_path_buf()),
+                creates_parent: options.creates_parent(),
+                cleanup_limits: options.cleanup_limits(),
+            });
+        });
+        options
+    }
+}
+
 impl LocalFileSystemSpi {
     /// Maps resolved read behavior and applies the configured native open
     /// policy.
@@ -741,7 +849,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = self.read_options(request.options());
         let reader = self
             .native
-            .open_reader_with_options(&path, &options)
+            .open_reader_with_options(&path, native_option_call_recording::read(&options))
             .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))?;
         let info = self
             .info(request.path().clone())
@@ -781,7 +889,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = self.read_options(request.options());
         let reader = self
             .native
-            .open_reader_with_options(&path, &options)
+            .open_reader_with_options(&path, native_option_call_recording::read(&options))
             .map_err(|error| self.map(error, FsOperation::OpenReader, request.path()))?;
         let metadata = local_outcome_mapper::metadata(reader.metadata().clone());
         let info = self.info(request.path().clone()).with_metadata(metadata);
@@ -817,7 +925,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .write_options(request.options())
             .map_err(|error| error.with_effect_state(FsEffectState::Unchanged))?;
         self.native
-            .open_writer_with_options(&path, &options)
+            .open_writer_with_options(&path, native_option_call_recording::write(&options))
             .map(|value| {
                 OpenedWriter::new(
                     self.info(request.path().clone()),
@@ -1058,7 +1166,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
         let options = self.temp_file_options(options);
         let value =
             self.native
-                .create_temp_file_with_options(&options)
+                .create_temp_file_with_options(native_option_call_recording::temp_file(&options))
                 .map_err(|error| match request.options().parent() {
                     Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
                     None => error_mapper::map_without_path(
@@ -1118,9 +1226,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
             options = options.with_create_parent();
         }
         let options = self.temp_directory_options(options);
-        let value = self
-            .native
-            .create_temp_directory_with_options(&options)
+        let value = self.native.create_temp_directory_with_options(
+            native_option_call_recording::temp_directory(&options),
+        )
             .map_err(|error| match request.options().parent() {
                 Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
                 None => error_mapper::map_without_path(
@@ -1172,21 +1280,11 @@ mod tests {
     use qubit_fs::directory::DeleteOptions;
     use qubit_fs::directory::ListOptions;
     use qubit_fs::directory::ListScope;
-    use qubit_fs::error::FsResult;
+    use qubit_fs::error::FsErrorKind;
     use qubit_fs::metadata::FileSystemId;
     use qubit_fs::path::Path;
     use qubit_fs::path::Path as LogicalPath;
     use qubit_fs::read::ReadOptions;
-    use qubit_fs::spi::CreateTempDirectoryRequest;
-    use qubit_fs::spi::CreateTempFileRequest;
-    use qubit_fs::spi::FileSystemSpi;
-    use qubit_fs::spi::OpenReaderRequest;
-    use qubit_fs::spi::OpenWriterRequest;
-    use qubit_fs::spi::OpenedRandomAccessReader;
-    use qubit_fs::spi::OpenedReader;
-    use qubit_fs::spi::OpenedTempDirectory;
-    use qubit_fs::spi::OpenedTempFile;
-    use qubit_fs::spi::OpenedWriter;
     use qubit_fs::spi::ProviderOperation;
     use qubit_fs::spi::ProviderProperties;
     use qubit_fs::temp::TempOptions;
@@ -1195,112 +1293,13 @@ mod tests {
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalDeleteOptions;
     use qubit_local_files::options::LocalListOptions;
-    use qubit_local_files::options::LocalTempDirectoryOptions;
-    use qubit_local_files::options::LocalTempFileOptions;
-    use qubit_local_files::options::LocalWriteMode;
+    use qubit_local_files::options::LocalTempCleanupLimits;
 
+    use crate::LocalTempCleanupControl;
+    use crate::LocalTempCleanupResourceLimits;
     use super::LocalFileSystemSpi;
-
-    struct OptionProbe {
-        inner: LocalFileSystemSpi,
-        timeout: Option<Duration>,
-        attempts: Option<usize>,
-    }
-
-    impl FileSystemSpi for OptionProbe {
-        fn properties(&self) -> ProviderProperties {
-            self.inner.properties()
-        }
-        fn stat(&self, r: qubit_fs::spi::StatRequest<'_>) -> FsResult<qubit_fs::spi::StatResponse> {
-            self.inner.stat(r)
-        }
-        fn open_reader(&self, r: OpenReaderRequest<'_>) -> FsResult<OpenedReader> {
-            assert_eq!(
-                self.timeout
-                    .or_else(|| qubit_local_files::options::LocalReadOptions::new().open_retry_timeout()),
-                self.inner.read_options(r.options()).open_retry_timeout()
-            );
-            self.inner.open_reader(r)
-        }
-        fn open_random_access_reader(&self, r: OpenReaderRequest<'_>) -> FsResult<OpenedRandomAccessReader> {
-            assert_eq!(
-                self.timeout
-                    .or_else(|| qubit_local_files::options::LocalReadOptions::new().open_retry_timeout()),
-                self.inner.read_options(r.options()).open_retry_timeout()
-            );
-            self.inner.open_random_access_reader(r)
-        }
-        fn open_writer(&self, r: OpenWriterRequest<'_>) -> FsResult<OpenedWriter> {
-            let mapped = super::local_options_mapper::write(r.options()).expect("mapper");
-            let actual = self.inner.write_options(r.options()).expect("write options");
-            assert_eq!(
-                self.timeout
-                    .or_else(
-                        || qubit_local_files::options::LocalWriteOptions::new(LocalWriteMode::CreateOrReplace)
-                            .open_retry_timeout()
-                    ),
-                actual.open_retry_timeout()
-            );
-            assert_eq!(mapped.metadata_policy(), actual.metadata_policy());
-            self.inner.open_writer(r)
-        }
-        fn create_temp_file(&self, r: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
-            let parent = r
-                .options()
-                .parent()
-                .map(|p| self.inner.native_temp_parent(p))
-                .transpose()?;
-            let mut base = LocalTempFileOptions::new()
-                .with_prefix(r.options().prefix())
-                .with_suffix(r.options().suffix());
-            if let Some(p) = parent.as_deref() {
-                base = base.with_parent(p);
-            }
-            if r.options().creates_parent() {
-                base = base.with_create_parent();
-            }
-            let actual = self.inner.temp_file_options(base);
-            assert_eq!(
-                self.attempts.or_else(|| LocalTempFileOptions::new().max_attempts()),
-                actual.max_attempts()
-            );
-            assert_eq!(r.options().prefix(), actual.prefix().unwrap_or_default());
-            assert_eq!(r.options().suffix(), actual.suffix().unwrap_or_default());
-            assert_eq!(r.options().creates_parent(), actual.creates_parent());
-            assert_eq!(parent.as_deref(), actual.parent());
-            self.inner.create_temp_file(r)
-        }
-        fn create_temp_directory(&self, r: CreateTempDirectoryRequest) -> FsResult<OpenedTempDirectory> {
-            let parent = r
-                .options()
-                .parent()
-                .map(|p| self.inner.native_temp_parent(p))
-                .transpose()?;
-            let mut base = LocalTempDirectoryOptions::new()
-                .with_prefix(r.options().prefix())
-                .with_suffix(r.options().suffix())
-                .with_cleanup_limits(self.inner.cleanup_limits());
-            if let Some(p) = parent.as_deref() {
-                base = base.with_parent(p);
-            }
-            if r.options().creates_parent() {
-                base = base.with_create_parent();
-            }
-            let cleanup = base.cleanup_limits();
-            let actual = self.inner.temp_directory_options(base);
-            assert_eq!(
-                self.attempts
-                    .or_else(|| LocalTempDirectoryOptions::new().max_attempts()),
-                actual.max_attempts()
-            );
-            assert_eq!(cleanup, actual.cleanup_limits());
-            assert_eq!(r.options().prefix(), actual.prefix().unwrap_or_default());
-            assert_eq!(r.options().suffix(), actual.suffix().unwrap_or_default());
-            assert_eq!(r.options().creates_parent(), actual.creates_parent());
-            assert_eq!(parent.as_deref(), actual.parent());
-            self.inner.create_temp_directory(r)
-        }
-    }
+    use super::native_option_call_recording::NativeOptionCall;
+    use super::native_option_call_recording::take as take_native_option_calls;
 
     #[test]
     fn test_execution_options_are_applied_for_host_and_rooted_facades() {
@@ -1323,12 +1322,17 @@ mod tests {
                 } else {
                     LocalFileSystemSpi::new(policy).unwrap()
                 };
-                let fs = FileSystem::from_spi(OptionProbe {
-                    inner,
-                    timeout,
-                    attempts,
-                })
-                .expect("facade");
+                let parent = if rooted {
+                    LogicalPath::parse("/temp-parent/child").unwrap()
+                } else {
+                    crate::host_path_to_logical(&root.path().join("temp-parent/child")).unwrap()
+                };
+                let expected_native_parent = inner.native_temp_parent(&parent).unwrap();
+                let cleanup_limits =
+                    LocalTempCleanupResourceLimits::new(2, 8, 4_096, Duration::from_secs(5));
+                let inner = inner
+                    .with_temp_cleanup_control(LocalTempCleanupControl::new(Some(cleanup_limits)));
+                let fs = FileSystem::from_spi(inner).expect("facade");
                 let expected_id = fs.properties().info().id().clone();
                 assert_eq!(if rooted { "option-probe" } else { "local-host" }, expected_id.as_str());
                 let src = if rooted {
@@ -1337,11 +1341,25 @@ mod tests {
                     crate::host_path_to_logical(&root.path().join("source")).unwrap()
                 };
                 let mut reader = fs.open_reader(&src, ReadOptions::default()).unwrap();
+                assert_eq!(
+                    vec![NativeOptionCall::Read {
+                        open_retry_timeout: timeout,
+                    }],
+                    take_native_option_calls(),
+                    "sequential reader must pass the configured timeout to the native call",
+                );
                 assert_eq!(&expected_id, reader.info().filesystem_id());
                 let mut bytes = vec![0; payload.len()];
                 reader.read_fully(&mut bytes).unwrap();
                 assert_eq!(payload, bytes);
                 let mut random = fs.open_random_access_reader(&src, ReadOptions::default()).unwrap();
+                assert_eq!(
+                    vec![NativeOptionCall::Read {
+                        open_retry_timeout: timeout,
+                    }],
+                    take_native_option_calls(),
+                    "random reader must pass the configured timeout to the native call",
+                );
                 assert_eq!(&expected_id, random.info().filesystem_id());
                 let mut bytes = vec![0; payload.len()];
                 assert_eq!(payload.len(), random.read_at(0, &mut bytes).unwrap());
@@ -1352,36 +1370,65 @@ mod tests {
                     crate::host_path_to_logical(&root.path().join("written")).unwrap()
                 };
                 let mut writer = fs.open_writer(&target, WriteOptions::default()).unwrap();
+                assert_eq!(
+                    vec![NativeOptionCall::Write {
+                        open_retry_timeout: timeout,
+                    }],
+                    take_native_option_calls(),
+                    "writer must pass the configured timeout to the native call",
+                );
                 assert_eq!(&expected_id, writer.info().filesystem_id());
                 writer.write_fully(payload).unwrap();
                 writer.commit().unwrap();
                 assert_eq!(payload, std::fs::read(root.path().join("written")).unwrap());
-                let parent = if rooted {
-                    LogicalPath::parse("/temp-parent/child").unwrap()
-                } else {
-                    crate::host_path_to_logical(&root.path().join("temp-parent/child")).unwrap()
-                };
                 let temp_options = TempOptions::new()
                     .with_parent(Some(parent))
                     .with_prefix("probe-")
                     .with_suffix(".tmp")
                     .with_create_parent(true);
                 let mut temp_file = fs.create_temp_file(temp_options.clone()).unwrap();
-                let file_path = if rooted {
-                    root.path().join(temp_file.path().to_string().trim_start_matches('/'))
-                } else {
-                    std::path::PathBuf::from(temp_file.path().to_string())
-                };
+                assert_eq!(
+                    vec![NativeOptionCall::TempFile {
+                        max_attempts: attempts,
+                        prefix: Some("probe-".to_owned()),
+                        suffix: Some(".tmp".to_owned()),
+                        parent: Some(expected_native_parent.clone()),
+                        creates_parent: true,
+                    }],
+                    take_native_option_calls(),
+                    "temporary-file creation must pass generated options to the native call",
+                );
+                let temp_file_path = temp_file.path().clone();
+                assert!(fs.stat(&temp_file_path).is_ok(), "created temp file is visible through the facade");
                 temp_file.cleanup().unwrap();
-                assert!(!file_path.exists());
+                assert_eq!(
+                    FsErrorKind::NotFound,
+                    fs.stat(&temp_file_path).expect_err("cleaned temp file must be absent").kind(),
+                );
                 let mut temp_dir = fs.create_temp_directory(temp_options).unwrap();
-                let dir_path = if rooted {
-                    root.path().join(temp_dir.path().to_string().trim_start_matches('/'))
-                } else {
-                    std::path::PathBuf::from(temp_dir.path().to_string())
-                };
+                assert_eq!(
+                    vec![NativeOptionCall::TempDirectory {
+                        max_attempts: attempts,
+                        prefix: Some("probe-".to_owned()),
+                        suffix: Some(".tmp".to_owned()),
+                        parent: Some(expected_native_parent),
+                        creates_parent: true,
+                        cleanup_limits: LocalTempCleanupLimits::new()
+                            .with_max_depth(2)
+                            .with_max_entries(8)
+                            .with_max_pending_path_bytes(4_096)
+                            .with_deadline(Duration::from_secs(5)),
+                    }],
+                    take_native_option_calls(),
+                    "temporary-directory creation must pass generated options to the native call",
+                );
+                let temp_directory_path = temp_dir.path().clone();
+                assert!(fs.stat(&temp_directory_path).is_ok(), "created temp directory is visible through the facade");
                 temp_dir.cleanup().unwrap();
-                assert!(!dir_path.exists());
+                assert_eq!(
+                    FsErrorKind::NotFound,
+                    fs.stat(&temp_directory_path).expect_err("cleaned temp directory must be absent").kind(),
+                );
             }
         }
     }

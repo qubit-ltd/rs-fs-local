@@ -74,9 +74,8 @@ fn test_open_missing_file_maps_native_error_context() {
     assert_eq!(Some(&path), error.path());
 }
 
-#[cfg(unix)]
 #[test]
-fn test_read_at_seek_error_maps_native_io_context() {
+fn test_facade_random_access_overflow_maps_native_io_context() {
     let fixture = Fixture::new();
     let native_path = fixture._root.path().join("payload");
     std::fs::write(&native_path, b"abcdef").expect("seed file");
