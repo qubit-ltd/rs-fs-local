@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Native outcome conversion helpers.
 
 use qubit_fs::copy::CopyFailureState;

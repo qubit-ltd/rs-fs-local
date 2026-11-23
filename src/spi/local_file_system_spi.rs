@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Host and Rooted synchronous SPI delegated to `qubit-local-files`.
 
 use std::num::NonZeroUsize;
@@ -525,8 +524,31 @@ impl LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns path-conversion errors from the local path mapper.
-    fn native_pair(&self, source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
-        Ok((self.native_path(source)?, self.native_path(target)?))
+    fn native_pair(
+        &self,
+        operation: FsOperation,
+        source: &Path,
+        target: &Path,
+    ) -> FsResult<(PathBuf, PathBuf)> {
+        let source_native = self.native_path(source).map_err(|error| {
+            error
+                .with_operation(operation)
+                .with_path(source.clone())
+                .with_target(target.clone())
+                .with_failure_path(source.clone())
+                .with_provider(&self.provider_id)
+                .with_effect_state(FsEffectState::Unchanged)
+        })?;
+        let target_native = self.native_path(target).map_err(|error| {
+            error
+                .with_operation(operation)
+                .with_path(source.clone())
+                .with_target(target.clone())
+                .with_failure_target(target.clone())
+                .with_provider(&self.provider_id)
+                .with_effect_state(FsEffectState::Unchanged)
+        })?;
+        Ok((source_native, target_native))
     }
 
     /// Converts a returned native path to its logical representation.
@@ -910,7 +932,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             }
         };
         let (source, target) = self
-            .native_pair(request.source(), request.target())
+            .native_pair(FsOperation::Copy, request.source(), request.target())
             .map_err(error_mapper::copy_path_error)?;
         self.native
             .copy_with_options(&source, &target, &options)
@@ -981,7 +1003,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
     /// errors, preserving the known namespace state.
     fn rename(&self, request: RenameRequest<'_>) -> Result<RenameOutcome, SpiRenameFailure> {
         let (source, target) = self
-            .native_pair(request.source(), request.target())
+            .native_pair(FsOperation::Rename, request.source(), request.target())
             .map_err(error_mapper::rename_path_error)?;
         let options = local_options_mapper::rename(request.options());
         self.native

@@ -67,6 +67,9 @@ impl LocalResourcePolicy {
     /// selected depth and does not establish that the full tree was scanned.
     /// Increase the provider listing depth, and ensure the request has no
     /// smaller depth limit, when a deeper scan is required.
+    /// `ListFilter::Subtree` uses recursive native discovery followed by facade
+    /// filtering. `ListFilter::LiteralPrefix` is rejected because the native
+    /// walker cannot express it.
     ///
     /// This method performs no I/O. Use the domain-specific overrides for
     /// larger workloads or explicitly select `unbounded` when appropriate.

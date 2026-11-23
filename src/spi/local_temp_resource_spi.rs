@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Temporary-resource lifecycle adapter retaining native authority.
 
 use std::path::Path;
@@ -31,6 +30,7 @@ use qubit_local_files::LocalTempDirectory;
 use qubit_local_files::LocalTempFile;
 use qubit_local_files::error::LocalFileEffectState;
 use qubit_local_files::error::LocalFileErrorKind;
+use qubit_local_files::error::LocalPersistError;
 use qubit_local_files::error::LocalPersistErrorParts;
 use qubit_local_files::options::LocalPersistOptions;
 use qubit_local_files::outcome::LocalPersistCleanupState;
@@ -106,7 +106,8 @@ impl LocalTempResourceSpi {
     }
 
     /// Applies the current cleanup control limits to an owned directory
-    /// resource.
+    /// resource before each lifecycle attempt and before Drop. Each attempt
+    /// snapshots the latest shared limits once at the native cleanup boundary.
     fn refresh_directory_cleanup_limits(&mut self) {
         let Self::Directory {
             resource: Some(resource),
@@ -205,6 +206,9 @@ impl LocalTempResourceSpi {
         let rooted = match self {
             Self::File { rooted, .. } | Self::Directory { rooted, .. } => *rooted,
         };
+        let provider_id = match self {
+            Self::File { provider_id, .. } | Self::Directory { provider_id, .. } => provider_id,
+        };
         let target = local_path_mapper::native(
             if rooted {
                 LocalFileSystemScope::Rooted
@@ -213,7 +217,7 @@ impl LocalTempResourceSpi {
             },
             target,
         )
-        .map_err(persist_path_error)?;
+        .map_err(|error| persist_path_error(error, target, provider_id))?;
         Ok((target, rooted))
     }
 }
@@ -410,15 +414,13 @@ fn persist_file(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let LocalPersistErrorParts {
+            let PersistRecoveryParts {
                 error,
-                resource,
                 state,
                 source_state,
                 stage,
                 ..
-            } = error.into_parts();
-            *slot = Some(resource);
+            } = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_persist_error(error, stage, logical_target, provider_id)
@@ -459,15 +461,13 @@ fn persist_directory(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let LocalPersistErrorParts {
+            let PersistRecoveryParts {
                 error,
-                resource,
                 state,
                 source_state,
                 stage,
                 ..
-            } = error.into_parts();
-            *slot = Some(resource);
+            } = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_persist_error(error, stage, logical_target, provider_id)
@@ -529,6 +529,41 @@ fn persist_failure_message(stage: LocalPersistStage) -> &'static str {
     }
 }
 
+/// Restores the retained resource before mapping a persistence failure.
+///
+/// Keeping this boundary shared ensures file and directory failures preserve
+/// the same native recovery state before their kind-specific context is added.
+struct PersistRecoveryParts {
+    error: LocalFileError,
+    state: LocalPersistFailureState,
+    source_state: LocalTempSourceState,
+    resolved_target: Option<PathBuf>,
+    stage: LocalPersistStage,
+}
+
+fn restore_persist_resource<T>(
+    slot: &mut Option<T>,
+    error: LocalPersistError<T>,
+) -> PersistRecoveryParts {
+    let LocalPersistErrorParts {
+        error,
+        resource,
+        state,
+        source_state,
+        resolved_target,
+        stage,
+        ..
+    } = error.into_parts();
+    *slot = Some(resource);
+    PersistRecoveryParts {
+        error,
+        state,
+        source_state,
+        resolved_target,
+        stage,
+    }
+}
+
 /// Keeps a retained native temporary file and restores it after a
 /// pre-publication failure.
 ///
@@ -562,16 +597,13 @@ fn keep_file(
             Ok(map_persist_outcome(result, target))
         }
         Err(error) => {
-            let LocalPersistErrorParts {
+            let PersistRecoveryParts {
                 error,
-                resource,
                 state,
                 source_state,
                 resolved_target,
                 stage,
-                ..
-            } = error.into_parts();
-            *slot = Some(resource);
+            } = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_keep_error(
@@ -622,16 +654,13 @@ fn keep_directory(
             Ok(map_persist_outcome(result, target))
         }
         Err(error) => {
-            let LocalPersistErrorParts {
+            let PersistRecoveryParts {
                 error,
-                resource,
                 state,
                 source_state,
                 resolved_target,
                 stage,
-                ..
-            } = error.into_parts();
-            *slot = Some(resource);
+            } = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_keep_error(
@@ -809,8 +838,22 @@ fn terminal_persist_error() -> SpiPersistFailure {
 ///
 /// A persistence failure with `NotPublished` state.
 #[inline]
-fn persist_path_error(error: FsError) -> SpiPersistFailure {
-    SpiPersistFailure::new(error, PersistFailureState::NotPublished)
+fn persist_path_error(
+    error: FsError,
+    target: &LogicalPath,
+    provider_id: &str,
+) -> SpiPersistFailure {
+    let mapped = FsError::with_source(
+        error.kind(),
+        FsOperation::PersistTemp,
+        "local temporary publication target cannot be represented",
+        error,
+    )
+    .with_target(target.clone())
+    .with_failure_target(target.clone())
+    .with_provider(provider_id)
+    .with_effect_state(FsEffectState::Unchanged);
+    SpiPersistFailure::new(mapped, PersistFailureState::NotPublished)
 }
 
 /// Wraps a logical-path conversion error after native publication.
@@ -978,13 +1021,23 @@ mod tests {
     /// conversion failed.
     #[test]
     fn test_path_failure_wrappers_preserve_publication_certainty() {
-        let before_publication = persist_path_error(FsError::new(
-            FsErrorKind::InvalidPath,
-            FsOperation::PersistTemp,
-            "invalid publication target",
-        ));
+        let target = Path::parse("/invalid%00target").expect("logical invalid target");
+        let before_publication = persist_path_error(
+            FsError::new(
+                FsErrorKind::InvalidPath,
+                FsOperation::PersistTemp,
+                "invalid publication target",
+            ),
+            &target,
+            "local-file",
+        );
         assert_eq!(PersistFailureState::NotPublished, before_publication.state());
         assert_eq!(FsErrorKind::InvalidPath, before_publication.error().kind());
+        assert_eq!(None, before_publication.error().path());
+        assert_eq!(Some(&target), before_publication.error().target());
+        assert_eq!(Some(&target), before_publication.error().failure_target());
+        assert_eq!(Some("local-file"), before_publication.error().provider());
+        assert_eq!(Some(FsEffectState::Unchanged), before_publication.error().effect_state());
 
         let after_publication = logical_persist_error(FsError::new(
             FsErrorKind::InvalidPath,

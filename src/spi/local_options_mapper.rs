@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Conversion of resolved core options to native local-files options.
 
 use qubit_fs::copy::CopyConflictPolicy;
@@ -56,7 +55,9 @@ pub(crate) fn read(_: &ResolvedReadOptions) -> native_files::options::LocalReadO
 /// # Returns
 ///
 /// Native options that recurse when requested directly or when facade prefix
-/// filtering requires descendant discovery.
+/// filtering requires descendant discovery. `Subtree` uses recursive native
+/// discovery followed by facade filtering; `LiteralPrefix` cannot be
+/// represented by this provider and is rejected.
 ///
 /// # Errors
 ///
