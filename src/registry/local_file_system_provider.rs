@@ -50,11 +50,17 @@ use crate::path::local_path_mapper;
 /// let registry = FileSystemRegistry::default();
 /// # #[cfg(feature = "registry")]
 /// registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()))?;
+/// #[cfg(windows)]
+/// let uri = "file:///C:/reports/summary.csv";
+/// #[cfg(not(windows))]
+/// let uri = "file:///reports/summary.csv";
 /// # #[cfg(feature = "registry")]
-/// let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
+/// let config = FileSystemConfig::new(ConnectionUri::parse(uri)?);
 /// # #[cfg(feature = "registry")]
 /// let resolution = registry.resolve_config(&config)?;
-/// # #[cfg(feature = "registry")]
+/// #[cfg(all(feature = "registry", windows))]
+/// assert_eq!(resolution.path().as_str(), "/C:/reports/summary.csv");
+/// #[cfg(all(feature = "registry", not(windows)))]
 /// assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
 /// # #[cfg(feature = "registry")]
 /// assert_eq!(resolution.file_system().properties().info().provider_id(), "local-file");
@@ -112,11 +118,17 @@ impl LocalFileSystemProvider {
     /// let registry = FileSystemRegistry::default();
     /// # #[cfg(feature = "registry")]
     /// registry.register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()))?;
+    /// #[cfg(windows)]
+    /// let uri = "file:///C:/reports/summary.csv";
+    /// #[cfg(not(windows))]
+    /// let uri = "file:///reports/summary.csv";
     /// # #[cfg(feature = "registry")]
-    /// let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
+    /// let config = FileSystemConfig::new(ConnectionUri::parse(uri)?);
     /// # #[cfg(feature = "registry")]
     /// let resolution = registry.resolve_config(&config)?;
-    /// # #[cfg(feature = "registry")]
+    /// #[cfg(all(feature = "registry", windows))]
+    /// assert_eq!(resolution.path().as_str(), "/C:/reports/summary.csv");
+    /// #[cfg(all(feature = "registry", not(windows)))]
     /// assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
     /// # #[cfg(feature = "registry")]
     /// assert_eq!(resolution.file_system().properties().info().provider_id(), "local-file");
