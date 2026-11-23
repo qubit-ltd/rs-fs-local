@@ -1047,15 +1047,7 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map(|value| CopyAttempt::Completed(local_outcome_mapper::copy(value)))
             .map_err(|error| {
                 let state = local_outcome_mapper::copy_failure_state(error.state());
-                let stats = *error.partial_stats();
-                let partial_stats = CopyStats {
-                    files: stats.files(),
-                    directories: stats.directories(),
-                    bytes: stats.bytes(),
-                    skipped: stats.skipped(),
-                    overwritten: stats.overwritten(),
-                    ..Default::default()
-                };
+                let partial_stats = local_outcome_mapper::copy_stats(*error.partial_stats());
                 let failure_path = error
                     .failed_source_path()
                     .map(|path| local_path_mapper::logical(self.native.scope(), path, FsOperation::Copy))
