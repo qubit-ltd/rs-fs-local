@@ -474,8 +474,61 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
     });
 }
 
-/// A confirmed destination conflict retains the native temporary file for
-/// retry.
+/// Invalid target conversion reports the target while retaining cleanup access.
+#[test]
+fn test_invalid_persist_target_retains_temp_files_and_directories_for_cleanup() {
+    let root = tempfile::tempdir().expect("fixture root");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem");
+    let target = Path::parse("/invalid%00target").expect("NUL target remains a logical path");
+
+    let mut file = filesystem
+        .create_temp_file(TempFileOptions::default())
+        .expect("temporary file");
+    let file_source = file.path().clone();
+    let file_failure = file
+        .persist(&target, PersistOptions::default())
+        .expect_err("target conversion should fail");
+    assert_eq!(FsErrorKind::InvalidPath, file_failure.error().kind());
+    assert_eq!(FsOperation::PersistTemp, file_failure.error().operation());
+    assert_eq!(Some(&file_source), file_failure.error().path());
+    assert_eq!(Some(&target), file_failure.error().target());
+    assert_eq!(Some(&target), file_failure.error().failure_target());
+    assert_eq!(Some("local-file"), file_failure.error().provider());
+    assert_eq!(Some(FsEffectState::Unchanged), file_failure.error().effect_state());
+    assert!(file_failure.error().source().is_some());
+    assert!(file_failure
+        .error()
+        .source()
+        .and_then(|cause| cause.source())
+        .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+        .is_some());
+    file.cleanup().expect("failed file publication remains cleanable");
+
+    let mut directory = filesystem
+        .create_temp_directory(TempDirectoryOptions::default())
+        .expect("temporary directory");
+    let directory_source = directory.path().clone();
+    let directory_failure = directory
+        .persist(&target, PersistOptions::default())
+        .expect_err("target conversion should fail");
+    assert_eq!(FsErrorKind::InvalidPath, directory_failure.error().kind());
+    assert_eq!(FsOperation::PersistTemp, directory_failure.error().operation());
+    assert_eq!(Some(&directory_source), directory_failure.error().path());
+    assert_eq!(Some(&target), directory_failure.error().target());
+    assert_eq!(Some(&target), directory_failure.error().failure_target());
+    assert_eq!(Some("local-file"), directory_failure.error().provider());
+    assert_eq!(Some(FsEffectState::Unchanged), directory_failure.error().effect_state());
+    assert!(directory_failure.error().source().is_some());
+    assert!(directory_failure
+        .error()
+        .source()
+        .and_then(|cause| cause.source())
+        .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+        .is_some());
+    directory.cleanup().expect("failed directory publication remains cleanable");
+}
+
 #[test]
 fn test_temp_file_persist_conflict_retains_resource_for_retry() {
     let root = tempfile::tempdir().expect("test root must be created");

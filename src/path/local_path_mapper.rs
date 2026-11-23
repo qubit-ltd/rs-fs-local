@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Canonical conversion between public logical paths and native paths.
 
 use std::path::Path as NativePath;
@@ -32,7 +31,9 @@ use qubit_local_files as native_files;
 /// # Errors
 ///
 /// Returns `InvalidPath` when a Host path is relative or a component cannot
-/// be represented by the native path layer.
+/// be represented by the native path layer. On Windows, Host paths need a
+/// drive prefix (for example, `/C:/data`); the virtual leading slash alone is
+/// not a native drive-qualified path.
 #[inline]
 pub(crate) fn native(scope: native_files::path::LocalFileSystemScope, path: &Path) -> FsResult<PathBuf> {
     let paths = match scope {

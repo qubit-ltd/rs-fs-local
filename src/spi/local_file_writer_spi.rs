@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Stateful writer adapter delegated to `qubit-local-files`.
 
 use std::io::Result as IoResult;

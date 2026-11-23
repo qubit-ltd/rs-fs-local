@@ -5,7 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-// contract tests.
 //! Lazy directory walker adapter.
 
 use std::path::PathBuf;
