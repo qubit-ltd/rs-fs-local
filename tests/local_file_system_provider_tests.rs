@@ -360,25 +360,30 @@ fn test_local_provider_chain_does_not_fallback_for_file_configuration_error() {
         })
         .expect("the chain fallback provider must register");
 
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///data?cache=true").expect("test URI must parse"))
-        .with_selection(
+    for uri in ["file:///data?cache=true", "file:///data%00"] {
+        let config = FileSystemConfig::new(ConnectionUri::parse(uri).expect("test URI must parse")).with_selection(
             ProviderSelection::chain(["local-file", "chain-fallback"])
                 .expect("provider chain must parse")
                 .with_fallback_policy(FallbackPolicy::OnAbsence),
         );
-    let error = registry
-        .resolve_config(&config)
-        .expect_err("file configuration errors must be terminal in an absence-only chain");
-    let FileSystemRegistryError::Creation(creation) = error else {
-        panic!("expected provider creation error")
-    };
+        let error = registry
+            .resolve_config(&config)
+            .expect_err("file configuration errors must be terminal in an absence-only chain");
+        let FileSystemRegistryError::Creation(creation) = error else {
+            panic!("expected provider creation error")
+        };
 
-    assert_eq!(creation.attempts().len(), 1);
-    assert_eq!(creation.attempts()[0].provider_id().as_str(), "local-file");
-    assert_eq!(
-        creation.decisive_attempt().failure().error().kind(),
-        FsErrorKind::InvalidOptions,
-    );
+        assert_eq!(creation.attempts().len(), 1);
+        assert_eq!(creation.attempts()[0].provider_id().as_str(), "local-file");
+        assert_eq!(
+            creation.decisive_attempt().failure().error().kind(),
+            if uri.ends_with("%00") {
+                FsErrorKind::InvalidPath
+            } else {
+                FsErrorKind::InvalidOptions
+            },
+        );
+    }
     assert!(
         received_schemes
             .lock()

@@ -48,5 +48,6 @@ fuzz_target!(|input: &[u8]| {
     let second = registry
         .resolve_config(&FileSystemConfig::new(replayed_uri))
         .expect("a canonical URI must resolve");
+    assert_eq!(first.path(), second.path());
     assert_eq!(first.canonical_uri(), second.canonical_uri());
 });

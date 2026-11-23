@@ -175,3 +175,58 @@ fn encode_host_uri_parent(path: &qubit_fs::path::Path) -> String {
     }
     result.trim_end_matches('/').to_owned()
 }
+
+/// Host file URIs must be representable as native paths before resolution.
+#[cfg(windows)]
+#[test]
+fn test_windows_host_rejects_paths_without_a_drive_and_unrepresentable_bytes() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(LocalResourcePolicy::standard()))
+        .expect("host provider must register");
+
+    for uri in ["file:///tmp/data", "file:///"] {
+        let error = registry
+            .resolve_config(&FileSystemConfig::new(ConnectionUri::parse(uri).expect("test URI")))
+            .expect_err("a drive-less host path must not resolve on Windows");
+        let FileSystemRegistryError::Creation(creation) = error else {
+            panic!("expected provider creation error");
+        };
+        assert_eq!(FsErrorKind::InvalidPath, creation.decisive_attempt().failure().error().kind());
+    }
+
+    let error = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("file:///name%FF").expect("test URI"),
+        ))
+        .expect_err("a non-native byte must not resolve on Windows");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error");
+    };
+    assert_eq!(FsErrorKind::InvalidPath, creation.decisive_attempt().failure().error().kind());
+}
+
+/// Rooted file URIs reject path bytes that cannot be represented natively.
+#[cfg(windows)]
+#[test]
+fn test_windows_rooted_provider_rejects_unrepresentable_uri_bytes() {
+    let root = tempfile::tempdir().expect("provider root must be created");
+    let provider = LocalFileSystemProvider::rooted(
+        FileSystemId::new("windows-unrepresentable-root").expect("test identity"),
+        root.path(),
+        LocalResourcePolicy::standard(),
+    )
+    .expect("rooted provider must open");
+    let registry = FileSystemRegistry::default();
+    registry.register(provider).expect("rooted provider must register");
+
+    let error = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("file:///name%FF").expect("test URI"),
+        ))
+        .expect_err("a non-native byte must not resolve on Windows");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error");
+    };
+    assert_eq!(FsErrorKind::InvalidPath, creation.decisive_attempt().failure().error().kind());
+}
