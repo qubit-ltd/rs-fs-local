@@ -414,13 +414,7 @@ fn persist_file(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let PersistRecoveryParts {
-                error,
-                state,
-                source_state,
-                stage,
-                ..
-            } = restore_persist_resource(slot, error);
+            let (error, state, source_state, _, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_persist_error(error, stage, logical_target, provider_id)
@@ -461,13 +455,7 @@ fn persist_directory(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let PersistRecoveryParts {
-                error,
-                state,
-                source_state,
-                stage,
-                ..
-            } = restore_persist_resource(slot, error);
+            let (error, state, source_state, _, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_persist_error(error, stage, logical_target, provider_id)
@@ -533,18 +521,31 @@ fn persist_failure_message(stage: LocalPersistStage) -> &'static str {
 ///
 /// Keeping this boundary shared ensures file and directory failures preserve
 /// the same native recovery state before their kind-specific context is added.
-struct PersistRecoveryParts {
-    error: LocalFileError,
-    state: LocalPersistFailureState,
-    source_state: LocalTempSourceState,
-    resolved_target: Option<PathBuf>,
-    stage: LocalPersistStage,
-}
-
+/// Restores a retained resource after native persistence reports a failure.
+///
+/// # Type Parameters
+///
+/// - `T`: Native temporary resource type retained by the adapter.
+///
+/// # Parameters
+///
+/// - `slot`: Adapter storage that receives the retained native resource.
+/// - `error`: Native persistence failure containing the resource and state.
+///
+/// # Returns
+///
+/// The native cause, publication state, source state, resolved target, and
+/// stage.
 fn restore_persist_resource<T>(
     slot: &mut Option<T>,
     error: LocalPersistError<T>,
-) -> PersistRecoveryParts {
+) -> (
+    LocalFileError,
+    LocalPersistFailureState,
+    LocalTempSourceState,
+    Option<PathBuf>,
+    LocalPersistStage,
+) {
     let LocalPersistErrorParts {
         error,
         resource,
@@ -555,13 +556,7 @@ fn restore_persist_resource<T>(
         ..
     } = error.into_parts();
     *slot = Some(resource);
-    PersistRecoveryParts {
-        error,
-        state,
-        source_state,
-        resolved_target,
-        stage,
-    }
+    (error, state, source_state, resolved_target, stage)
 }
 
 /// Keeps a retained native temporary file and restores it after a
@@ -597,13 +592,7 @@ fn keep_file(
             Ok(map_persist_outcome(result, target))
         }
         Err(error) => {
-            let PersistRecoveryParts {
-                error,
-                state,
-                source_state,
-                resolved_target,
-                stage,
-            } = restore_persist_resource(slot, error);
+            let (error, state, source_state, resolved_target, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_keep_error(
@@ -654,13 +643,7 @@ fn keep_directory(
             Ok(map_persist_outcome(result, target))
         }
         Err(error) => {
-            let PersistRecoveryParts {
-                error,
-                state,
-                source_state,
-                resolved_target,
-                stage,
-            } = restore_persist_resource(slot, error);
+            let (error, state, source_state, resolved_target, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
                 map_keep_error(
@@ -838,11 +821,7 @@ fn terminal_persist_error() -> SpiPersistFailure {
 ///
 /// A persistence failure with `NotPublished` state.
 #[inline]
-fn persist_path_error(
-    error: FsError,
-    target: &LogicalPath,
-    provider_id: &str,
-) -> SpiPersistFailure {
+fn persist_path_error(error: FsError, target: &LogicalPath, provider_id: &str) -> SpiPersistFailure {
     let mapped = FsError::with_source(
         error.kind(),
         FsOperation::PersistTemp,
@@ -1037,7 +1016,10 @@ mod tests {
         assert_eq!(Some(&target), before_publication.error().target());
         assert_eq!(Some(&target), before_publication.error().failure_target());
         assert_eq!(Some("local-file"), before_publication.error().provider());
-        assert_eq!(Some(FsEffectState::Unchanged), before_publication.error().effect_state());
+        assert_eq!(
+            Some(FsEffectState::Unchanged),
+            before_publication.error().effect_state()
+        );
 
         let after_publication = logical_persist_error(FsError::new(
             FsErrorKind::InvalidPath,

@@ -104,7 +104,11 @@ fn test_copy_and_rename_path_conversion_failures_retain_both_operands() {
         .expect("rooted filesystem should construct");
 
     let copy = filesystem
-        .copy(&Path::parse("/source").expect("valid source"), &target, CopyOptions::file())
+        .copy(
+            &Path::parse("/source").expect("valid source"),
+            &target,
+            CopyOptions::file(),
+        )
         .expect_err("invalid target conversion should fail");
     assert_eq!(CopyFailureState::Unchanged, copy.state());
     assert_eq!(FsOperation::Copy, copy.error().operation());
@@ -114,14 +118,19 @@ fn test_copy_and_rename_path_conversion_failures_retain_both_operands() {
     assert_eq!(Some(&target), copy.error().failure_target());
     assert_eq!(Some("local-file"), copy.error().provider());
     assert_eq!(Some(FsEffectState::Unchanged), copy.error().effect_state());
-    assert!(copy
-        .error()
-        .source()
-        .and_then(|cause| cause.downcast_ref::<LocalFileError>())
-        .is_some());
+    assert!(
+        copy.error()
+            .source()
+            .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
 
     let rename = filesystem
-        .rename(&Path::parse("/source").expect("valid source"), &target, RenameOptions::default())
+        .rename(
+            &Path::parse("/source").expect("valid source"),
+            &target,
+            RenameOptions::default(),
+        )
         .expect_err("invalid target conversion should fail");
     assert_eq!(RenameFailureState::Unchanged, rename.state());
     assert_eq!(FsOperation::Rename, rename.error().operation());
@@ -131,11 +140,13 @@ fn test_copy_and_rename_path_conversion_failures_retain_both_operands() {
     assert_eq!(Some(&target), rename.error().failure_target());
     assert_eq!(Some("local-file"), rename.error().provider());
     assert_eq!(Some(FsEffectState::Unchanged), rename.error().effect_state());
-    assert!(rename
-        .error()
-        .source()
-        .and_then(|cause| cause.downcast_ref::<LocalFileError>())
-        .is_some());
+    assert!(
+        rename
+            .error()
+            .source()
+            .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
 
     let invalid_source = Path::parse("/invalid%00source").expect("NUL source remains a logical path");
     let valid_target = Path::parse("/valid-target").expect("valid target");
@@ -147,11 +158,12 @@ fn test_copy_and_rename_path_conversion_failures_retain_both_operands() {
     assert_eq!(Some(&valid_target), copy.error().target());
     assert_eq!(Some(&invalid_source), copy.error().failure_path());
     assert_eq!(FsOperation::Copy, copy.error().operation());
-    assert!(copy
-        .error()
-        .source()
-        .and_then(|cause| cause.downcast_ref::<LocalFileError>())
-        .is_some());
+    assert!(
+        copy.error()
+            .source()
+            .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
 
     let rename = filesystem
         .rename(&invalid_source, &valid_target, RenameOptions::default())
@@ -161,11 +173,13 @@ fn test_copy_and_rename_path_conversion_failures_retain_both_operands() {
     assert_eq!(Some(&valid_target), rename.error().target());
     assert_eq!(Some(&invalid_source), rename.error().failure_path());
     assert_eq!(FsOperation::Rename, rename.error().operation());
-    assert!(rename
-        .error()
-        .source()
-        .and_then(|cause| cause.downcast_ref::<LocalFileError>())
-        .is_some());
+    assert!(
+        rename
+            .error()
+            .source()
+            .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
 }
 
 #[test]

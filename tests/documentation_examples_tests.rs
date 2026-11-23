@@ -519,10 +519,10 @@ fn validate_candidate_local_files_edge(
             expected_manifest.display()
         ));
     }
-    let manifest_source = fs::read_to_string(&expected_manifest)
-        .map_err(|error| format!("cannot read candidate manifest: {error}"))?;
-    let manifest: toml::Value = toml::from_str(&manifest_source)
-        .map_err(|error| format!("cannot parse candidate manifest: {error}"))?;
+    let manifest_source =
+        fs::read_to_string(&expected_manifest).map_err(|error| format!("cannot read candidate manifest: {error}"))?;
+    let manifest: toml::Value =
+        toml::from_str(&manifest_source).map_err(|error| format!("cannot parse candidate manifest: {error}"))?;
     let expected_version = manifest["package"]["version"]
         .as_str()
         .ok_or("candidate package version missing")?;
@@ -1080,10 +1080,17 @@ fn test_current_documentation_versions_and_signatures_follow_manifest() {
         .as_str()
         .expect("registry dependency version")
         .trim_start_matches('^');
-    for document in ["README.md", "README.zh_CN.md", "doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+    ] {
         let text = fs::read_to_string(root.join(document)).expect("installation docs should be readable");
         assert!(
-            text.contains(&format!("cargo add qubit-fs@{core_version} qubit-fs-local@{local_version}")),
+            text.contains(&format!(
+                "cargo add qubit-fs@{core_version} qubit-fs-local@{local_version}"
+            )),
             "{document} core and adapter install command must use matching candidate versions"
         );
         assert!(

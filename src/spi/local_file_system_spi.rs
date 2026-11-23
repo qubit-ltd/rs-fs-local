@@ -111,11 +111,6 @@ pub struct LocalFileSystemSpi {
 }
 
 mod native_option_call_recording {
-    use qubit_local_files::options::LocalReadOptions;
-    use qubit_local_files::options::LocalTempDirectoryOptions;
-    use qubit_local_files::options::LocalTempFileOptions;
-    use qubit_local_files::options::LocalWriteOptions;
-
     #[cfg(test)]
     use std::cell::RefCell;
     #[cfg(test)]
@@ -123,8 +118,12 @@ mod native_option_call_recording {
     #[cfg(test)]
     use std::time::Duration;
 
+    use qubit_local_files::options::LocalReadOptions;
     #[cfg(test)]
     use qubit_local_files::options::LocalTempCleanupLimits;
+    use qubit_local_files::options::LocalTempDirectoryOptions;
+    use qubit_local_files::options::LocalTempFileOptions;
+    use qubit_local_files::options::LocalWriteOptions;
 
     #[cfg(test)]
     #[derive(Debug, Eq, PartialEq)]
@@ -162,6 +161,11 @@ mod native_option_call_recording {
         CALLS.with_borrow_mut(std::mem::take)
     }
 
+    /// Records the options passed to native reads in tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `options`: Native read options forwarded to the filesystem.
     #[inline(always)]
     pub(super) fn read(options: &LocalReadOptions) -> &LocalReadOptions {
         #[cfg(test)]
@@ -173,6 +177,11 @@ mod native_option_call_recording {
         options
     }
 
+    /// Records the options passed to native writes in tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `options`: Native write options forwarded to the filesystem.
     #[inline(always)]
     pub(super) fn write(options: &LocalWriteOptions) -> &LocalWriteOptions {
         #[cfg(test)]
@@ -184,6 +193,11 @@ mod native_option_call_recording {
         options
     }
 
+    /// Records the options passed to native temporary file creation in tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `options`: Native creation options forwarded to the filesystem.
     #[inline(always)]
     pub(super) fn temp_file(options: &LocalTempFileOptions) -> &LocalTempFileOptions {
         #[cfg(test)]
@@ -199,10 +213,14 @@ mod native_option_call_recording {
         options
     }
 
+    /// Records the options passed to native temporary directory creation in
+    /// tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `options`: Native creation options forwarded to the filesystem.
     #[inline(always)]
-    pub(super) fn temp_directory(
-        options: &LocalTempDirectoryOptions,
-    ) -> &LocalTempDirectoryOptions {
+    pub(super) fn temp_directory(options: &LocalTempDirectoryOptions) -> &LocalTempDirectoryOptions {
         #[cfg(test)]
         CALLS.with_borrow_mut(|calls| {
             calls.push(NativeOptionCall::TempDirectory {
@@ -632,12 +650,7 @@ impl LocalFileSystemSpi {
     /// # Errors
     ///
     /// Returns path-conversion errors from the local path mapper.
-    fn native_pair(
-        &self,
-        operation: FsOperation,
-        source: &Path,
-        target: &Path,
-    ) -> FsResult<(PathBuf, PathBuf)> {
+    fn native_pair(&self, operation: FsOperation, source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
         let source_native = self.native_path(source).map_err(|error| {
             error
                 .with_operation(operation)
@@ -1156,18 +1169,18 @@ impl FileSystemSpi for LocalFileSystemSpi {
             options = options.with_create_parent();
         }
         let options = self.temp_file_options(options);
-        let value =
-            self.native
-                .create_temp_file_with_options(native_option_call_recording::temp_file(&options))
-                .map_err(|error| match request.options().parent() {
-                    Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
-                    None => error_mapper::map_without_path(
-                        error,
-                        FsOperation::CreateTemp,
-                        "native temporary file creation failed",
-                        &self.provider_id,
-                    ),
-                })?;
+        let value = self
+            .native
+            .create_temp_file_with_options(native_option_call_recording::temp_file(&options))
+            .map_err(|error| match request.options().parent() {
+                Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
+                None => error_mapper::map_without_path(
+                    error,
+                    FsOperation::CreateTemp,
+                    "native temporary file creation failed",
+                    &self.provider_id,
+                ),
+            })?;
         let projection = parent
             .as_deref()
             .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
@@ -1218,9 +1231,9 @@ impl FileSystemSpi for LocalFileSystemSpi {
             options = options.with_create_parent();
         }
         let options = self.temp_directory_options(options);
-        let value = self.native.create_temp_directory_with_options(
-            native_option_call_recording::temp_directory(&options),
-        )
+        let value = self
+            .native
+            .create_temp_directory_with_options(native_option_call_recording::temp_directory(&options))
             .map_err(|error| match request.options().parent() {
                 Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
                 None => error_mapper::map_without_path(
@@ -1287,11 +1300,11 @@ mod tests {
     use qubit_local_files::options::LocalListOptions;
     use qubit_local_files::options::LocalTempCleanupLimits;
 
-    use crate::LocalTempCleanupControl;
-    use crate::LocalTempCleanupResourceLimits;
     use super::LocalFileSystemSpi;
     use super::native_option_call_recording::NativeOptionCall;
     use super::native_option_call_recording::take as take_native_option_calls;
+    use crate::LocalTempCleanupControl;
+    use crate::LocalTempCleanupResourceLimits;
 
     #[test]
     fn test_execution_options_are_applied_for_host_and_rooted_facades() {
@@ -1320,10 +1333,8 @@ mod tests {
                     crate::host_path_to_logical(&root.path().join("temp-parent/child")).unwrap()
                 };
                 let expected_native_parent = inner.native_temp_parent(&parent).unwrap();
-                let cleanup_limits =
-                    LocalTempCleanupResourceLimits::new(2, 8, 4_096, Duration::from_secs(5));
-                let inner = inner
-                    .with_temp_cleanup_control(LocalTempCleanupControl::new(Some(cleanup_limits)));
+                let cleanup_limits = LocalTempCleanupResourceLimits::new(2, 8, 4_096, Duration::from_secs(5));
+                let inner = inner.with_temp_cleanup_control(LocalTempCleanupControl::new(Some(cleanup_limits)));
                 let fs = FileSystem::from_spi(inner).expect("facade");
                 let expected_id = fs.properties().info().id().clone();
                 assert_eq!(if rooted { "option-probe" } else { "local-host" }, expected_id.as_str());
@@ -1391,11 +1402,16 @@ mod tests {
                     "temporary-file creation must pass generated options to the native call",
                 );
                 let temp_file_path = temp_file.path().clone();
-                assert!(fs.stat(&temp_file_path).is_ok(), "created temp file is visible through the facade");
+                assert!(
+                    fs.stat(&temp_file_path).is_ok(),
+                    "created temp file is visible through the facade"
+                );
                 temp_file.cleanup().unwrap();
                 assert_eq!(
                     FsErrorKind::NotFound,
-                    fs.stat(&temp_file_path).expect_err("cleaned temp file must be absent").kind(),
+                    fs.stat(&temp_file_path)
+                        .expect_err("cleaned temp file must be absent")
+                        .kind(),
                 );
                 let mut temp_dir = fs.create_temp_directory(temp_options).unwrap();
                 assert_eq!(
@@ -1415,11 +1431,16 @@ mod tests {
                     "temporary-directory creation must pass generated options to the native call",
                 );
                 let temp_directory_path = temp_dir.path().clone();
-                assert!(fs.stat(&temp_directory_path).is_ok(), "created temp directory is visible through the facade");
+                assert!(
+                    fs.stat(&temp_directory_path).is_ok(),
+                    "created temp directory is visible through the facade"
+                );
                 temp_dir.cleanup().unwrap();
                 assert_eq!(
                     FsErrorKind::NotFound,
-                    fs.stat(&temp_directory_path).expect_err("cleaned temp directory must be absent").kind(),
+                    fs.stat(&temp_directory_path)
+                        .expect_err("cleaned temp directory must be absent")
+                        .kind(),
                 );
             }
         }

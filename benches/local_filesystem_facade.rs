@@ -16,11 +16,17 @@ use criterion::Throughput;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use qubit_fs::copy::CopyOptions;
-use qubit_fs::directory::{ListFilter, ListOptions, ListScope};
+use qubit_fs::directory::ListFilter;
+use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
-use qubit_fs::read::{RandomAccessReader, ReadOptions};
-use qubit_fs_local::{LocalFileSystems, LocalListResourceLimits, LocalResourcePolicy, host_path_to_logical};
+use qubit_fs::read::RandomAccessReader;
+use qubit_fs::read::ReadOptions;
+use qubit_fs_local::LocalFileSystems;
+use qubit_fs_local::LocalListResourceLimits;
+use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_local::host_path_to_logical;
 use tempfile::tempdir;
 
 fn sample_offsets(sample_count: usize, sample_size: usize, file_size: usize) -> Vec<u64> {

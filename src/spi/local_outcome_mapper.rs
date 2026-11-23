@@ -97,6 +97,10 @@ pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcom
 }
 
 /// Converts native copy counters while separating symbolic links from files.
+///
+/// # Parameters
+///
+/// - `stats`: Native counters recorded while copying the tree.
 pub(crate) fn copy_stats(stats: native_files::outcome::LocalCopyStats) -> CopyStats {
     CopyStats {
         files: stats.files() - stats.symlinks(),

@@ -192,7 +192,10 @@ fn test_windows_host_rejects_paths_without_a_drive_and_unrepresentable_bytes() {
         let FileSystemRegistryError::Creation(creation) = error else {
             panic!("expected provider creation error");
         };
-        assert_eq!(FsErrorKind::InvalidPath, creation.decisive_attempt().failure().error().kind());
+        assert_eq!(
+            FsErrorKind::InvalidPath,
+            creation.decisive_attempt().failure().error().kind()
+        );
     }
 
     let error = registry
@@ -203,7 +206,10 @@ fn test_windows_host_rejects_paths_without_a_drive_and_unrepresentable_bytes() {
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected provider creation error");
     };
-    assert_eq!(FsErrorKind::InvalidPath, creation.decisive_attempt().failure().error().kind());
+    assert_eq!(
+        FsErrorKind::InvalidPath,
+        creation.decisive_attempt().failure().error().kind()
+    );
 }
 
 /// Rooted file URIs reject path bytes that cannot be represented natively.
@@ -228,5 +234,8 @@ fn test_windows_rooted_provider_rejects_unrepresentable_uri_bytes() {
     let FileSystemRegistryError::Creation(creation) = error else {
         panic!("expected provider creation error");
     };
-    assert_eq!(FsErrorKind::InvalidPath, creation.decisive_attempt().failure().error().kind());
+    assert_eq!(
+        FsErrorKind::InvalidPath,
+        creation.decisive_attempt().failure().error().kind()
+    );
 }
