@@ -16,6 +16,7 @@ use std::path::Path as NativePath;
 use std::path::PathBuf;
 
 use qubit_fs::FileSystem;
+use qubit_fs::copy::CopyMethod;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::ListOptions;
@@ -32,6 +33,7 @@ use qubit_fs_local::host_path_to_logical;
 use qubit_fs_local::spi::LocalFileSystemSpi;
 use qubit_fs_testkit::ContractCheckId;
 use qubit_fs_testkit::ContractCheckOutcome;
+use qubit_fs_testkit::CopyFixtureCase;
 use qubit_fs_testkit::FileSystemContract;
 use qubit_fs_testkit::FileSystemContractSuite;
 use qubit_fs_testkit::FileSystemFixture;
@@ -301,6 +303,35 @@ impl FileSystemFixture for RootedFixture {
         }
     }
 
+    fn copy_fast_path_case(
+        &self,
+        method: CopyMethod,
+    ) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
+        if method != CopyMethod::Native {
+            return Ok(FixtureSupport::Unsupported);
+        }
+        let source =
+            match self.seed_file("native-copy-source.bin", b"rooted native copy payload")? {
+                FixtureSupport::Supported(path) => path,
+                FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+            };
+        let target = self.path("native-copy-target.bin")?;
+        match self.exists_out_of_band(&target)? {
+            FixtureSupport::Supported(false) => {}
+            FixtureSupport::Supported(true) => {
+                return Err(FixtureError::new(
+                    "rooted native copy target already exists",
+                ));
+            }
+            FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+        }
+        Ok(FixtureSupport::Supported(CopyFixtureCase::new(
+            source,
+            target,
+            CopyOptions::file(),
+        )))
+    }
+
     fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
         Ok(())
@@ -451,6 +482,35 @@ impl FileSystemFixture for HostFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
+    fn copy_fast_path_case(
+        &self,
+        method: CopyMethod,
+    ) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
+        if method != CopyMethod::Native {
+            return Ok(FixtureSupport::Unsupported);
+        }
+        let source =
+            match self.seed_file("native-copy-source.bin", b"host native copy payload")? {
+                FixtureSupport::Supported(path) => path,
+                FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+            };
+        let target = self.logical_path("native-copy-target.bin")?;
+        match self.exists_out_of_band(&target)? {
+            FixtureSupport::Supported(false) => {}
+            FixtureSupport::Supported(true) => {
+                return Err(FixtureError::new(
+                    "host native copy target already exists",
+                ));
+            }
+            FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+        }
+        Ok(FixtureSupport::Supported(CopyFixtureCase::new(
+            source,
+            target,
+            CopyOptions::file(),
+        )))
+    }
+
     fn teardown(&self) -> FixtureResult<()> {
         self.teardown_entries()?;
         Ok(())
@@ -461,11 +521,23 @@ impl FileSystemFixture for HostFixture {
 register_file_system_contract_tests! {
     module: host_contracts,
     fixture: super::HostFixture::new,
+    required_checks: |phase| match phase {
+        qubit_fs_testkit::FileSystemContract::Copy => {
+            vec![qubit_fs_testkit::ContractCheckId::CopyNativeNonEmpty]
+        }
+        _ => Vec::new(),
+    },
 }
 
 register_file_system_contract_tests! {
     module: rooted_contracts,
     fixture: super::RootedFixture::new,
+    required_checks: |phase| match phase {
+        qubit_fs_testkit::FileSystemContract::Copy => {
+            vec![qubit_fs_testkit::ContractCheckId::CopyNativeNonEmpty]
+        }
+        _ => Vec::new(),
+    },
 }
 
 #[test]
