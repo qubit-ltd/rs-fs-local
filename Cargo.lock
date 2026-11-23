@@ -604,13 +604,13 @@ dependencies = [
  "fluent-uri",
  "qubit-budget",
  "qubit-io",
- "qubit-operation 0.3.1",
+ "qubit-operation",
  "qubit-redact",
 ]
 
 [[package]]
 name = "qubit-fs-local"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -660,17 +660,10 @@ dependencies = [
  "libc",
  "qubit-budget",
  "qubit-io",
- "qubit-operation 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "qubit-operation",
  "qubit-redact",
  "rustix",
  "windows-sys",
-]
-
-[[package]]
-name = "qubit-operation"
-version = "0.3.1"
-dependencies = [
- "qubit-budget",
 ]
 
 [[package]]

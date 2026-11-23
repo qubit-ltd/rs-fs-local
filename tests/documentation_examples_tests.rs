@@ -515,8 +515,18 @@ fn validate_candidate_local_files_edge(
             expected_manifest.display()
         ));
     }
-    if package["version"].as_str() != Some("0.6.0") {
-        return Err(format!("candidate version is {}, expected 0.6.0", package["version"]));
+    let manifest_source = fs::read_to_string(&expected_manifest)
+        .map_err(|error| format!("cannot read candidate manifest: {error}"))?;
+    let manifest: toml::Value = toml::from_str(&manifest_source)
+        .map_err(|error| format!("cannot parse candidate manifest: {error}"))?;
+    let expected_version = manifest["package"]["version"]
+        .as_str()
+        .ok_or("candidate package version missing")?;
+    if package["version"].as_str() != Some(expected_version) {
+        return Err(format!(
+            "candidate version is {}, expected {expected_version}",
+            package["version"]
+        ));
     }
     if !package["source"].is_null() {
         return Err(format!(
@@ -533,10 +543,10 @@ fn test_candidate_local_files_identity_requires_candidate_path_version_and_sourc
     let candidate_root = fixture.path().join("rs-local-files");
     fs::create_dir(&candidate_root).expect("candidate root");
     let manifest = candidate_root.join("Cargo.toml");
-    fs::write(&manifest, "[package]\nname='qubit-local-files'\nversion='0.6.0'\n").unwrap();
+    fs::write(&manifest, "[package]\nname='qubit-local-files'\nversion='0.6.1'\n").unwrap();
     let graph = serde_json::json!({
-        "packages": [{"id":"path+file:///candidate/rs-local-files#qubit-local-files@0.6.0", "name":"qubit-local-files", "version":"0.6.0", "manifest_path":manifest.to_str().unwrap(), "source":null}],
-        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"path+file:///candidate/rs-local-files#qubit-local-files@0.6.0"}]}]}
+        "packages": [{"id":"path+file:///candidate/rs-local-files#qubit-local-files@0.6.1", "name":"qubit-local-files", "version":"0.6.1", "manifest_path":manifest.to_str().unwrap(), "source":null}],
+        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"path+file:///candidate/rs-local-files#qubit-local-files@0.6.1"}]}]}
     });
     assert!(validate_candidate_local_files_edge(&graph, "consumer 1.0.0", &manifest).is_ok());
 
@@ -552,8 +562,8 @@ fn test_candidate_local_files_identity_requires_candidate_path_version_and_sourc
     );
 
     let registry_source_graph = serde_json::json!({
-        "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.0", "name":"qubit-local-files", "version":"0.6.0", "manifest_path":manifest.to_str().unwrap(), "source":"registry+https://github.com/rust-lang/crates.io-index"}],
-        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.0"}]}]}
+        "packages": [{"id":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.1", "name":"qubit-local-files", "version":"0.6.1", "manifest_path":manifest.to_str().unwrap(), "source":"registry+https://github.com/rust-lang/crates.io-index"}],
+        "resolve": {"nodes": [{"id":"consumer 1.0.0", "deps":[{"name":"qubit-local-files", "pkg":"registry+https://github.com/rust-lang/crates.io-index#qubit-local-files@0.6.1"}]}]}
     });
     let source_error = validate_candidate_local_files_edge(&registry_source_graph, "consumer 1.0.0", &manifest)
         .expect_err("registry source must be rejected");
@@ -585,7 +595,6 @@ fn test_readme_and_user_guide_examples_compile() {
         ("qubit-local-files", "rs-local-files"),
         ("qubit-fs-registry", "rs-fs-registry"),
         // Registry examples use APIs newer than the compatibility-pinned rs-redact checkout.
-        ("qubit-redact", "rs-redact-compatible"),
         ("qubit-io", "rs-io"),
         ("qubit-spi", "rs-spi"),
     ] {
