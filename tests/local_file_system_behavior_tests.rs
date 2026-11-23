@@ -315,6 +315,82 @@ fn test_host_copy_symlink_policy_controls_directory_traversal() {
     );
 }
 
+/// Host and Rooted copy statistics count a copied link separately from files.
+#[cfg(unix)]
+#[test]
+fn test_host_and_rooted_copy_statistics_separate_symlinks() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("copy root must be created");
+        let source = root.path().join("source");
+        fs::create_dir(&source).expect("copy source must be created");
+        fs::write(source.join("referent"), b"payload").expect("referent must be written");
+        symlink("referent", source.join("link")).expect("copy link must be created");
+        let file_system = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        }
+        .expect("local filesystem must open");
+        let source = if rooted {
+            path("/source")
+        } else {
+            host_path_to_logical(&source).expect("copy source must be logical")
+        };
+        let target = if rooted {
+            path("/target")
+        } else {
+            host_path_to_logical(&root.path().join("target")).expect("copy target must be logical")
+        };
+
+        let outcome = file_system
+            .copy(&source, &target, CopyOptions::tree())
+            .expect("mixed tree should copy");
+
+        assert_eq!(1, outcome.stats().files, "rooted={rooted}");
+        assert_eq!(1, outcome.stats().symlinks, "rooted={rooted}");
+    }
+}
+
+/// Partial Host and Rooted failures retain completed file and link counters.
+#[cfg(unix)]
+#[test]
+fn test_host_and_rooted_partial_copy_statistics_separate_symlinks() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("copy root must be created");
+        let source = root.path().join("source");
+        fs::create_dir(&source).expect("copy source must be created");
+        fs::write(source.join("a-file"), b"payload").expect("first file must be written");
+        symlink("a-file", source.join("b-link")).expect("copy link must be created");
+        fs::write(source.join("c-file"), b"payload").expect("last file must be written");
+        let file_system = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded())
+        }
+        .expect("local filesystem must open");
+        let source = if rooted {
+            path("/source")
+        } else {
+            host_path_to_logical(&source).expect("copy source must be logical")
+        };
+        let target = if rooted {
+            path("/target")
+        } else {
+            host_path_to_logical(&root.path().join("target")).expect("copy target must be logical")
+        };
+
+        let failure = file_system
+            .copy(&source, &target, CopyOptions::tree().with_max_entries(Some(3)))
+            .expect_err("entry budget should stop the copy after two children");
+        let copied_link = fs::symlink_metadata(root.path().join("target/b-link"))
+            .is_ok_and(|metadata| metadata.file_type().is_symlink());
+
+        assert_eq!(2, failure.partial_stats().files + failure.partial_stats().symlinks);
+        assert_eq!(u64::from(copied_link), failure.partial_stats().symlinks);
+        assert!(failure.partial_stats().files >= failure.partial_stats().symlinks);
+    }
+}
+
 /// Successful local writer commits expose their concrete publication method.
 #[test]
 fn test_rooted_writer_commit_reports_atomic_rename_publication() {

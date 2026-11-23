@@ -77,14 +77,7 @@ pub(crate) fn metadata(value: native_files::outcome::LocalFileMetadata) -> FileM
 pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcome {
     let stats = value.stats();
     let mut result = CopyOutcome::new(
-        CopyStats {
-            files: stats.files(),
-            directories: stats.directories(),
-            bytes: stats.bytes(),
-            skipped: stats.skipped(),
-            overwritten: stats.overwritten(),
-            ..Default::default()
-        },
+        copy_stats(stats),
         match value.method() {
             native_files::outcome::LocalCopyMethod::StagedFile => CopyMethod::Native,
             native_files::outcome::LocalCopyMethod::Recursive => CopyMethod::Native,
@@ -102,6 +95,19 @@ pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcom
         native_files::options::LocalMetadataPreservePolicy::Permissions => MetadataPreservePolicy::Portable,
     });
     result
+}
+
+/// Converts native copy counters while separating symbolic links from files.
+pub(crate) fn copy_stats(stats: native_files::outcome::LocalCopyStats) -> CopyStats {
+    CopyStats {
+        files: stats.files() - stats.symlinks(),
+        symlinks: stats.symlinks(),
+        directories: stats.directories(),
+        bytes: stats.bytes(),
+        skipped: stats.skipped(),
+        overwritten: stats.overwritten(),
+        ..Default::default()
+    }
 }
 
 /// Converts a completed native rename to a portable atomic rename outcome.
