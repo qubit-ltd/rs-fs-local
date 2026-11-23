@@ -56,6 +56,31 @@ fn test_local_provider_modes_select_expected_authority() {
     assert_eq!(&rooted_id, rooted_resolution.file_system().properties().info().id());
 }
 
+/// A rooted URI remains resolvable when its valid native target does not exist.
+#[test]
+fn test_rooted_provider_resolves_a_representable_missing_target() {
+    let root = tempfile::tempdir().expect("provider root must be created");
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(
+            LocalFileSystemProvider::rooted(
+                FileSystemId::new("missing-target-root").expect("rooted identity must be valid"),
+                root.path(),
+                LocalResourcePolicy::unbounded(),
+            )
+            .expect("rooted provider must open"),
+        )
+        .expect("rooted provider must register");
+    let resolution = registry
+        .resolve_config(&FileSystemConfig::new(
+            ConnectionUri::parse("file:///not-created-yet").expect("URI must parse"),
+        ))
+        .expect("path conversion must not require the target to exist");
+
+    assert_eq!("/not-created-yet", resolution.path().as_str());
+    assert!(resolution.file_system().stat(resolution.path()).is_err());
+}
+
 /// Distinct rooted provider descriptors can coexist in one registry.
 #[test]
 fn test_rooted_local_providers_can_use_distinct_registry_descriptors() {

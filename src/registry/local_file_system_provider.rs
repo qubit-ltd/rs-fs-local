@@ -19,6 +19,7 @@ use qubit_fs::path::Uri;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemResolution;
 use qubit_fs_registry::FileSystemSpec;
+use qubit_local_files::path::LocalFileSystemScope;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
 use qubit_spi::ProviderMetadata;
@@ -32,6 +33,7 @@ use crate::LocalResourcePolicy;
 use crate::LocalTempCleanupControl;
 use crate::constants::FILE_SCHEME;
 use crate::constants::LOCAL_PROVIDER_ID;
+use crate::path::local_path_mapper;
 
 /// Creates local filesystem resolutions for accepted `file:` configurations.
 ///
@@ -94,7 +96,8 @@ impl LocalFileSystemProvider {
     /// # Returns
     ///
     /// A provider that resolves absolute `file:` paths against the process
-    /// host filesystem.
+    /// host filesystem. On Windows, Host URIs must include a drive letter, such
+    /// as `file:///C:/reports/summary.csv`.
     ///
     /// # Examples
     ///
@@ -141,6 +144,8 @@ impl LocalFileSystemProvider {
     ///
     /// A provider that resolves accepted paths below the opened `root`.
     /// The default descriptor is `local-file` with the `file` URI alias.
+    /// URI path components must be representable by the native platform; on
+    /// Windows, non-native byte sequences are rejected during resolution.
     ///
     /// # Errors
     ///
@@ -306,6 +311,11 @@ impl ServiceProvider<FileSystemSpec> for LocalFileSystemProvider {
     /// cannot be opened or assembled.
     fn create_configured(&self, config: &FileSystemConfig) -> Result<FileSystemResolution, ProviderFailure<FsError>> {
         let (path, uri) = Self::decode_config(config)?;
+        let scope = match &self.mode {
+            LocalProviderMode::Host => LocalFileSystemScope::Host,
+            LocalProviderMode::Rooted { .. } => LocalFileSystemScope::Rooted,
+        };
+        local_path_mapper::native(scope, &path).map_err(ProviderFailure::invalid_configuration)?;
         let file_system = match &self.mode {
             LocalProviderMode::Host => {
                 LocalFileSystems::host_with_temp_cleanup(self.policy, self.temp_cleanup_control())

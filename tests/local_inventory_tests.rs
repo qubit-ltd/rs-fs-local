@@ -33,13 +33,15 @@ fn test_inventory_discovers_host_provider() {
 #[test]
 fn test_inventory_host_provider_has_standard_resource_limits() {
     let root = tempfile::tempdir().expect("isolated hierarchy");
-    let mut nested = root.path().to_path_buf();
+    let fixture = root.path().join("space dir-中文-#-percent%");
+    std::fs::create_dir(&fixture).expect("URI-special fixture directory");
+    let mut nested = fixture.clone();
     for _ in 0..66 {
         nested.push("d");
         std::fs::create_dir(&nested).expect("nested directory");
     }
-    let path = qubit_fs_local::host_path_to_logical(root.path()).expect("host path must convert to logical path");
-    let uri = format!("file://{path}");
+    let path = qubit_fs_local::host_path_to_logical(&fixture).expect("host path must convert to logical path");
+    let uri = format!("file://{}", encode_file_uri_path(path.as_str()));
     let registry = FileSystemRegistry::from_inventory().expect("linked provider registry");
     let resolution = registry
         .resolve_config(&FileSystemConfig::new(ConnectionUri::parse(&uri).expect("host URI")))
@@ -56,6 +58,34 @@ fn test_inventory_host_provider_has_standard_resource_limits() {
         count += 1;
     }
     assert_eq!(count, 64, "standard depth ceiling stops before the deepest directories");
+}
+
+/// Encodes canonical logical path text as a `file:` URI path for fixtures.
+fn encode_file_uri_path(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let mut encoded = String::with_capacity(path.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() && is_hex(bytes[index + 1]) && is_hex(bytes[index + 2]) {
+            encoded.push('%');
+            encoded.push(char::from(bytes[index + 1]));
+            encoded.push(char::from(bytes[index + 2]));
+            index += 3;
+            continue;
+        }
+        let byte = bytes[index];
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b':' | b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+        index += 1;
+    }
+    encoded
+}
+
+fn is_hex(byte: u8) -> bool {
+    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f' | b'A'..=b'F')
 }
 
 /// Rooted authorities remain caller-configured and can be registered
