@@ -303,25 +303,19 @@ impl FileSystemFixture for RootedFixture {
         }
     }
 
-    fn copy_fast_path_case(
-        &self,
-        method: CopyMethod,
-    ) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
+    fn copy_fast_path_case(&self, method: CopyMethod) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
         if method != CopyMethod::Native {
             return Ok(FixtureSupport::Unsupported);
         }
-        let source =
-            match self.seed_file("native-copy-source.bin", b"rooted native copy payload")? {
-                FixtureSupport::Supported(path) => path,
-                FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
-            };
+        let source = match self.seed_file("native-copy-source.bin", b"rooted native copy payload")? {
+            FixtureSupport::Supported(path) => path,
+            FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+        };
         let target = self.path("native-copy-target.bin")?;
         match self.exists_out_of_band(&target)? {
             FixtureSupport::Supported(false) => {}
             FixtureSupport::Supported(true) => {
-                return Err(FixtureError::new(
-                    "rooted native copy target already exists",
-                ));
+                return Err(FixtureError::new("rooted native copy target already exists"));
             }
             FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
         }
@@ -482,25 +476,19 @@ impl FileSystemFixture for HostFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn copy_fast_path_case(
-        &self,
-        method: CopyMethod,
-    ) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
+    fn copy_fast_path_case(&self, method: CopyMethod) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
         if method != CopyMethod::Native {
             return Ok(FixtureSupport::Unsupported);
         }
-        let source =
-            match self.seed_file("native-copy-source.bin", b"host native copy payload")? {
-                FixtureSupport::Supported(path) => path,
-                FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
-            };
+        let source = match self.seed_file("native-copy-source.bin", b"host native copy payload")? {
+            FixtureSupport::Supported(path) => path,
+            FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+        };
         let target = self.logical_path("native-copy-target.bin")?;
         match self.exists_out_of_band(&target)? {
             FixtureSupport::Supported(false) => {}
             FixtureSupport::Supported(true) => {
-                return Err(FixtureError::new(
-                    "host native copy target already exists",
-                ));
+                return Err(FixtureError::new("host native copy target already exists"));
             }
             FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
         }

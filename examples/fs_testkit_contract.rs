@@ -19,9 +19,9 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
-use qubit_fs_testkit::FileSystemContractSuite;
-use qubit_fs_testkit::CopyFixtureCase;
 use qubit_fs_testkit::ContractCheckId;
+use qubit_fs_testkit::CopyFixtureCase;
+use qubit_fs_testkit::FileSystemContractSuite;
 use qubit_fs_testkit::FileSystemFixture;
 use qubit_fs_testkit::FixtureError;
 use qubit_fs_testkit::FixtureResult;
@@ -208,25 +208,19 @@ impl FileSystemFixture for RootedFixture {
         Ok(FixtureSupport::Supported(()))
     }
 
-    fn copy_fast_path_case(
-        &self,
-        method: CopyMethod,
-    ) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
+    fn copy_fast_path_case(&self, method: CopyMethod) -> FixtureResult<FixtureSupport<CopyFixtureCase>> {
         if method != CopyMethod::Native {
             return Ok(FixtureSupport::Unsupported);
         }
-        let source =
-            match self.seed_file("native-copy-source.bin", b"example native copy payload")? {
-                FixtureSupport::Supported(path) => path,
-                FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
-            };
+        let source = match self.seed_file("native-copy-source.bin", b"example native copy payload")? {
+            FixtureSupport::Supported(path) => path,
+            FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
+        };
         let target = self.path("native-copy-target.bin")?;
         match self.exists_out_of_band(&target)? {
             FixtureSupport::Supported(false) => {}
             FixtureSupport::Supported(true) => {
-                return Err(FixtureError::new(
-                    "example native copy target already exists",
-                ));
+                return Err(FixtureError::new("example native copy target already exists"));
             }
             FixtureSupport::Unsupported => return Ok(FixtureSupport::Unsupported),
         }
