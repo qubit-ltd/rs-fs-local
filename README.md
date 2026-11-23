@@ -12,9 +12,9 @@ backend. Use it when the application needs the process host filesystem or one
 native directory retained as a rooted filesystem authority, without making URI
 parsing and native-path conversion part of application code.
 
-This README documents `qubit-fs-local` 0.11.2 (package version `0.11.2`).
+This README documents `qubit-fs-local` 0.12.0 (package version `0.12.0`).
 
-This version uses `qubit-fs` 0.3 and `qubit-local-files` 0.6.0. Provider ceilings tighten resources
+This version uses `qubit-fs` 0.4 and `qubit-local-files` 0.6.0. Provider ceilings tighten resources
 without overriding request behavior; writers preserve existing metadata.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
@@ -27,7 +27,7 @@ attach a separately shared, adjustable cleanup budget; see the
 ## Installation
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-local@0.11
+cargo add qubit-fs@0.4 qubit-fs-local@0.12
 ```
 
 Enable registry integration only when registering the optional `file`
@@ -35,8 +35,14 @@ provider with `qubit-fs-registry`:
 
 ```bash
 cargo add qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs-local@0.12 --features registry
 ```
+
+These are the candidate version constraints. A crates.io install remains pending
+publication of the compatible `qubit-fs` 0.4, `qubit-local-files` 0.6, and
+`qubit-fs-registry` 0.8 releases; the current validation uses the registered
+candidate path graph. Clients on `qubit-fs-local` 0.11 must migrate the core
+and adapter together because public types cross that dependency boundary.
 
 ## Quick Start
 
@@ -49,6 +55,7 @@ root so it can be run without elevated access:
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::Path as LogicalPath;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
@@ -64,7 +71,8 @@ let file_system = LocalFileSystems::rooted_with_id(
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 Use `LocalFileSystems::host(policy)` for the process host namespace,
@@ -82,6 +90,7 @@ different authorities.
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
 
@@ -91,7 +100,8 @@ let native = std::env::current_dir()?.join("Cargo.toml");
 let path = host_path_to_logical(&native)?;
 let prefix = file_system.read_prefix(&path, ReadOptions::default(), 4096)?;
 assert!(prefix.bytes().len() <= 4096);
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 Every constructor requires an explicit `LocalResourcePolicy`. Prefer

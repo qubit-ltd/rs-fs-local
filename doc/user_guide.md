@@ -6,8 +6,8 @@
 
 This guide is for Rust applications using `qubit-fs` that need a synchronous
 filesystem backed by the local host. It covers the current `qubit-fs-local`
-0.11.2 release: direct host/rooted facades and the optional registry provider
-(package version `0.11.2`). This release integrates `qubit-fs` 0.3 and
+0.12.0 release: direct host/rooted facades and the optional registry provider
+(package version `0.12.0`). This release integrates `qubit-fs` 0.4 and
 `qubit-local-files` 0.6.0.
 
 ## Conceptual Model
@@ -42,7 +42,7 @@ uses a temporary project-local root so it does not require elevated access.
 ## Installation and Minimal Configuration
 
 ```bash
-cargo add qubit-fs@0.3 qubit-fs-local@0.11
+cargo add qubit-fs@0.4 qubit-fs-local@0.12
 ```
 
 For registry use, enable the feature and add the registry crate in the
@@ -50,13 +50,21 @@ application:
 
 ```bash
 cargo add qubit-fs-registry@0.8
-cargo add qubit-fs-local@0.11 --features registry
+cargo add qubit-fs-local@0.12 --features registry
 ```
+
+These commands describe the candidate version constraints. A crates.io install
+requires publication of compatible `qubit-fs` 0.4, `qubit-local-files` 0.6,
+and `qubit-fs-registry` 0.8 releases; the current validation uses the
+registered candidate path graph. Clients on `qubit-fs-local` 0.11 must migrate
+the core and adapter together because public core types cross that dependency
+boundary. Clients enabling registry support must align the registry crate too.
 
 ## Core Workflow
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::time::Duration;
 
 use qubit_fs::Path as LogicalPath;
@@ -83,7 +91,8 @@ let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
 assert_eq!(metadata.len(), Some(b"name,total\nsample,1\n".len() as u64));
 println!("{metadata:?}");
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 The printed metadata confirms that the logical report path resolves through the
@@ -162,6 +171,57 @@ an error on a sibling entry that the walker has already encountered can still
 fail the listing. A cooperative deadline cannot interrupt an I/O call already
 in progress.
 
+This complete Host example lists a report subtree beneath an explicit logical
+root. The selected prefix entry is included, iteration ends at normal EOF, and
+a request limit that cannot return all selected entries reports an error.
+
+<!-- fs-local-example: direct -->
+```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use qubit_fs::directory::{ListFilter, ListOptions, ListScope};
+    use qubit_fs::Path;
+    use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
+
+    let temp = std::env::temp_dir().join(format!("qubit-fs-local-subtree-{}", std::process::id()));
+    if temp.exists() {
+        std::fs::remove_dir_all(&temp)?;
+    }
+    std::fs::create_dir_all(temp.join("reports/archive"))?;
+    std::fs::write(temp.join("reports/summary.csv"), b"total\n1\n")?;
+    std::fs::write(temp.join("outside.txt"), b"ignored")?;
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
+    let root = host_path_to_logical(&temp)?;
+    let prefix = Path::parse(&format!("{}/reports", root.as_str()))?;
+    let report = Path::parse(&format!("{}/reports/summary.csv", root.as_str()))?;
+    let outside = Path::parse(&format!("{}/outside.txt", root.as_str()))?;
+    let mut listing = filesystem.list(
+        &ListScope::Path(root.clone()),
+        ListOptions::default()
+            .with_recursive(true)
+            .with_filter(Some(ListFilter::Subtree("reports".to_owned()))),
+    )?;
+    let mut paths = Vec::new();
+    while let Some(entry) = listing.next_entry()? {
+        paths.push(entry.path);
+    }
+    assert!(paths.contains(&prefix));
+    assert!(paths.contains(&report));
+    assert!(!paths.contains(&outside));
+
+    let mut limited = filesystem.list(
+        &ListScope::Path(root),
+        ListOptions::default()
+            .with_recursive(true)
+            .with_filter(Some(ListFilter::Subtree("reports".to_owned())))
+            .with_max_entries(Some(1)),
+    )?;
+    let _prefix = limited.next_entry()?.expect("subtree prefix is returned");
+    assert!(limited.next_entry().is_err(), "entry budget exhaustion is an error");
+    std::fs::remove_dir_all(temp)?;
+    Ok(())
+}
+```
+
 Listing depth is a boundary, not a completeness check: the root is depth zero,
 and reaching the effective depth ends normally with EOF. That EOF only covers
 the selected depth; it does not prove that the full tree was scanned. The
@@ -174,6 +234,7 @@ The following values are application scenario examples, not library defaults:
 
 <!-- fs-local-example: direct -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::time::Duration;
 use qubit_fs_local::{
     LocalCopyResourceLimits, LocalDeleteResourceLimits, LocalFileSystems,
@@ -192,8 +253,9 @@ let policy = LocalResourcePolicy::bounded(
     ),
 );
 let file_system = LocalFileSystems::host(policy)?;
-# let _ = file_system;
-# Ok::<(), Box<dyn std::error::Error>>(())
+let _ = file_system;
+    Ok(())
+}
 ```
 
 Logical path text limits are reported as `Unknown` because native component
@@ -221,6 +283,7 @@ cleanup. These limits are independent of ordinary recursive delete budgets.
 
 <!-- fs-local-example: direct-cleanup -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use std::time::Duration;
 
 use qubit_fs::metadata::FileSystemId;
@@ -247,7 +310,8 @@ control.set_limits(Some(LocalTempCleanupResourceLimits::new(
 )));
 directory.cleanup()?;
 assert_eq!(root.path().read_dir()?.count(), 0);
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 This runnable test/example needs `tempfile` as a development dependency:
@@ -301,7 +365,7 @@ cooperative, not interruption of blocked native calls; budgets are not process
 RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
-Opening writer or temporary sessions follows the `qubit-fs` 0.3 `OpenFailure` contract.
+Opening writer or temporary sessions follows the `qubit-fs` 0.4 `OpenFailure` contract.
 Preserve its recovery session and any explicit cleanup error; see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
 
@@ -314,12 +378,14 @@ the provider crate is linked into the final binary:
 
 <!-- fs-local-example: registry -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs_local as _;
 use qubit_fs_registry::FileSystemRegistry;
 
 let registry = FileSystemRegistry::from_inventory()?;
 assert!(registry.provider_ids().iter().any(|id| id.as_str() == "local-file"));
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 Rooted providers retain an opened native authority and must be constructed
@@ -330,6 +396,7 @@ assembly time:
 
 <!-- fs-local-example: registry -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
@@ -350,7 +417,8 @@ let resolution = registry.resolve_config(&config)?;
 assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
 assert_eq!(resolution.file_system().properties().info().id().as_str(), "guide-reports");
 assert_eq!(resolution.file_system().stat(resolution.path())?.len(), Some(payload.len() as u64));
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 `LocalFileSystemProvider::rooted(id, root, policy)` opens the supplied native authority
@@ -376,6 +444,7 @@ cargo add qubit-spi@0.14
 
 <!-- fs-local-example: selection -->
 ```rust
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use qubit_fs::{metadata::FileSystemId, path::ConnectionUri};
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
@@ -417,7 +486,8 @@ assert_ne!(
 );
 assert_eq!(first.file_system().stat(first.path())?.len(), Some(payload_a.len() as u64));
 assert_eq!(second.file_system().stat(second.path())?.len(), Some(payload_b.len() as u64));
-# Ok::<(), Box<dyn std::error::Error>>(())
+    Ok(())
+}
 ```
 
 The canonical URI for both resolutions is `file:///reports/summary.csv`: it
@@ -487,6 +557,12 @@ continue to another provider. Once the scheme is `file`, configuration errors
 such as a remote authority, query, options, credentials, or an invalid path
 remain terminal; `OnAbsence` does not skip them. Failure to open a rooted
 authority is also terminal initialization failure.
+
+For a Windows Host provider, a `file:` URI must carry an absolute drive path,
+for example `file:///C:/reports/summary.csv`; drive-less paths such as
+`file:///tmp/data` are invalid Host configuration. Rooted URIs are interpreted
+inside the registered rooted authority. Persist the provider selection and
+filesystem identity with a canonical URI when replaying a Rooted resolution.
 
 Fallback requires an explicit `ProviderSelection::chain`, an automatic
 `ProviderSelection::auto()`, or resolution through the registry's default

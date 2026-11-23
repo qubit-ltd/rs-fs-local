@@ -15,13 +15,8 @@ use std::path::PathBuf;
 use qubit_fs::FileSystem;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
-use qubit_fs_local::LocalFileSystems;
-use qubit_fs_local::LocalResourcePolicy;
-use qubit_fs_testkit::FileSystemContractSuite;
-use qubit_fs_testkit::FileSystemFixture;
-use qubit_fs_testkit::FixtureError;
-use qubit_fs_testkit::FixtureResult;
-use qubit_fs_testkit::FixtureSupport;
+use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
+use qubit_fs_testkit::{FileSystemContractSuite, FileSystemFixture, FixtureError, FixtureResult, FixtureSupport};
 use qubit_local_files::path::LocalPaths;
 
 /// Removes one native entry without following symbolic links.
