@@ -18,13 +18,18 @@ use qubit_fs_registry::FileSystemRegistry;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
 
+#[cfg(windows)]
+const HOST_TEST_URI: &str = "file:///C:/tmp";
+#[cfg(not(windows))]
+const HOST_TEST_URI: &str = "file:///tmp";
+
 /// The linked host submission is discoverable and resolves `file:` URIs.
 #[test]
 fn test_inventory_discovers_host_provider() {
     let registry = FileSystemRegistry::from_inventory().expect("linked provider registry");
     assert_eq!(registry.provider_ids().len(), 1);
     assert_eq!(registry.provider_ids()[0].as_str(), "local-file");
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp").expect("file URI"));
+    let config = FileSystemConfig::new(ConnectionUri::parse(HOST_TEST_URI).expect("file URI"));
     let resolution = registry.resolve_config(&config).expect("host resolution");
     assert_eq!(resolution.file_system().properties().info().provider_id(), "local-file");
 }

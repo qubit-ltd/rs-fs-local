@@ -21,6 +21,11 @@ use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
 use qubit_spi::ProviderSelection;
 
+#[cfg(windows)]
+const HOST_TEST_URI: &str = "file:///C:/tmp";
+#[cfg(not(windows))]
+const HOST_TEST_URI: &str = "file:///tmp";
+
 /// Host and rooted providers expose the identity selected by their authority
 /// mode.
 #[test]
@@ -31,7 +36,7 @@ fn test_local_provider_modes_select_expected_authority() {
         .expect("host provider must register");
     let host_resolution = host_registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///tmp").expect("host test URI must parse"),
+            ConnectionUri::parse(HOST_TEST_URI).expect("host test URI must parse"),
         ))
         .expect("host provider must resolve an absolute file URI");
     assert_eq!(
@@ -254,30 +259,48 @@ fn test_rooted_provider_identity_is_scoped_beyond_canonical_uri() {
     host_registry
         .register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))
         .expect("host provider must register");
+    let replay_config = FileSystemConfig::new(
+        ConnectionUri::parse(first.canonical_uri().as_str())
+            .expect("canonical URI must replay as a connection URI"),
+    );
+    #[cfg(not(windows))]
     let host_replay = host_registry
-        .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse(first.canonical_uri().as_str())
-                .expect("canonical URI must replay as a connection URI"),
-        ))
+        .resolve_config(&replay_config)
         .expect("host provider must resolve the replayed URI");
-    assert_eq!(first.canonical_uri(), host_replay.canonical_uri());
-    assert_eq!(first.path(), host_replay.path());
-    assert_eq!(
-        "local-host",
-        host_replay.file_system().properties().info().id().as_str(),
-    );
-    assert_eq!(
-        "local-file",
-        host_replay.file_system().properties().info().provider_id(),
-    );
-    assert_ne!(
-        first.file_system().properties().info().id(),
-        host_replay.file_system().properties().info().id(),
-    );
-    assert_ne!(
-        first.file_system().properties().info().provider_id(),
-        host_replay.file_system().properties().info().provider_id(),
-    );
+    #[cfg(windows)]
+    {
+        let error = host_registry
+            .resolve_config(&replay_config)
+            .expect_err("a rooted URI without a Windows drive must not acquire Host authority");
+        let qubit_fs_registry::FileSystemRegistryError::Creation(creation) = error else {
+            panic!("expected provider creation error");
+        };
+        assert_eq!(
+            FsErrorKind::InvalidPath,
+            creation.decisive_attempt().failure().error().kind(),
+        );
+    }
+    #[cfg(not(windows))]
+    {
+        assert_eq!(first.canonical_uri(), host_replay.canonical_uri());
+        assert_eq!(first.path(), host_replay.path());
+        assert_eq!(
+            "local-host",
+            host_replay.file_system().properties().info().id().as_str(),
+        );
+        assert_eq!(
+            "local-file",
+            host_replay.file_system().properties().info().provider_id(),
+        );
+        assert_ne!(
+            first.file_system().properties().info().id(),
+            host_replay.file_system().properties().info().id(),
+        );
+        assert_ne!(
+            first.file_system().properties().info().provider_id(),
+            host_replay.file_system().properties().info().provider_id(),
+        );
+    }
 }
 
 /// Errors from a rooted provider retain the descriptor identity selected by

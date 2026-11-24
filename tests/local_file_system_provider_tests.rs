@@ -39,6 +39,11 @@ use qubit_spi::ServiceProvider;
 use qubit_spi::error::ProviderFailure;
 use qubit_spi::error::ProviderFailureKind;
 
+#[cfg(windows)]
+const HOST_TEST_PATH: &str = "/C:/tmp/data";
+#[cfg(not(windows))]
+const HOST_TEST_PATH: &str = "/tmp/data";
+
 /// Repeated SPI property queries return the same validated provider snapshot.
 #[test]
 fn test_local_spi_returns_a_stable_validated_provider_snapshot() {
@@ -61,7 +66,10 @@ fn test_local_provider_returns_concrete_resolution() {
     registry
         .register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))
         .expect("the local provider descriptor must register");
-    let config = FileSystemConfig::new(ConnectionUri::parse("file:///tmp/data").expect("the test file URI must parse"));
+    let config = FileSystemConfig::new(
+        ConnectionUri::parse(&format!("file://{HOST_TEST_PATH}"))
+            .expect("the test file URI must parse"),
+    );
 
     let resolution = registry
         .resolve_config(&config)
@@ -112,17 +120,20 @@ fn test_local_provider_canonicalizes_file_uri_path() {
 
     let single_slash = registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:/tmp/data").expect("single-slash URI must parse"),
+            ConnectionUri::parse(&format!("file:{HOST_TEST_PATH}")).expect("single-slash URI must parse"),
         ))
         .expect("single-slash file URI must resolve");
     let triple_slash = registry
         .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse("file:///tmp/data").expect("triple-slash URI must parse"),
+            ConnectionUri::parse(&format!("file://{HOST_TEST_PATH}")).expect("triple-slash URI must parse"),
         ))
         .expect("triple-slash file URI must resolve");
 
     assert_eq!(single_slash.canonical_uri(), triple_slash.canonical_uri());
-    assert_eq!(single_slash.canonical_uri().as_str(), "file:///tmp/data");
+    assert_eq!(
+        single_slash.canonical_uri().as_str(),
+        format!("file://{HOST_TEST_PATH}"),
+    );
 }
 
 /// Remote URI authorities do not have host-local filesystem authority.
