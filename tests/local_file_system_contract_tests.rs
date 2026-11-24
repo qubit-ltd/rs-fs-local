@@ -142,23 +142,21 @@ fn replace_native_path(path: &NativePath, bytes: &[u8]) -> FixtureResult<()> {
     let parent = path
         .parent()
         .ok_or_else(|| FixtureError::new("random-access replacement path has no parent"))?;
-    let mut replacement = tempfile::NamedTempFile::new_in(parent).map_err(|error| {
-        FixtureError::with_source("random-access replacement staging failed", error)
-    })?;
-    replacement.write_all(bytes).map_err(|error| {
-        FixtureError::with_source("random-access replacement staging write failed", error)
-    })?;
+    let mut replacement = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| FixtureError::with_source("random-access replacement staging failed", error))?;
+    replacement
+        .write_all(bytes)
+        .map_err(|error| FixtureError::with_source("random-access replacement staging write failed", error))?;
     let replacement = replacement.into_temp_path();
     // Windows rename replacement succeeded with an open destination handle
     // on the observed NTFS runner; keep persist for other platforms.
     #[cfg(windows)]
-    fs::rename(&replacement, path).map_err(|error| {
-        FixtureError::with_source("random-access path replacement failed", error)
-    })?;
+    fs::rename(&replacement, path)
+        .map_err(|error| FixtureError::with_source("random-access path replacement failed", error))?;
     #[cfg(not(windows))]
-    replacement.persist(path).map_err(|error| {
-        FixtureError::with_source("random-access path replacement failed", error.error)
-    })?;
+    replacement
+        .persist(path)
+        .map_err(|error| FixtureError::with_source("random-access path replacement failed", error.error))?;
     Ok(())
 }
 
@@ -178,11 +176,7 @@ fn windows_io_error_evidence(error: &(dyn Error + 'static)) -> String {
     let mut current = Some(error);
     while let Some(source) = current {
         if let Some(error) = source.downcast_ref::<std::io::Error>() {
-            return format!(
-                "ErrorKind={:?}, raw_os_error={:?}",
-                error.kind(),
-                error.raw_os_error()
-            );
+            return format!("ErrorKind={:?}, raw_os_error={:?}", error.kind(), error.raw_os_error());
         }
         current = source.source();
     }
@@ -212,23 +206,21 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
                     Path::parse("/payload").unwrap(),
                 )
             } else {
-                let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())
-                    .expect("create Host SPI");
-                let path =
-                    qubit_fs_local::host_path_to_logical(&original).expect("convert Host path");
+                let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded()).expect("create Host SPI");
+                let path = qubit_fs_local::host_path_to_logical(&original).expect("convert Host path");
                 (FileSystem::from_spi(spi).expect("create Host facade"), path)
             };
             let info = file_system.properties().info();
             let scope = if rooted { "Rooted" } else { "Host" };
             let uses_legacy_persist = method == "legacy persist";
-            let volume_root =
-                root.path()
-                    .components()
-                    .take(2)
-                    .fold(PathBuf::new(), |mut path, component| {
-                        path.push(component.as_os_str());
-                        path
-                    });
+            let volume_root = root
+                .path()
+                .components()
+                .take(2)
+                .fold(PathBuf::new(), |mut path, component| {
+                    path.push(component.as_os_str());
+                    path
+                });
             let mut old_reader = file_system
                 .open_random_access_reader(&path, ReadOptions::default())
                 .expect("open original random-access reader");
@@ -238,15 +230,13 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
                     .map_err(|error| FixtureError::with_source("direct rename failed", error)),
                 "replacement helper" => replace_native_path(&original, b"BBBB"),
                 "legacy persist" => {
-                    let mut staged = tempfile::NamedTempFile::new_in(root.path())
-                        .expect("stage legacy persist replacement");
+                    let mut staged =
+                        tempfile::NamedTempFile::new_in(root.path()).expect("stage legacy persist replacement");
                     staged.write_all(b"BBBB").expect("write legacy replacement");
-                    staged.persist(&original).map(|_| ()).map_err(|error| {
-                        FixtureError::with_source(
-                            "legacy NamedTempFile::persist failed",
-                            error.error,
-                        )
-                    })
+                    staged
+                        .persist(&original)
+                        .map(|_| ())
+                        .map_err(|error| FixtureError::with_source("legacy NamedTempFile::persist failed", error.error))
                 }
                 _ => unreachable!("matrix method is known"),
             };
@@ -276,21 +266,13 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
             let native_path_state = fs::read(&original)
                 .map(|bytes| format!("present:{bytes:?}"))
                 .unwrap_or_else(|error| {
-                    format!(
-                        "unreadable:{:?}, raw_os_error={:?}",
-                        error.kind(),
-                        error.raw_os_error()
-                    )
+                    format!("unreadable:{:?}, raw_os_error={:?}", error.kind(), error.raw_os_error())
                 });
             let facade_path_state = file_system
                 .stat(&path)
                 .map(|metadata| format!("present:{:?}, len={:?}", metadata.kind(), metadata.len()))
                 .unwrap_or_else(|error| {
-                    format!(
-                        "unavailable:{:?}; {}",
-                        error.kind(),
-                        windows_io_error_evidence(&error)
-                    )
+                    format!("unavailable:{:?}; {}", error.kind(), windows_io_error_evidence(&error))
                 });
 
             println!(
@@ -308,31 +290,23 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
             }
             if replacement_succeeded {
                 assert_eq!(
-                    old_read
-                        .as_deref()
-                        .expect("old reader must remain readable"),
+                    old_read.as_deref().expect("old reader must remain readable"),
                     b"AAAA",
                     "old reader must retain the original contents"
                 );
                 assert_eq!(
-                    new_read
-                        .as_deref()
-                        .expect("new reader must remain readable"),
+                    new_read.as_deref().expect("new reader must remain readable"),
                     b"BBBB",
                     "new reader must observe the replacement contents"
                 );
             } else {
                 assert_eq!(
-                    old_read
-                        .as_deref()
-                        .expect("old reader must remain readable"),
+                    old_read.as_deref().expect("old reader must remain readable"),
                     b"AAAA",
                     "old reader must retain original contents after a failed replacement"
                 );
                 assert_eq!(
-                    new_read
-                        .as_deref()
-                        .expect("new reader must remain readable"),
+                    new_read.as_deref().expect("new reader must remain readable"),
                     b"AAAA",
                     "failed replacement must leave original path contents intact"
                 );

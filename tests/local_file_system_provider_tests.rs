@@ -67,8 +67,7 @@ fn test_local_provider_returns_concrete_resolution() {
         .register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))
         .expect("the local provider descriptor must register");
     let config = FileSystemConfig::new(
-        ConnectionUri::parse(&format!("file://{HOST_TEST_PATH}"))
-            .expect("the test file URI must parse"),
+        ConnectionUri::parse(&format!("file://{HOST_TEST_PATH}")).expect("the test file URI must parse"),
     );
 
     let resolution = registry

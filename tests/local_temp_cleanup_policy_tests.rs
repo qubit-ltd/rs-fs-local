@@ -365,15 +365,9 @@ fn test_host_provider_cleanup_control_reaches_later_resolutions() {
     let shared = provider.temp_cleanup_control();
     let registry = FileSystemRegistry::default();
     registry.register(provider.clone()).expect("register provider clone");
-    let host_uri = if cfg!(windows) {
-        "file:///C:/tmp"
-    } else {
-        "file:///tmp"
-    };
+    let host_uri = if cfg!(windows) { "file:///C:/tmp" } else { "file:///tmp" };
     let resolution = registry
-        .resolve_config(&FileSystemConfig::new(
-            ConnectionUri::parse(host_uri).expect("URI"),
-        ))
+        .resolve_config(&FileSystemConfig::new(ConnectionUri::parse(host_uri).expect("URI")))
         .expect("resolve host provider");
     let mut directory = resolution
         .file_system()

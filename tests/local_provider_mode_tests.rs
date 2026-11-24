@@ -260,8 +260,7 @@ fn test_rooted_provider_identity_is_scoped_beyond_canonical_uri() {
         .register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))
         .expect("host provider must register");
     let replay_config = FileSystemConfig::new(
-        ConnectionUri::parse(first.canonical_uri().as_str())
-            .expect("canonical URI must replay as a connection URI"),
+        ConnectionUri::parse(first.canonical_uri().as_str()).expect("canonical URI must replay as a connection URI"),
     );
     #[cfg(not(windows))]
     let host_replay = host_registry
