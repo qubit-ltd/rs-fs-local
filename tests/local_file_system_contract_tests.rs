@@ -173,11 +173,7 @@ fn windows_io_error_evidence(error: &(dyn Error + 'static)) -> String {
     let mut current = Some(error);
     while let Some(source) = current {
         if let Some(error) = source.downcast_ref::<std::io::Error>() {
-            return format!(
-                "ErrorKind={:?}, raw_os_error={:?}",
-                error.kind(),
-                error.raw_os_error()
-            );
+            return format!("ErrorKind={:?}, raw_os_error={:?}", error.kind(), error.raw_os_error());
         }
         current = source.source();
     }
@@ -207,10 +203,8 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
                     Path::parse("/payload").unwrap(),
                 )
             } else {
-                let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())
-                    .expect("create Host SPI");
-                let path = qubit_fs_local::host_path_to_logical(&original)
-                    .expect("convert Host path");
+                let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded()).expect("create Host SPI");
+                let path = qubit_fs_local::host_path_to_logical(&original).expect("convert Host path");
                 (FileSystem::from_spi(spi).expect("create Host facade"), path)
             };
             let info = file_system.properties().info();
@@ -264,11 +258,7 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
             let native_path_state = fs::read(&original)
                 .map(|bytes| format!("present:{bytes:?}"))
                 .unwrap_or_else(|error| {
-                    format!(
-                        "unreadable:{:?}, raw_os_error={:?}",
-                        error.kind(),
-                        error.raw_os_error()
-                    )
+                    format!("unreadable:{:?}, raw_os_error={:?}", error.kind(), error.raw_os_error())
                 });
             let facade_path_state = file_system
                 .stat(&path)
