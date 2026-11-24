@@ -7,6 +7,8 @@
 // =============================================================================
 //! Stateful contract coverage for the rooted local adapter.
 
+#[cfg(windows)]
+use std::error::Error;
 use std::fs;
 use std::io::ErrorKind;
 use std::io::Write;
@@ -24,6 +26,8 @@ use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
+#[cfg(windows)]
+use qubit_fs::read::ReadOptions;
 use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ProviderOperation;
 use qubit_fs::write::WriteOptions;
@@ -162,6 +166,145 @@ fn test_replace_native_path_replaces_existing_file() {
     replace_native_path(&path, b"new contents").expect("replace existing target");
 
     assert_eq!(fs::read(path).expect("read replacement"), b"new contents");
+}
+
+#[cfg(windows)]
+fn windows_io_error_evidence(error: &(dyn Error + 'static)) -> String {
+    let mut current = Some(error);
+    while let Some(source) = current {
+        if let Some(error) = source.downcast_ref::<std::io::Error>() {
+            return format!(
+                "ErrorKind={:?}, raw_os_error={:?}",
+                error.kind(),
+                error.raw_os_error()
+            );
+        }
+        current = source.source();
+    }
+    "ErrorKind=<no io::Error in source chain>, raw_os_error=None".to_owned()
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() {
+    for rooted in [false, true] {
+        for use_persist_helper in [false, true] {
+            let root = tempfile::tempdir().expect("create Windows replacement evidence root");
+            let original = root.path().join("payload");
+            let replacement = root.path().join("replacement");
+            fs::write(&original, b"AAAA").expect("seed original payload");
+            fs::write(&replacement, b"BBBB").expect("seed replacement payload");
+
+            let (file_system, path) = if rooted {
+                let spi = LocalFileSystemSpi::rooted(
+                    FileSystemId::new("fsl13-rooted").expect("valid rooted id"),
+                    root.path(),
+                    LocalResourcePolicy::unbounded(),
+                )
+                .expect("create rooted SPI");
+                (
+                    FileSystem::from_spi(spi).expect("create rooted facade"),
+                    Path::parse("/payload").unwrap(),
+                )
+            } else {
+                let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded())
+                    .expect("create Host SPI");
+                let path = qubit_fs_local::host_path_to_logical(&original)
+                    .expect("convert Host path");
+                (FileSystem::from_spi(spi).expect("create Host facade"), path)
+            };
+            let info = file_system.properties().info();
+            let scope = if rooted { "Rooted" } else { "Host" };
+            let method = if use_persist_helper {
+                "replace_native_path/NamedTempFile::persist"
+            } else {
+                "std::fs::rename"
+            };
+            let volume_root = root
+                .path()
+                .components()
+                .take(2)
+                .fold(PathBuf::new(), |mut path, component| {
+                    path.push(component.as_os_str());
+                    path
+                });
+            let mut old_reader = file_system
+                .open_random_access_reader(&path, ReadOptions::default())
+                .expect("open original random-access reader");
+
+            let replacement_result = if use_persist_helper {
+                replace_native_path(&original, b"BBBB")
+            } else {
+                fs::rename(&replacement, &original)
+                    .map_err(|error| FixtureError::with_source("direct rename failed", error))
+            };
+            let replacement_succeeded = replacement_result.is_ok();
+            let replacement_evidence = match replacement_result.as_ref() {
+                Ok(()) => "success(ErrorKind=None, raw_os_error=None)".to_owned(),
+                Err(error) => format!("{error}; {}", windows_io_error_evidence(error)),
+            };
+
+            let old_read = {
+                let mut bytes = [0; 4];
+                old_reader
+                    .read_at(0, &mut bytes)
+                    .map(|count| bytes[..count].to_vec())
+                    .map_err(|error| windows_io_error_evidence(&error))
+            };
+            let new_read = file_system
+                .open_random_access_reader(&path, ReadOptions::default())
+                .map_err(|error| windows_io_error_evidence(&error))
+                .and_then(|mut reader| {
+                    let mut bytes = [0; 4];
+                    reader
+                        .read_at(0, &mut bytes)
+                        .map(|count| bytes[..count].to_vec())
+                        .map_err(|error| windows_io_error_evidence(&error))
+                });
+            let native_path_state = fs::read(&original)
+                .map(|bytes| format!("present:{bytes:?}"))
+                .unwrap_or_else(|error| {
+                    format!(
+                        "unreadable:{:?}, raw_os_error={:?}",
+                        error.kind(),
+                        error.raw_os_error()
+                    )
+                });
+            let facade_path_state = file_system
+                .stat(&path)
+                .map(|metadata| format!("present:{:?}, len={:?}", metadata.kind(), metadata.len()))
+                .unwrap_or_else(|error| {
+                    format!("unavailable:{:?}; {}", error.kind(), windows_io_error_evidence(&error))
+                });
+
+            println!(
+                "FSL-13 evidence: scope={scope}, filesystem_id={}, provider_id={}, volume_root={}, method={method}, replacement={replacement_evidence}, old_reader={old_read:?}, new_reader={new_read:?}, native_path={native_path_state}, facade_path={facade_path_state}",
+                info.id().as_str(),
+                info.provider_id(),
+                volume_root.display(),
+            );
+
+            if replacement_succeeded {
+                assert_eq!(
+                    old_read.as_deref().expect("old reader must remain readable"),
+                    b"AAAA",
+                    "old reader must retain the original contents"
+                );
+                assert_eq!(
+                    new_read.as_deref().expect("new reader must remain readable"),
+                    b"BBBB",
+                    "new reader must observe the replacement contents"
+                );
+            }
+            if let (Ok(new_bytes), Ok(native_state)) = (&new_read, fs::read(&original)) {
+                assert_eq!(
+                    new_bytes, &native_state,
+                    "new facade reader must agree with the native path state"
+                );
+            }
+            drop(old_reader);
+        }
+    }
 }
 
 /// Isolated rooted filesystem fixture used by the provider-neutral suite.

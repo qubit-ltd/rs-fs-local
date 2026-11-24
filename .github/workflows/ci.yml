@@ -41,7 +41,15 @@ jobs:
           components: rust-src
       - name: Prepare local path dependencies
         run: ./.infra/bin/prepare-local-path-dependencies.sh
+      - name: Record Windows temp volume filesystem
+        shell: pwsh
+        run: |
+          $tempPath = $env:TEMP
+          $driveLetter = [System.IO.Path]::GetPathRoot($tempPath).TrimEnd('\').TrimEnd(':')
+          $volume = Get-Volume -DriveLetter $driveLetter
+          if ($null -eq $volume) { throw "Could not identify the temp volume for $tempPath" }
+          Write-Output "FSL-13 volume: temp_path=$tempPath drive=$driveLetter FileSystem=$($volume.FileSystem)"
       - name: Compile all local adapter tests on Windows
         run: cargo check --locked --no-default-features --features registry --tests
       - name: Run all local adapter unit and integration tests on Windows
-        run: cargo test --locked --no-default-features --features registry --lib --tests
+        run: cargo test --locked --no-default-features --features registry --lib --tests -- --show-output
