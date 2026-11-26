@@ -255,10 +255,12 @@ fn test_local_provider_rejects_metadata_before_chained_fallback() {
     let failure = creation.decisive_attempt().failure();
     assert_eq!(ProviderFailureKind::InvalidConfiguration, failure.kind());
     assert_eq!(FsErrorKind::InvalidOptions, failure.error().kind());
-    assert!(received_schemes
-        .lock()
-        .expect("fallback call log should not be poisoned")
-        .is_empty());
+    assert!(
+        received_schemes
+            .lock()
+            .expect("fallback call log should not be poisoned")
+            .is_empty()
+    );
 }
 
 /// A named local selection makes one unsupported attempt for a non-`file:` URI.

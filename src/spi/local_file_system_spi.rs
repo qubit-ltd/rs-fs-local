@@ -1457,6 +1457,7 @@ mod tests {
     use qubit_local_files::options::LocalDeleteOptions;
     use qubit_local_files::options::LocalListOptions;
     use qubit_local_files::options::LocalTempCleanupLimits;
+    use qubit_local_files::outcome::LocalCopyFailure;
 
     use super::LocalFileSystemSpi;
     use super::native_option_call_recording::NativeOptionCall;
@@ -1506,7 +1507,7 @@ mod tests {
             failure
                 .error()
                 .source()
-                .and_then(|source| source.downcast_ref::<qubit_local_files::outcome::LocalCopyFailure>())
+                .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
                 .is_some()
         );
         let (error, state, partial_stats) = failure.into_parts();

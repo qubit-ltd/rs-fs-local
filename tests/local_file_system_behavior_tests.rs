@@ -58,6 +58,7 @@ use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
+use qubit_local_files::LocalFileError;
 use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::outcome::LocalCopyFailure;
 use tempfile::TempDir;
@@ -449,7 +450,7 @@ fn test_symlink_portable_metadata_requirement_fails_before_target_mutation() {
             .expect("native copy failure should remain the cause");
         let native_cause = native_failure
             .source()
-            .and_then(|source| source.downcast_ref::<qubit_local_files::LocalFileError>())
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
             .expect("native requirement error should remain nested cause");
         assert_eq!(
             LocalFileErrorKind::RequirementNotMet,
