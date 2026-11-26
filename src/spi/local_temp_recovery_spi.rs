@@ -55,7 +55,8 @@ impl TempResourceSpi for LocalTempRecoverySpi {
     ///
     /// # Parameters
     ///
-    /// - `_request`: Publication request, which this recovery session rejects.
+    /// The request is intentionally unnamed because this recovery session
+    /// rejects publication.
     ///
     /// # Errors
     ///
