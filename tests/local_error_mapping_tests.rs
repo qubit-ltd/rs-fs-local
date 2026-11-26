@@ -138,6 +138,127 @@ fn test_host_and_rooted_lazy_listing_failures_project_native_coordinates() {
 }
 
 #[test]
+fn test_host_and_rooted_injected_file_copy_failures_retain_effect_facts() {
+    for (rooted, fault) in [(false, "copy-staging-copy"), (true, "rooted-copy-file-contents-native")] {
+        let root = tempfile::tempdir().expect("copy fixture root should exist");
+        let native_source = root.path().join("source");
+        let native_parent = root.path().join("created-parent");
+        let native_target = native_parent.join("target");
+        std::fs::write(&native_source, b"payload").expect("copy source should exist");
+        let filesystem = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem")
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem")
+        };
+        let source = if rooted {
+            Path::parse("source").expect("relative Rooted source")
+        } else {
+            host_path_to_logical(&native_source).expect("absolute Host source")
+        };
+        let target = if rooted {
+            Path::parse("created-parent/target").expect("relative Rooted target")
+        } else {
+            host_path_to_logical(&native_target).expect("absolute Host target")
+        };
+        let _fault = install_test_fault(fault).expect("copy fault should install");
+
+        let failure = filesystem
+            .copy(&source, &target, CopyOptions::file().with_create_parent(true))
+            .expect_err("injected file contents fault should fail the copy");
+
+        let expected_state = if rooted {
+            CopyFailureState::Indeterminate
+        } else {
+            CopyFailureState::PartiallyPublished
+        };
+        assert_eq!(expected_state, failure.state(), "rooted={rooted}");
+        let expected_effect = if rooted {
+            FsEffectState::Indeterminate
+        } else {
+            FsEffectState::PartiallyApplied
+        };
+        assert_eq!(Some(expected_effect), failure.error().effect_state(), "rooted={rooted}");
+        assert_eq!(Some(&source), failure.error().path(), "rooted={rooted}");
+        assert_eq!(Some(&target), failure.error().target(), "rooted={rooted}");
+        assert_eq!(Some(&source), failure.error().failure_path(), "rooted={rooted}");
+        assert_eq!(Some(&target), failure.error().failure_target(), "rooted={rooted}");
+        assert_eq!(&CopyStats::default(), failure.partial_stats(), "rooted={rooted}");
+        assert_eq!(Some("local-file"), failure.error().provider(), "rooted={rooted}");
+        let native_failure = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
+            .expect("native typed copy failure should remain the cause");
+        assert!(native_failure.source().is_some(), "rooted={rooted}");
+        assert!(
+            native_parent.is_dir(),
+            "created parent is the partial effect; rooted={rooted}"
+        );
+        assert!(!native_target.exists(), "target remains unpublished; rooted={rooted}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn test_host_and_rooted_injected_symlink_copy_failures_retain_unchanged_facts() {
+    for (rooted, fault) in [
+        (false, "local-fs-copy-symlink-create"),
+        (true, "rooted-copy-symlink-create"),
+    ] {
+        let root = tempfile::tempdir().expect("copy fixture root should exist");
+        let native_source = root.path().join("source-link");
+        let native_target = root.path().join("target-link");
+        std::os::unix::fs::symlink("referent", &native_source).expect("source symlink should exist");
+        let filesystem = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem")
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem")
+        };
+        let source = if rooted {
+            Path::parse("source-link").expect("relative Rooted source")
+        } else {
+            host_path_to_logical(&native_source).expect("absolute Host source")
+        };
+        let target = if rooted {
+            Path::parse("target-link").expect("relative Rooted target")
+        } else {
+            host_path_to_logical(&native_target).expect("absolute Host target")
+        };
+        let _fault = install_test_fault(fault).expect("symlink copy fault should install");
+
+        let failure = filesystem
+            .copy(&source, &target, CopyOptions::file())
+            .expect_err("injected link creation failure should stop before publication");
+
+        assert_eq!(CopyFailureState::Unchanged, failure.state(), "rooted={rooted}");
+        assert_eq!(
+            Some(FsEffectState::Unchanged),
+            failure.error().effect_state(),
+            "rooted={rooted}"
+        );
+        assert_eq!(Some(&source), failure.error().path(), "rooted={rooted}");
+        assert_eq!(Some(&target), failure.error().target(), "rooted={rooted}");
+        assert_eq!(Some(&source), failure.error().failure_path(), "rooted={rooted}");
+        assert_eq!(Some(&target), failure.error().failure_target(), "rooted={rooted}");
+        assert_eq!(&CopyStats::default(), failure.partial_stats(), "rooted={rooted}");
+        assert_eq!(Some("local-file"), failure.error().provider(), "rooted={rooted}");
+        let native_failure = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
+            .expect("native typed copy failure should remain the cause");
+        assert!(native_failure.source().is_some(), "rooted={rooted}");
+        assert!(
+            std::fs::symlink_metadata(&native_source)
+                .expect("source remains")
+                .file_type()
+                .is_symlink()
+        );
+        assert!(std::fs::symlink_metadata(&native_target).is_err(), "rooted={rooted}");
+    }
+}
+
+#[test]
 fn test_typed_copy_failure_exposes_unchanged_effect_and_request_context() {
     let root = tempfile::tempdir().expect("fixture root should exist");
     let source = Path::parse("/missing").expect("valid source path");

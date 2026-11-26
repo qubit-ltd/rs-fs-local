@@ -126,6 +126,20 @@ pub(crate) fn copy_stats(stats: native_files::outcome::LocalCopyStats) -> CopySt
     )
 }
 
+/// Converts native counters while treating symlinks separately from files.
+///
+/// # Parameters
+///
+/// - `files`: Native entry count classified as files, including symlinks.
+/// - `symlinks`: Native entry count classified as symbolic links.
+/// - `directories`: Native entry count classified as directories.
+/// - `bytes`: Total bytes copied from regular files.
+/// - `skipped`: Native entry count skipped by copy policy.
+/// - `overwritten`: Native entry count that replaced existing targets.
+///
+/// # Returns
+///
+/// Copy statistics with symlinks excluded from the regular file count.
 fn copy_stats_from_counts(
     files: u64,
     symlinks: u64,

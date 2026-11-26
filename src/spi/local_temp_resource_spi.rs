@@ -28,7 +28,6 @@ use qubit_fs::temp::PersistOutcome;
 use qubit_local_files::LocalFileError;
 use qubit_local_files::LocalTempDirectory;
 use qubit_local_files::LocalTempFile;
-use qubit_local_files::LocalTempRecovery;
 use qubit_local_files::error::LocalFileEffectState;
 use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::error::LocalPersistError;
@@ -79,78 +78,6 @@ pub(crate) enum LocalTempResourceSpi {
     },
 }
 
-/// Cleanup-only provider session for a partially created temporary object.
-pub(crate) struct LocalTempRecoverySpi {
-    owner: Option<LocalTempRecovery>,
-    rooted: bool,
-    provider_id: String,
-}
-
-impl LocalTempRecoverySpi {
-    pub(crate) fn new(owner: LocalTempRecovery, rooted: bool, provider_id: String) -> Self {
-        Self {
-            owner: Some(owner),
-            rooted,
-            provider_id,
-        }
-    }
-}
-
-impl TempResourceSpi for LocalTempRecoverySpi {
-    fn persist(&mut self, _: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
-        Err(SpiPersistFailure::new(
-            FsError::new(
-                FsErrorKind::InvalidState,
-                FsOperation::PersistTemp,
-                "failed temporary creation permits cleanup only",
-            )
-            .with_provider(&self.provider_id)
-            .with_effect_state(FsEffectState::PartiallyApplied),
-            PersistFailureState::NotPublishedSourceCleanupRequired,
-        ))
-    }
-
-    fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
-        Err(SpiPersistFailure::new(
-            FsError::new(
-                FsErrorKind::InvalidState,
-                FsOperation::PersistTemp,
-                "failed temporary creation permits cleanup only",
-            )
-            .with_provider(&self.provider_id)
-            .with_effect_state(FsEffectState::PartiallyApplied),
-            PersistFailureState::NotPublishedSourceCleanupRequired,
-        ))
-    }
-
-    fn cleanup(&mut self) -> FsResult<()> {
-        let Some(owner) = self.owner.as_mut() else {
-            return Ok(());
-        };
-        owner.cleanup().map_err(|error| {
-            let operation = FsOperation::CleanupTemp;
-            let logical = local_path_mapper::logical(
-                if self.rooted {
-                    LocalFileSystemScope::Rooted
-                } else {
-                    LocalFileSystemScope::Host
-                },
-                owner.path(),
-                operation,
-            );
-            let mapped = error_mapper::map_without_path(
-                error,
-                operation,
-                "temporary creation recovery cleanup failed",
-                &self.provider_id,
-            );
-            match logical {
-                Ok(path) => mapped.with_path(path),
-                Err(_) => mapped,
-            }
-        })
-    }
-}
 impl LocalTempResourceSpi {
     /// Wraps a host- or rooted-authority native temporary file.
     ///
@@ -488,11 +415,13 @@ fn persist_file(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
+            let state = persist_failure_state(error.state(), error.source_state());
+            let native_effect = error.error().effect_state();
+            let effect = persist_effect_state_for_native_error(native_effect, state);
             let (error, state, source_state, _, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                map_persist_error(error, stage, logical_target, provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                map_persist_error(error, stage, logical_target, provider_id).with_effect_state(effect),
                 state,
             ))
         }
@@ -529,11 +458,13 @@ fn persist_directory(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
+            let state = persist_failure_state(error.state(), error.source_state());
+            let native_effect = error.error().effect_state();
+            let effect = persist_effect_state_for_native_error(native_effect, state);
             let (error, state, source_state, _, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                map_persist_error(error, stage, logical_target, provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                map_persist_error(error, stage, logical_target, provider_id).with_effect_state(effect),
                 state,
             ))
         }
@@ -865,6 +796,30 @@ const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
         | PersistFailureState::PublishedSourceReleased
         | PersistFailureState::PublishedSourceIndeterminate => FsEffectState::Applied,
         PersistFailureState::Indeterminate => FsEffectState::Indeterminate,
+    }
+}
+
+/// Preserves a native namespace effect, falling back to publication state.
+///
+/// # Parameters
+///
+/// - `native_effect`: Effect explicitly recorded by native persistence.
+/// - `state`: Publication state used when native effect is unavailable.
+///
+/// # Returns
+///
+/// The effect state exposed by the filesystem facade.
+fn persist_effect_state_for_native_error(
+    native_effect: Option<LocalFileEffectState>,
+    state: PersistFailureState,
+) -> FsEffectState {
+    match native_effect {
+        Some(LocalFileEffectState::Unchanged) => FsEffectState::Unchanged,
+        Some(LocalFileEffectState::PartiallyApplied) => FsEffectState::PartiallyApplied,
+        Some(LocalFileEffectState::Applied) => FsEffectState::Applied,
+        Some(LocalFileEffectState::Indeterminate) => FsEffectState::Indeterminate,
+        Some(_) => FsEffectState::Indeterminate,
+        None => persist_effect_state(state),
     }
 }
 

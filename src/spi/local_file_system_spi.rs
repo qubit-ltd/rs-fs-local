@@ -67,13 +67,13 @@ use qubit_fs::spi::TempCreateFailure;
 use qubit_fs::spi::TempResourceSpi;
 use qubit_local_files as native_files;
 
+use super::LocalTempRecoverySpi;
 use super::error_mapper;
 use super::local_directory_stream_spi::LocalDirectoryStreamSpi;
 use super::local_file_writer_spi::LocalFileWriterSpi;
 use super::local_options_mapper;
 use super::local_outcome_mapper;
 use super::local_temp_path_projection::LocalTempPathProjection;
-use super::local_temp_resource_spi::LocalTempRecoverySpi;
 use super::local_temp_resource_spi::LocalTempResourceSpi;
 use crate::LocalResourcePolicy;
 use crate::LocalTempCleanupControl;
@@ -240,6 +240,16 @@ mod native_option_call_recording {
 }
 
 impl LocalFileSystemSpi {
+    /// Creates a temporary file and retains cleanup ownership after partial
+    /// failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// An opened temporary file or a failure that retains recovery authority.
     fn create_temp_file_recoverable_impl(
         &self,
         request: CreateTempFileRequest,
@@ -314,6 +324,17 @@ impl LocalFileSystemSpi {
         ))
     }
 
+    /// Creates a temporary directory and retains cleanup ownership after
+    /// partial failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// An opened temporary directory or a failure that retains recovery
+    /// authority.
     fn create_temp_directory_recoverable_impl(
         &self,
         request: CreateTempDirectoryRequest,
@@ -844,6 +865,21 @@ impl LocalFileSystemSpi {
     }
 
     /// Projects a provider failure coordinate in the request's path form.
+    ///
+    /// # Parameters
+    ///
+    /// - `native_path`: Native failure coordinate returned by the provider.
+    /// - `operation`: Facade operation associated with the coordinate.
+    /// - `request_path`: Original request path whose spelling should be
+    ///   preserved.
+    ///
+    /// # Returns
+    ///
+    /// The failure coordinate projected into the request's path form.
+    ///
+    /// # Errors
+    ///
+    /// Returns path-conversion errors when the native coordinate is invalid.
     fn project_failure_path(
         &self,
         native_path: &NativePath,
@@ -864,6 +900,28 @@ impl LocalFileSystemSpi {
         Ok(logical)
     }
 
+    /// Projects both native failure coordinates for a copy result.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: Native copy failure to retain on projection errors.
+    /// - `state`: Native publication state of the failed copy.
+    /// - `partial_stats`: Native copy statistics recorded before failure.
+    /// - `failed_source`: Optional native source coordinate where copying
+    ///   failed.
+    /// - `failed_target`: Optional native target coordinate where copying
+    ///   failed.
+    /// - `request_source`: Source path supplied by the caller.
+    /// - `request_target`: Target path supplied by the caller.
+    ///
+    /// # Returns
+    ///
+    /// The native failure and its projected source and target coordinates.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider contract failure if either coordinate cannot be
+    /// projected.
     fn project_copy_failure_paths(
         &self,
         error: native_files::outcome::LocalCopyFailure,
@@ -1360,6 +1418,16 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|failure| failure.into_parts().0)
     }
 
+    /// Creates a temporary file while retaining recovery after partial
+    /// creation.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// An opened temporary file or a failure with optional cleanup recovery.
     fn create_temp_file_recoverable(
         &self,
         request: CreateTempFileRequest,
@@ -1386,6 +1454,17 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|failure| failure.into_parts().0)
     }
 
+    /// Creates a temporary directory while retaining recovery after partial
+    /// creation.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// An opened temporary directory or a failure with optional cleanup
+    /// recovery.
     fn create_temp_directory_recoverable(
         &self,
         request: CreateTempDirectoryRequest,
@@ -1394,6 +1473,25 @@ impl FileSystemSpi for LocalFileSystemSpi {
     }
 }
 
+/// Builds a provider-contract failure when a native copy coordinate is invalid.
+///
+/// # Parameters
+///
+/// - `error`: Native copy failure retained as the cause.
+/// - `state`: Publication state established by the native copy.
+/// - `partial_stats`: Statistics recorded before the native copy failed.
+/// - `source`: Source path supplied by the caller.
+/// - `target`: Target path supplied by the caller.
+/// - `provider_id`: Identity of the provider reporting invalid coordinates.
+///
+/// # Returns
+///
+/// A typed copy failure preserving caller paths, effect state, and partial
+/// statistics.
+///
+/// # Type Parameters
+///
+/// - `E`: Native error type retained as the failure cause.
 fn copy_contract_violation<E>(
     error: E,
     state: CopyFailureState,

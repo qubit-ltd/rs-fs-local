@@ -12,6 +12,7 @@ use std::ffi::OsStr;
 use std::path::Path as NativePath;
 
 use qubit_fs::FileSystem;
+use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::directory::CreateDirectoryOptions;
@@ -34,8 +35,10 @@ use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
+use qubit_local_files::error::LocalFileEffectState;
 use qubit_local_files::error::LocalFileError;
 use qubit_local_files::error::LocalFileErrorKind;
+use qubit_local_files::outcome::LocalCopyFailure;
 use qubit_local_files::test_support::install_test_fault;
 
 #[test]
@@ -531,8 +534,8 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
         let source = directory.path().join("source");
         let target = directory.path().join("target");
         std::fs::create_dir(&source).expect("copy source must be created");
-        std::fs::write(source.join("first"), b"first").expect("first source child must be written");
-        std::fs::write(source.join("second"), b"second").expect("second source child must be written");
+        std::fs::write(source.join("first"), b"payload").expect("first source child must be written");
+        std::fs::write(source.join("second"), b"payload").expect("second source child must be written");
         let source_logical = host_path_to_logical(&source).expect("source path must convert to logical path");
         let target_logical = host_path_to_logical(&target).expect("target path must convert to logical path");
         let source_children = ["first", "second"].map(|name| {
@@ -547,8 +550,23 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
             .copy(&source_logical, &target_logical, CopyOptions::tree())
             .expect_err("second child fault must fail the copy");
 
+        assert_eq!(CopyFailureState::PartiallyPublished, failure.state());
+        assert_eq!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
         assert_eq!(Some(&source_logical), failure.error().path());
         assert_eq!(Some(&target_logical), failure.error().target());
+        assert_eq!(1, failure.partial_stats().files);
+        assert_eq!(7, failure.partial_stats().bytes);
+        assert_eq!(0, failure.partial_stats().symlinks);
+        assert_eq!(Some("local-file"), failure.error().provider());
+        assert!(
+            failure
+                .error()
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
+                .and_then(|native| native.source())
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .is_some()
+        );
         let failed_source = failure.error().failure_path().expect("failed child source path");
         let failed_target = failure.error().failure_target().expect("failed child target path");
         let failed_child_index = source_children
@@ -556,7 +574,191 @@ fn test_copy_failure_maps_recursive_failed_child_paths() {
             .position(|path| path == failed_source)
             .expect("failure path must identify one of the source children");
         assert_eq!(Some(&target_children[failed_child_index]), Some(failed_target));
+        assert!(target.is_dir(), "the partially published tree remains visible");
+        assert_eq!(
+            1,
+            std::fs::read_dir(&target)
+                .expect("target tree should be readable")
+                .count()
+        );
     });
+}
+
+#[test]
+fn test_rooted_tree_copy_failure_retains_partial_effect_and_native_cause() {
+    const TEST_NAME: &str = "test_rooted_tree_copy_failure_retains_partial_effect_and_native_cause";
+    run_in_test_fault_process(TEST_NAME, "rooted-copy-directory-read", || {
+        let root = tempfile::tempdir().expect("copy fixture directory must be created");
+        let source_native = root.path().join("source");
+        let target_native = root.path().join("target");
+        std::fs::create_dir(&source_native).expect("source directory should exist");
+        std::fs::write(source_native.join("child"), b"payload").expect("source child should exist");
+        let source = Path::parse("source").expect("relative Rooted source");
+        let target = Path::parse("target").expect("relative Rooted target");
+        let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+            .expect("Rooted filesystem should open");
+
+        let failure = filesystem
+            .copy(&source, &target, CopyOptions::tree())
+            .expect_err("source directory reader fault should fail the tree copy");
+
+        assert_eq!(CopyFailureState::PartiallyPublished, failure.state());
+        assert_eq!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
+        assert_eq!(Some(&source), failure.error().path());
+        assert_eq!(Some(&target), failure.error().target());
+        assert_eq!(Some(&source), failure.error().failure_path());
+        assert_eq!(Some(&target), failure.error().failure_target());
+        assert_eq!(1, failure.partial_stats().directories);
+        assert_eq!(0, failure.partial_stats().files);
+        assert_eq!(0, failure.partial_stats().bytes);
+        assert_eq!(Some("local-file"), failure.error().provider());
+        assert!(
+            failure
+                .error()
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
+                .and_then(|native| native.source())
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .is_some()
+        );
+        assert!(source_native.is_dir());
+        assert!(target_native.is_dir(), "partial destination root remains visible");
+        assert_eq!(
+            0,
+            std::fs::read_dir(&target_native)
+                .expect("partial target should be readable")
+                .count()
+        );
+    });
+}
+
+#[test]
+fn test_host_and_rooted_temp_persist_install_faults_retain_retry_ownership() {
+    macro_rules! assert_persist_fault_and_retry {
+        ($temporary:ident, $filesystem:ident, $target:ident, $target_native:ident, $parent_native:ident, $rooted:ident, $directory:ident) => {{
+            let source = $temporary.path().clone();
+            assert!(
+                !$parent_native.exists(),
+                "parent must start absent; rooted={}, directory={}",
+                $rooted,
+                $directory
+            );
+            let fault = install_test_fault("temp-persist-install").expect("persist fault should install");
+            let failure = $temporary
+                .persist(&$target, PersistOptions::default().with_create_parent())
+                .expect_err("injected destination install error should preserve the temporary resource");
+
+            assert_eq!(PersistFailureState::NotPublished, failure.state());
+            assert_eq!(
+                FsErrorKind::AlreadyExists,
+                failure.error().kind(),
+                "rooted={}, directory={}, mapped={failure}",
+                $rooted,
+                $directory
+            );
+            assert_eq!(FsOperation::PersistTemp, failure.error().operation());
+            assert_eq!(Some(&source), failure.error().path());
+            assert_eq!(Some(&$target), failure.error().target());
+            assert_eq!(Some("local-file"), failure.error().provider());
+            assert!(
+                $parent_native.is_dir(),
+                "parent persists; rooted={}, directory={}",
+                $rooted,
+                $directory
+            );
+            let native_cause = failure
+                .error()
+                .source()
+                .and_then(|cause| cause.downcast_ref::<LocalFileError>())
+                .expect("native persist error should remain the cause");
+            assert_eq!(
+                LocalFileErrorKind::AlreadyExists,
+                native_cause.kind(),
+                "rooted={}, directory={}, cause={native_cause}",
+                $rooted,
+                $directory
+            );
+            assert_eq!(
+                Some(LocalFileEffectState::PartiallyApplied),
+                native_cause.effect_state(),
+                "rooted={}, directory={}",
+                $rooted,
+                $directory
+            );
+            assert_eq!(
+                Some(FsEffectState::PartiallyApplied),
+                failure.error().effect_state(),
+                "rooted={}, directory={}",
+                $rooted,
+                $directory
+            );
+            assert_eq!(TempResourceState::Owned, $temporary.state());
+            assert!(!$target_native.exists());
+            assert!(
+                $filesystem.stat(&source).is_ok(),
+                "owned source remains after failed persistence"
+            );
+            drop(fault);
+
+            $temporary
+                .persist(&$target, PersistOptions::default().with_create_parent())
+                .expect("retained source should retry after the injected fault is consumed");
+            assert_eq!(TempResourceState::Persisted, $temporary.state());
+            assert!($filesystem.stat(&$target).is_ok(), "retry publishes target");
+        }};
+    }
+
+    for rooted in [false, true] {
+        for directory in [false, true] {
+            let root = tempfile::tempdir().expect("persist fixture root should exist");
+            std::fs::write(root.path().join("external-sentinel"), b"preserve").expect("external sentinel should exist");
+            let filesystem = if rooted {
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+                    .expect("Rooted filesystem should open")
+            } else {
+                LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem should open")
+            };
+            let target_native = root.path().join("created-parent").join("published");
+            let target = if rooted {
+                Path::parse("/created-parent/published").expect("absolute Rooted target")
+            } else {
+                host_path_to_logical(&target_native).expect("absolute Host target")
+            };
+            let parent_native = root.path().join("created-parent");
+
+            if directory {
+                let mut temporary = filesystem
+                    .create_temp_directory(TempDirectoryOptions::default())
+                    .expect("temporary directory should open");
+                assert_persist_fault_and_retry!(
+                    temporary,
+                    filesystem,
+                    target,
+                    target_native,
+                    parent_native,
+                    rooted,
+                    directory
+                );
+            } else {
+                let mut temporary = filesystem
+                    .create_temp_file(TempFileOptions::default())
+                    .expect("temporary file should open");
+                assert_persist_fault_and_retry!(
+                    temporary,
+                    filesystem,
+                    target,
+                    target_native,
+                    parent_native,
+                    rooted,
+                    directory
+                );
+            }
+            assert_eq!(
+                b"preserve".as_slice(),
+                std::fs::read(root.path().join("external-sentinel")).expect("external resource remains")
+            );
+        }
+    }
 }
 
 /// Invalid target conversion reports the target while retaining cleanup access.
