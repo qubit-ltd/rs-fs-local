@@ -18,6 +18,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  source-route-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Verify ordinary source CI routing
+        run: python3 .infra/tests/test_source_ci_route.py -v
+
   rust-ci:
     permissions:
       contents: read

@@ -474,6 +474,73 @@ fn toml_path(path: &Path) -> String {
         .replace('"', "\\\"")
 }
 
+fn locked_registry_version(root: &Path, package: &str) -> String {
+    let source = fs::read_to_string(root.join("Cargo.lock")).expect("read checked-in lockfile");
+    let lock: toml::Value = toml::from_str(&source).expect("parse checked-in lockfile");
+    lock["package"]
+        .as_array()
+        .expect("lockfile package list")
+        .iter()
+        .find(|entry| {
+            entry["name"] == package
+                && entry["source"]
+                    .as_str()
+                    .is_some_and(|source| source.starts_with("registry+"))
+        })
+        .and_then(|entry| entry["version"].as_str())
+        .unwrap_or_else(|| panic!("Cargo.lock has no registry package {package}"))
+        .to_owned()
+}
+
+fn candidate_source_root(variable: &str) -> Option<PathBuf> {
+    std::env::var_os(variable).map(|manifest| {
+        PathBuf::from(manifest)
+            .parent()
+            .expect("candidate manifest has a parent")
+            .to_path_buf()
+    })
+}
+
+fn pin_profile_package(root: &Path, workspace: &Path, package: &str, version: &str) {
+    let output = Command::new(env!("CARGO"))
+        .args(["update", "--package", package, "--precise", version])
+        .current_dir(workspace)
+        .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+        .output()
+        .expect("pin profile dependency to checked-in lock version");
+    assert!(
+        output.status.success(),
+        "could not pin {package} to {version}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn package_version(manifest: &Path) -> String {
+    let source = fs::read_to_string(manifest).expect("read candidate package manifest");
+    let parsed: toml::Value = toml::from_str(&source).expect("parse candidate package manifest");
+    parsed["package"]["version"]
+        .as_str()
+        .expect("candidate package version")
+        .to_owned()
+}
+
+fn candidate_sha(repository: &Path) -> String {
+    let output = Command::new("git")
+        .args(["-C", repository.to_str().expect("UTF-8 candidate path"), "rev-parse", "HEAD"])
+        .output()
+        .expect("read candidate source revision");
+    assert!(
+        output.status.success(),
+        "could not read candidate SHA for {}: {}",
+        repository.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .expect("candidate SHA is UTF-8")
+        .trim()
+        .to_owned()
+}
+
 fn dependency_package_id(graph: &serde_json::Value, consumer_id: &str, name: &str) -> Result<String, String> {
     graph["resolve"]["nodes"]
         .as_array()
@@ -584,33 +651,46 @@ fn test_readme_and_user_guide_examples_compile() {
     let package: toml::Value = toml::from_str(&source).expect("parse manifest");
     let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
     let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
-    let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
     let tempfile_requirement = package["dev-dependencies"]["tempfile"]
         .as_str()
         .expect("tempfile development dependency requirement");
     let sibling_root = root.parent().expect("candidate checkout has a parent");
-    let candidate_manifest = std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST").map(PathBuf::from);
+    let candidate_manifest = std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| sibling_root.join("rs-local-files/Cargo.toml"));
     let candidate_root = candidate_manifest
-        .as_ref()
-        .map(|manifest| manifest.parent().expect("candidate manifest parent").to_path_buf());
+        .parent()
+        .expect("candidate manifest parent")
+        .to_path_buf();
+    // IO and SPI are candidates only when their manifests are explicitly
+    // selected; otherwise keep the versions from the checked-in lockfile.
+    let io_candidate_root = candidate_source_root("QUBIT_IO_CANDIDATE_MANIFEST");
+    let spi_candidate_root = candidate_source_root("QUBIT_SPI_CANDIDATE_MANIFEST");
+    let locked_io_version = locked_registry_version(root, "qubit-io");
+    let locked_spi_version = locked_registry_version(root, "qubit-spi");
     let mut patches = Vec::new();
-    for (package, sibling) in [
-        ("qubit-fs", "rs-fs"),
-        ("qubit-local-files", "rs-local-files"),
-        ("qubit-fs-registry", "rs-fs-registry"),
-        // Registry examples use APIs newer than the compatibility-pinned rs-redact checkout.
-        ("qubit-io", "rs-io"),
-        ("qubit-spi", "rs-spi"),
-    ] {
-        let path = if package == "qubit-local-files" {
-            candidate_root.clone().unwrap_or_else(|| sibling_root.join(sibling))
-        } else {
-            sibling_root.join(sibling)
-        };
-        if path.join("Cargo.toml").is_file() {
-            patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
-        }
+    let mut candidate_sources = vec![
+        ("qubit-fs", sibling_root.join("rs-fs")),
+        (
+            "qubit-local-files",
+            candidate_root.clone(),
+        ),
+        ("qubit-fs-registry", sibling_root.join("rs-fs-registry")),
+    ];
+    if let Some(path) = &io_candidate_root {
+        candidate_sources.push(("qubit-io", path.clone()));
     }
+    if let Some(path) = &spi_candidate_root {
+        candidate_sources.push(("qubit-spi", path.clone()));
+    }
+    for (package, path) in candidate_sources {
+        patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
+    }
+    let spi = if spi_candidate_root.is_some() {
+        dependency_spec(root, &package["dependencies"]["qubit-spi"])
+    } else {
+        format!("{{ version = \"={locked_spi_version}\" }}")
+    };
     let documents = [
         "README.md",
         "README.zh_CN.md",
@@ -696,18 +776,35 @@ fn test_readme_and_user_guide_examples_compile() {
             "direct dependencies for {profile:?}"
         );
 
-        let metadata = Command::new(env!("CARGO"))
-            .args(["metadata", "--format-version", "1"])
+        let lock = Command::new(env!("CARGO"))
+            .arg("generate-lockfile")
             .current_dir(workspace.path())
             .output()
-            .expect("resolve example dependencies");
+            .expect("generate candidate profile lockfile");
+        assert!(
+            lock.status.success(),
+            "{}",
+            String::from_utf8_lossy(&lock.stderr)
+        );
+        if io_candidate_root.is_none() {
+            pin_profile_package(root, workspace.path(), "qubit-io", &locked_io_version);
+        }
+        if !profile.is_direct() && spi_candidate_root.is_none() {
+            pin_profile_package(root, workspace.path(), "qubit-spi", &locked_spi_version);
+        }
+        let metadata = Command::new(env!("CARGO"))
+            .args(["metadata", "--locked", "--format-version", "1"])
+            .current_dir(workspace.path())
+            .output()
+            .expect("resolve locked example dependency graph");
         assert!(
             metadata.status.success(),
             "{}",
             String::from_utf8_lossy(&metadata.stderr)
         );
         let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
-        if let Some(candidate_manifest) = &candidate_manifest {
+        let resolve = &graph["resolve"]["nodes"];
+        {
             let consumer_id = graph["packages"]
                 .as_array()
                 .unwrap()
@@ -728,7 +825,7 @@ fn test_readme_and_user_guide_examples_compile() {
                 .as_str()
                 .unwrap();
             let local_id = dependency_package_id(&graph, consumer_id, "qubit-fs-local").unwrap();
-            validate_candidate_local_files_edge(&graph, &local_id, candidate_manifest)
+            validate_candidate_local_files_edge(&graph, &local_id, &candidate_manifest)
                 .unwrap_or_else(|error| panic!("candidate identity for {profile:?}: {error}"));
         }
         let mut expected_graph = expected.clone();
@@ -750,7 +847,117 @@ fn test_readme_and_user_guide_examples_compile() {
                 "unique package identity for {name} in {profile:?}"
             );
         }
-        let resolve = &graph["resolve"]["nodes"];
+        for (name, expected_path) in [
+            ("qubit-fs", sibling_root.join("rs-fs/Cargo.toml")),
+            ("qubit-fs-local", root.join("Cargo.toml")),
+            ("qubit-local-files", candidate_manifest.clone()),
+        ] {
+            let resolved = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap();
+            assert_eq!(resolved["source"], serde_json::Value::Null, "{name} source");
+            assert_eq!(
+                PathBuf::from(resolved["manifest_path"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                expected_path.canonicalize().unwrap(),
+                "{name} candidate manifest"
+            );
+            assert_eq!(
+                resolved["version"].as_str(),
+                Some(package_version(&expected_path)),
+                "{name} version"
+            );
+        }
+        if !profile.is_direct() {
+            let registry_manifest = sibling_root.join("rs-fs-registry/Cargo.toml");
+            let registry = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == "qubit-fs-registry")
+                .unwrap();
+            assert_eq!(registry["source"], serde_json::Value::Null, "registry source");
+            assert_eq!(
+                PathBuf::from(registry["manifest_path"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                registry_manifest.canonicalize().unwrap(),
+                "registry candidate manifest"
+            );
+            assert_eq!(
+                registry["version"].as_str(),
+                Some(package_version(&registry_manifest)),
+                "registry candidate version"
+            );
+            let registry_node = resolve
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == registry["id"])
+                .unwrap();
+            let features = registry_node["features"].as_array().unwrap();
+            assert!(
+                features.iter().any(|feature| feature == "inventory"),
+                "Registry profile must enable the candidate inventory feature"
+            );
+            assert!(
+                !features.iter().any(|feature| feature == "async"),
+                "synchronous Registry examples must not enable async"
+            );
+            let spi_id = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == "qubit-spi")
+                .unwrap()["id"]
+                .as_str()
+                .unwrap();
+            let spi_node = resolve
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"].as_str() == Some(spi_id))
+                .unwrap();
+            assert!(
+                spi_node["features"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|feature| feature == "inventory"),
+                "Registry profile must enable candidate SPI inventory"
+            );
+        }
+        for (name, candidate_root, locked_version) in [
+            ("qubit-io", io_candidate_root.as_ref(), locked_io_version.as_str()),
+            ("qubit-spi", spi_candidate_root.as_ref(), locked_spi_version.as_str()),
+        ] {
+            if name == "qubit-spi" && profile.is_direct() {
+                continue;
+            }
+            let resolved = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap();
+            if let Some(candidate_root) = candidate_root {
+                assert_eq!(resolved["source"], serde_json::Value::Null, "{name} candidate source");
+                assert_eq!(
+                    PathBuf::from(resolved["manifest_path"].as_str().unwrap())
+                        .canonicalize()
+                        .unwrap(),
+                    candidate_root.join("Cargo.toml").canonicalize().unwrap(),
+                    "{name} candidate manifest"
+                );
+            } else {
+                assert!(resolved["source"].as_str().unwrap().starts_with("registry+"), "{name} registry source");
+                assert_eq!(resolved["version"].as_str(), Some(locked_version), "{name} locked version");
+            }
+        }
         let package_id = graph["packages"]
             .as_array()
             .unwrap()
@@ -825,6 +1032,66 @@ fn test_readme_and_user_guide_examples_compile() {
             !profile.is_direct(),
             "local feature isolation for {profile:?}"
         );
+        let mut source_revisions = vec![
+            ("qubit-fs-local", root.to_path_buf()),
+            ("qubit-fs", sibling_root.join("rs-fs")),
+            (
+                "qubit-local-files",
+                candidate_root.clone(),
+            ),
+        ];
+        if !profile.is_direct() {
+            source_revisions.push(("qubit-fs-registry", sibling_root.join("rs-fs-registry")));
+        }
+        if let Some(path) = &io_candidate_root {
+            source_revisions.push(("qubit-io", path.clone()));
+        }
+        if let Some(path) = &spi_candidate_root {
+            source_revisions.push(("qubit-spi", path.clone()));
+        }
+        let revisions = source_revisions
+            .into_iter()
+            .map(|(name, path)| format!("{name}={}", candidate_sha(&path)))
+            .collect::<Vec<_>>()
+            .join(",");
+        let identities = graph["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entry| {
+                [
+                    "qubit-fs-local",
+                    "qubit-fs",
+                    "qubit-local-files",
+                    "qubit-fs-registry",
+                    "qubit-io",
+                    "qubit-spi",
+                ]
+                .contains(&entry["name"].as_str().unwrap())
+            })
+            .map(|entry| {
+                let id = entry["id"].as_str().unwrap();
+                let node = resolve
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["id"].as_str() == Some(id))
+                    .unwrap();
+                let source = entry["source"].as_str().map_or_else(
+                    || format!("path:{}", entry["manifest_path"].as_str().unwrap()),
+                    str::to_owned,
+                );
+                format!(
+                    "{}@{} source={} features={}",
+                    entry["name"],
+                    entry["version"],
+                    source,
+                    node["features"]
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        eprintln!("documentation graph {profile:?}: candidates=[{revisions}] identities=[{identities}]");
         let status = Command::new(env!("CARGO"))
             .args(["check", "--locked", "--quiet", "--bins"])
             .current_dir(workspace.path())
@@ -849,7 +1116,7 @@ fn test_readme_and_user_guide_examples_compile() {
             );
         }
     }
-    if let Some(candidate_manifest) = candidate_manifest {
+    {
         let metadata = Command::new(env!("CARGO"))
             .args(["metadata", "--locked", "--all-features", "--format-version", "1"])
             .current_dir(root)
