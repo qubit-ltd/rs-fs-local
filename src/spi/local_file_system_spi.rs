@@ -1046,7 +1046,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
                         .with_operation(FsOperation::Copy)
                         .with_path(request.source().clone())
                         .with_target(request.target().clone())
-                        .with_provider(&self.provider_id),
+                        .with_provider(&self.provider_id)
+                        .with_effect_state(FsEffectState::Unchanged),
                     CopyFailureState::Unchanged,
                     CopyStats::default(),
                 ));

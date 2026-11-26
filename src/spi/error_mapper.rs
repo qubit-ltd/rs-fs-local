@@ -300,6 +300,7 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
     match kind {
         std::io::ErrorKind::NotFound => FsErrorKind::NotFound,
         std::io::ErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
+        std::io::ErrorKind::DirectoryNotEmpty => FsErrorKind::Conflict,
         std::io::ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
         std::io::ErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
         std::io::ErrorKind::InvalidInput => FsErrorKind::InvalidPath,
@@ -430,6 +431,7 @@ mod tests {
             (IoErrorKind::PermissionDenied, FsErrorKind::PermissionDenied),
             (IoErrorKind::NotFound, FsErrorKind::NotFound),
             (IoErrorKind::AlreadyExists, FsErrorKind::AlreadyExists),
+            (IoErrorKind::DirectoryNotEmpty, FsErrorKind::Conflict),
             (IoErrorKind::InvalidInput, FsErrorKind::InvalidPath),
             (IoErrorKind::InvalidData, FsErrorKind::DataCorruption),
             (IoErrorKind::TimedOut, FsErrorKind::Timeout),

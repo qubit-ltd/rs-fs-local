@@ -249,6 +249,39 @@ fn test_partial_delete_mapping_retains_native_failure_path_and_effect() {
     assert_eq!(Some(native_target.as_path()), native_path.parent());
 }
 
+#[test]
+fn test_non_recursive_delete_maps_nonempty_directory_to_conflict() {
+    for rooted in [false, true] {
+        let root = tempfile::tempdir().expect("fixture root should exist");
+        let directory = root.path().join("non-empty");
+        std::fs::create_dir(&directory).expect("directory should exist");
+        std::fs::write(directory.join("sentinel"), b"keep").expect("entry should exist");
+        let filesystem = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+                .expect("rooted filesystem should construct")
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should construct")
+        };
+        let path = if rooted {
+            Path::parse("/non-empty").expect("rooted path should parse")
+        } else {
+            host_path_to_logical(&directory).expect("host path should convert")
+        };
+
+        let error = filesystem
+            .delete_directory(&path, DeleteOptions::default())
+            .expect_err("non-recursive deletion must preserve a nonempty directory");
+
+        assert_eq!(FsErrorKind::Conflict, error.kind());
+        assert_eq!(Some(&path), error.path());
+        assert!(error
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .is_some());
+        assert_eq!(b"keep".as_slice(), std::fs::read(directory.join("sentinel")).expect("sentinel remains"));
+    }
+}
+
 fn path(value: &str) -> Path {
     Path::parse(value).expect("test path should be valid")
 }
