@@ -17,6 +17,7 @@ use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
+use qubit_fs_registry::FileSystemRegistryError;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;
 use qubit_spi::ProviderSelection;
@@ -271,7 +272,7 @@ fn test_rooted_provider_identity_is_scoped_beyond_canonical_uri() {
         let error = host_registry
             .resolve_config(&replay_config)
             .expect_err("a rooted URI without a Windows drive must not acquire Host authority");
-        let qubit_fs_registry::FileSystemRegistryError::Creation(creation) = error else {
+        let FileSystemRegistryError::Creation(creation) = error else {
             panic!("expected provider creation error");
         };
         assert_eq!(

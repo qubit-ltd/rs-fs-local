@@ -80,13 +80,29 @@ pub(crate) enum LocalTempResourceSpi {
 }
 
 /// Cleanup-only provider session for a partially created temporary object.
+/// It preserves native ownership across retries; persist and keep are rejected
+/// because creation did not produce a fully initialized resource.
 pub(crate) struct LocalTempRecoverySpi {
+    /// Partial native resource retained until cleanup succeeds or drops.
     owner: Option<LocalTempRecovery>,
+    /// Whether native failure paths belong to a rooted namespace.
     rooted: bool,
+    /// Provider identity attached to recovery errors.
     provider_id: String,
 }
 
 impl LocalTempRecoverySpi {
+    /// Wraps a partial native resource for cleanup-only recovery.
+    ///
+    /// # Parameters
+    ///
+    /// - `owner`: Native temporary resource retained for retry or Drop.
+    /// - `rooted`: Whether failure paths belong to a rooted namespace.
+    /// - `provider_id`: Provider identity attached to recovery errors.
+    ///
+    /// # Returns
+    ///
+    /// A cleanup-only provider session.
     pub(crate) fn new(owner: LocalTempRecovery, rooted: bool, provider_id: String) -> Self {
         Self {
             owner: Some(owner),
@@ -97,6 +113,11 @@ impl LocalTempRecoverySpi {
 }
 
 impl TempResourceSpi for LocalTempRecoverySpi {
+    /// Rejects persistence because partial creation is cleanup-only.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Ignored because partial creation cannot be persisted.
     fn persist(&mut self, _: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
         Err(SpiPersistFailure::new(
             FsError::new(
@@ -110,6 +131,7 @@ impl TempResourceSpi for LocalTempRecoverySpi {
         ))
     }
 
+    /// Rejects keeping a resource whose creation did not complete.
     fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
         Err(SpiPersistFailure::new(
             FsError::new(
@@ -123,6 +145,9 @@ impl TempResourceSpi for LocalTempRecoverySpi {
         ))
     }
 
+    /// Retries cleanup and preserves the native failure cause and provider
+    /// context. A provable native path is attached when it can be projected
+    /// into the Host or Rooted namespace.
     fn cleanup(&mut self) -> FsResult<()> {
         let Some(owner) = self.owner.as_mut() else {
             return Ok(());
@@ -1037,7 +1062,10 @@ mod tests {
     use qubit_local_files::options::LocalPersistOptions;
     use qubit_local_files::options::LocalTempDirectoryOptions;
     use qubit_local_files::options::LocalTempFileOptions;
+    use qubit_local_files::outcome::LocalPersistFailureState;
     use qubit_local_files::outcome::LocalPersistStage;
+    use qubit_local_files::outcome::LocalTempSourceState;
+    use qubit_local_files::path::LocalFileSystemScope;
     #[cfg(unix)]
     use qubit_local_files::policy::LocalDurabilityRequirement;
     #[cfg(unix)]
@@ -1131,7 +1159,7 @@ mod tests {
         let failure = keep_file(
             &mut resource,
             "projection-test-provider",
-            qubit_local_files::path::LocalFileSystemScope::Host,
+            LocalFileSystemScope::Host,
             Some(&projection),
         )
         .expect_err("projection contract violation");
@@ -1152,7 +1180,7 @@ mod tests {
                 .map(LocalFileError::kind),
         );
         assert_eq!(
-            qubit_local_files::outcome::LocalTempSourceState::Owned,
+            LocalTempSourceState::Owned,
             resource
                 .as_ref()
                 .expect("native resource restored to slot")
@@ -1176,13 +1204,13 @@ mod tests {
             (
                 "temp-file-source-sync",
                 LocalPersistStage::SynchronizeSource,
-                qubit_local_files::outcome::LocalPersistFailureState::NotPublished,
+                LocalPersistFailureState::NotPublished,
                 FsEffectState::Unchanged,
             ),
             (
                 "temp-file-parent-sync",
                 LocalPersistStage::SynchronizeDestination,
-                qubit_local_files::outcome::LocalPersistFailureState::Published,
+                LocalPersistFailureState::Published,
                 FsEffectState::Applied,
             ),
         ] {
@@ -1204,12 +1232,11 @@ mod tests {
             let parts = error.into_parts();
             assert_eq!(expected_stage, parts.stage);
             assert_eq!(expected_state, parts.state);
-            let expected_source =
-                if expected_state == qubit_local_files::outcome::LocalPersistFailureState::NotPublished {
-                    qubit_local_files::outcome::LocalTempSourceState::Owned
-                } else {
-                    qubit_local_files::outcome::LocalTempSourceState::CleanupRequired
-                };
+            let expected_source = if expected_state == LocalPersistFailureState::NotPublished {
+                LocalTempSourceState::Owned
+            } else {
+                LocalTempSourceState::CleanupRequired
+            };
             assert_eq!(expected_source, parts.source_state);
             let state = persist_failure_state(parts.state, parts.source_state);
             let mapped = map_persist_error(
@@ -1228,7 +1255,7 @@ mod tests {
                     .is_some()
             );
 
-            if expected_source == qubit_local_files::outcome::LocalTempSourceState::Owned {
+            if expected_source == LocalTempSourceState::Owned {
                 let mut resource = parts.resource;
                 resource.cleanup().expect("unpublished source remains cleanable");
                 assert!(!target.exists());

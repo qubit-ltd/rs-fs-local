@@ -63,3 +63,6 @@ fn test_local_range_window_and_metadata() {
         }
     }
 }
+
+#[path = "spi_tests/local_range_reader_tests.rs"]
+mod local_range_reader_tests;

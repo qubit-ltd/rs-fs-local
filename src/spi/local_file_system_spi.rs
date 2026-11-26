@@ -240,6 +240,16 @@ mod native_option_call_recording {
 }
 
 impl LocalFileSystemSpi {
+    /// Creates a native temporary file while retaining any partial failure
+    /// owner for cleanup recovery.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// The opened file or a failure carrying any recoverable partial owner.
     fn create_temp_file_recoverable_impl(
         &self,
         request: CreateTempFileRequest,
@@ -314,6 +324,17 @@ impl LocalFileSystemSpi {
         ))
     }
 
+    /// Creates a native temporary directory while retaining any partial
+    /// failure owner for cleanup recovery.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// The opened directory or a failure carrying any recoverable partial
+    /// owner.
     fn create_temp_directory_recoverable_impl(
         &self,
         request: CreateTempDirectoryRequest,
@@ -795,6 +816,7 @@ impl LocalFileSystemSpi {
     ///
     /// - `source`: Logical source path; Rooted paths may be relative.
     /// - `target`: Logical target path; Rooted paths may be relative.
+    /// - `operation`: Facade operation attached to any conversion error.
     ///
     /// # Returns
     ///
@@ -802,7 +824,10 @@ impl LocalFileSystemSpi {
     ///
     /// # Errors
     ///
-    /// Returns path-conversion errors from the local path mapper.
+    /// Returns path-conversion errors from the local path mapper, annotated
+    /// with operation, provider, logical source/target, failing endpoint, and
+    /// unchanged effect state. Native I/O has not started when conversion
+    /// fails.
     fn native_pair(&self, operation: FsOperation, source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
         let source_native = self.native_path(source).map_err(|error| {
             error
@@ -844,6 +869,16 @@ impl LocalFileSystemSpi {
     }
 
     /// Projects a provider failure coordinate in the request's path form.
+    ///
+    /// # Parameters
+    ///
+    /// - `native_path`: Native failure coordinate supplied by the provider.
+    /// - `operation`: Operation whose request established the namespace.
+    /// - `request_path`: Original logical request coordinate.
+    ///
+    /// # Returns
+    ///
+    /// The failure coordinate in the request's logical path form.
     fn project_failure_path(
         &self,
         native_path: &NativePath,
@@ -1337,6 +1372,15 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|failure| failure.into_parts().0)
     }
 
+    /// Creates a temporary file while preserving partial cleanup ownership.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// The opened file or a failure with a recoverable partial owner.
     fn create_temp_file_recoverable(
         &self,
         request: CreateTempFileRequest,
@@ -1363,6 +1407,16 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|failure| failure.into_parts().0)
     }
 
+    /// Creates a temporary directory while preserving partial cleanup
+    /// ownership.
+    ///
+    /// # Parameters
+    ///
+    /// - `request`: Parent, prefix, suffix, and cleanup options.
+    ///
+    /// # Returns
+    ///
+    /// The opened directory or a failure with a recoverable partial owner.
     fn create_temp_directory_recoverable(
         &self,
         request: CreateTempDirectoryRequest,
@@ -1371,6 +1425,26 @@ impl FileSystemSpi for LocalFileSystemSpi {
     }
 }
 
+/// Reports a native copy result that violates the facade's requested
+/// guarantees while retaining its partial statistics and failure source.
+///
+/// # Parameters
+///
+/// - `error`: Native failure or contract-violation source.
+/// - `state`: Native copy failure state.
+/// - `partial_stats`: Effects reported before failure.
+/// - `source`: Original logical source path.
+/// - `target`: Original logical target path.
+/// - `provider_id`: Provider identity for error context.
+///
+/// # Returns
+///
+/// A typed copy failure with mapped source, target, provider, cause, and
+/// partial statistics.
+///
+/// # Type Parameters
+///
+/// - `E`: Native error source retained by the mapped facade failure.
 fn copy_contract_violation<E>(
     error: E,
     state: CopyFailureState,

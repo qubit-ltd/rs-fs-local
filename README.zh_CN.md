@@ -13,8 +13,9 @@
 
 本文档适用于 `qubit-fs-local` 0.12.0（包版本 `0.12.0`）。
 
-本版本使用 `qubit-fs` 0.4 和 `qubit-local-files` 0.6.0。provider 上限只收紧资源预算，不改变请求行为；
-writer 保留已有目标的元数据。逻辑路径与临时资源发布仍遵循可移植门面的契约，
+本版本使用 `qubit-fs` 0.4 和 `qubit-local-files` 0.6.0。provider 上限只收紧资源预算，不改变请求行为。
+writer 在暂存替换时请求原生 `PreserveExisting` 元数据策略；首次创建和追加则遵循各自的原生行为。
+逻辑路径与临时资源发布仍遵循可移植门面的契约，
 详见[用户指南](doc/user_guide.zh_CN.md#provider-资源上限)。
 子树 prefix 还会跳过无关目录的后代，同时保留原请求根；详见[子树列举行为](doc/user_guide.zh_CN.md#列举子树)。
 需要限制临时目录清理并保留恢复路径的应用，可绑定独立的共享可调预算，详见[清理预算指南](doc/user_guide.zh_CN.md#临时目录清理预算)。
@@ -41,7 +42,10 @@ cargo add qubit-fs-local@0.12 --features registry
 
 如果应用必须将报表保留在 `/srv/app-data` 等稳定原生根目录下，请以应用的稳定文件系统标识
 创建 rooted 门面，并在该 authority 内使用逻辑路径。Rooted 相对路径从初始为 `/` 的虚拟工作
-目录解析，也接受绝对逻辑路径。示例使用项目内临时根目录，运行时无需提升权限：
+目录解析，也接受绝对逻辑路径。示例使用独占的临时根目录，无需提升权限，也不会改动已有目录。
+可运行文档示例使用 `tempfile`；测试和示例可通过
+`cargo add --dev tempfile@3.27` 添加依赖，普通应用 binary 则使用
+`cargo add tempfile@3.27`。
 
 <!-- fs-local-example: direct -->
 ```rust
@@ -51,16 +55,18 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let policy = LocalResourcePolicy::standard();
-let root = std::env::current_dir()?.join("target/local-fs-guide");
-std::fs::create_dir_all(root.join("reports"))?;
-std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
+let root = tempfile::tempdir()?;
+std::fs::create_dir_all(root.path().join("reports"))?;
+std::fs::write(root.path().join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    root.as_path(),
+    root.path(),
     policy,
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
+drop(file_system);
+root.close()?;
     Ok(())
 }
 ```
@@ -114,7 +120,8 @@ URI 解码、provider 规则和资源上限。`qubit-fs-local` 承担这一角�
   `LocalResourcePolicy::standard()` 上限的 host provider。应用需显式链接本 crate
   （例如 `use qubit_fs_local as _;`），再调用 `FileSystemRegistry::from_inventory()`。
 - provider 仅接受绝对 `file:` URI；会拒绝远程 authority、query、相对路径、非 `file`
-  scheme，以及配置 options 或 credentials。
+  scheme，以及非空配置 options、metadata 或 credentials。已识别的 `file:` 配置错误在
+  `OnAbsence` 策略下仍是终止错误；只有不支持的 scheme 才可能继续 fallback。
 - rooted provider 会在构造阶段打开原生 authority。打开失败时构造函数返回错误，不会产生可
   注册或参与 fallback 的 provider。默认 `rooted` descriptor 是带有 `file` alias 的
   `local-file`；`rooted_with_descriptor` 原样保留调用方传入的 descriptor 及其 aliases。

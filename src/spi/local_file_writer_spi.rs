@@ -313,7 +313,9 @@ fn write_failure_state(state: native_files::outcome::LocalWriteFailureState, ret
 ///
 /// # Returns
 ///
-/// A facade abort error with local provider context.
+/// A facade `AbortWriter` error carrying the native abort source and local
+/// provider ID. It does not invent a logical path because abort has no path
+/// argument.
 #[inline]
 fn abort_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
     error_mapper::map_without_path(

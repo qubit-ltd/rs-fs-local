@@ -210,8 +210,12 @@ pub(crate) const fn rename_effect_state(state: RenameFailureState) -> FsEffectSt
 
 /// Selects the most precise portable kind available from a native failure.
 ///
-/// Native I/O sources are authoritative because the stable native category is
-/// intentionally coarser than `std::io::ErrorKind`.
+/// Explicit native argument, state, and file-kind causes take precedence.
+/// Otherwise an attached I/O source refines the native category, and the
+/// remaining native cause is mapped directly. Without a cause,
+/// `PublicationIncomplete` maps to `Io` and `Indeterminate` remains
+/// `Indeterminate`. Provider identity belongs to the surrounding error
+/// context and does not affect classification.
 ///
 /// # Parameters
 ///

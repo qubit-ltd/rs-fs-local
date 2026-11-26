@@ -13,6 +13,7 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalResourcePolicy;
+use qubit_fs_local::host_path_to_logical;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
 use qubit_spi::ProviderDescriptor;
@@ -45,7 +46,7 @@ fn test_inventory_host_provider_has_standard_resource_limits() {
         nested.push("d");
         std::fs::create_dir(&nested).expect("nested directory");
     }
-    let path = qubit_fs_local::host_path_to_logical(&fixture).expect("host path must convert to logical path");
+    let path = host_path_to_logical(&fixture).expect("host path must convert to logical path");
     let uri = format!("file://{}", encode_file_uri_path(path.as_str()));
     let registry = FileSystemRegistry::from_inventory().expect("linked provider registry");
     let resolution = registry
