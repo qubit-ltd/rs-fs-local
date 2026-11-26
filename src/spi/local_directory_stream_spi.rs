@@ -205,7 +205,9 @@ mod tests {
     use qubit_local_files::error::LocalFileError;
     use qubit_local_files::error::LocalFileErrorKind;
     use qubit_local_files::error::LocalFileOperation;
+    use qubit_local_files::path::LocalFileSystemScope;
 
+    use super::LogicalPath;
     use super::entry_error;
 
     /// Lazy walker errors retain provider identity for facade path enrichment.
@@ -213,12 +215,7 @@ mod tests {
     fn test_entry_error_retains_provider_without_inventing_path() {
         let native = LocalFileError::new(LocalFileErrorKind::NotFound, LocalFileOperation::List);
 
-        let error = entry_error(
-            native,
-            qubit_local_files::path::LocalFileSystemScope::Rooted,
-            None,
-            "rooted-listing",
-        );
+        let error = entry_error(native, LocalFileSystemScope::Rooted, None, "rooted-listing");
 
         assert_eq!(FsErrorKind::NotFound, error.kind());
         assert_eq!(FsOperation::List, error.operation());
@@ -230,16 +227,18 @@ mod tests {
     fn test_entry_error_projects_verified_rooted_failure_coordinate() {
         let native = LocalFileError::new(LocalFileErrorKind::NotFound, LocalFileOperation::List)
             .with_path(std::path::PathBuf::from("/nested/child"));
-        let requested_root = qubit_fs::Path::parse("nested").expect("relative rooted request should parse");
+        let requested_root = LogicalPath::parse("nested").expect("relative rooted request should parse");
 
         let error = entry_error(
             native,
-            qubit_local_files::path::LocalFileSystemScope::Rooted,
+            LocalFileSystemScope::Rooted,
             Some(&requested_root),
             "rooted-listing",
         );
 
-        let failure_path = error.failure_path().expect("native coordinate should project into Rooted scope");
+        let failure_path = error
+            .failure_path()
+            .expect("native coordinate should project into Rooted scope");
         assert_eq!("nested/child", failure_path.as_str());
         assert!(!failure_path.is_absolute());
         assert_eq!(Some("rooted-listing"), error.provider());

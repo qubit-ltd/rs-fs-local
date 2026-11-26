@@ -64,6 +64,7 @@ use qubit_fs::spi::SpiRenameFailure;
 use qubit_fs::spi::StatRequest;
 use qubit_fs::spi::StatResponse;
 use qubit_fs::spi::TempCreateFailure;
+use qubit_fs::spi::TempResourceSpi;
 use qubit_local_files as native_files;
 
 use super::error_mapper;
@@ -268,13 +269,7 @@ impl LocalFileSystemSpi {
                 let (cause, recovery) = error.into_temp_recovery_parts();
                 let partial_creation = recovery.is_some();
                 let mapped = match request.options().parent() {
-                    Some(parent) => error_mapper::map(
-                        cause,
-                        FsOperation::Provider,
-                        parent,
-                        None,
-                        &self.provider_id,
-                    ),
+                    Some(parent) => error_mapper::map(cause, FsOperation::Provider, parent, None, &self.provider_id),
                     None => error_mapper::map_without_path(
                         cause,
                         FsOperation::Provider,
@@ -288,8 +283,11 @@ impl LocalFileSystemSpi {
                     mapped
                 };
                 let session = recovery.map(|owner| {
-                    Box::new(LocalTempRecoverySpi::new(owner, self.is_rooted(), self.provider_id.clone()))
-                        as Box<dyn qubit_fs::spi::TempResourceSpi>
+                    Box::new(LocalTempRecoverySpi::new(
+                        owner,
+                        self.is_rooted(),
+                        self.provider_id.clone(),
+                    )) as Box<dyn TempResourceSpi>
                 });
                 return Err(TempCreateFailure::new(mapped, session));
             }
@@ -346,13 +344,7 @@ impl LocalFileSystemSpi {
                 let (cause, recovery) = error.into_temp_recovery_parts();
                 let partial_creation = recovery.is_some();
                 let mapped = match request.options().parent() {
-                    Some(parent) => error_mapper::map(
-                        cause,
-                        FsOperation::Provider,
-                        parent,
-                        None,
-                        &self.provider_id,
-                    ),
+                    Some(parent) => error_mapper::map(cause, FsOperation::Provider, parent, None, &self.provider_id),
                     None => error_mapper::map_without_path(
                         cause,
                         FsOperation::Provider,
@@ -366,8 +358,11 @@ impl LocalFileSystemSpi {
                     mapped
                 };
                 let session = recovery.map(|owner| {
-                    Box::new(LocalTempRecoverySpi::new(owner, self.is_rooted(), self.provider_id.clone()))
-                        as Box<dyn qubit_fs::spi::TempResourceSpi>
+                    Box::new(LocalTempRecoverySpi::new(
+                        owner,
+                        self.is_rooted(),
+                        self.provider_id.clone(),
+                    )) as Box<dyn TempResourceSpi>
                 });
                 return Err(TempCreateFailure::new(mapped, session));
             }
@@ -849,7 +844,12 @@ impl LocalFileSystemSpi {
     }
 
     /// Projects a provider failure coordinate in the request's path form.
-    fn project_failure_path(&self, native_path: &NativePath, operation: FsOperation, request_path: &Path) -> FsResult<Path> {
+    fn project_failure_path(
+        &self,
+        native_path: &NativePath,
+        operation: FsOperation,
+        request_path: &Path,
+    ) -> FsResult<Path> {
         let rooted_relative;
         let native_path = if self.is_rooted() && !native_path.is_absolute() {
             rooted_relative = PathBuf::from(std::path::MAIN_SEPARATOR_STR).join(native_path);
@@ -1419,8 +1419,8 @@ mod tests {
     use qubit_fs::directory::DeleteOptions;
     use qubit_fs::directory::ListOptions;
     use qubit_fs::directory::ListScope;
-    use qubit_fs::error::FsErrorKind;
     use qubit_fs::error::FsEffectState;
+    use qubit_fs::error::FsErrorKind;
     use qubit_fs::error::FsOperation;
     use qubit_fs::metadata::FileSystemId;
     use qubit_fs::path::Path;
@@ -1457,9 +1457,10 @@ mod tests {
         .expect("rooted SPI should open");
         let source = LogicalPath::parse("/request-source").expect("source should parse");
         let target = LogicalPath::parse("/request-target").expect("target should parse");
-        assert!(spi
-            .project_failure_path(std::path::Path::new("../escape"), FsOperation::Copy, &source)
-            .is_err());
+        assert!(
+            spi.project_failure_path(std::path::Path::new("../escape"), FsOperation::Copy, &source)
+                .is_err()
+        );
 
         let failure = copy_contract_violation(
             LocalFileError::new(LocalFileErrorKind::Io, LocalFileOperation::Copy),
@@ -1473,11 +1474,13 @@ mod tests {
         assert_eq!(Some(&source), failure.error().path());
         assert_eq!(Some(&target), failure.error().target());
         assert_eq!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
-        assert!(failure
-            .error()
-            .source()
-            .and_then(|source| source.downcast_ref::<LocalFileError>())
-            .is_some());
+        assert!(
+            failure
+                .error()
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .is_some()
+        );
         assert_eq!(CopyFailureState::PartiallyPublished, failure.state());
     }
 

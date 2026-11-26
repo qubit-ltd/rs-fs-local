@@ -88,39 +88,62 @@ pub(crate) struct LocalTempRecoverySpi {
 
 impl LocalTempRecoverySpi {
     pub(crate) fn new(owner: LocalTempRecovery, rooted: bool, provider_id: String) -> Self {
-        Self { owner: Some(owner), rooted, provider_id }
+        Self {
+            owner: Some(owner),
+            rooted,
+            provider_id,
+        }
     }
 }
 
 impl TempResourceSpi for LocalTempRecoverySpi {
     fn persist(&mut self, _: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
         Err(SpiPersistFailure::new(
-            FsError::new(FsErrorKind::InvalidState, FsOperation::PersistTemp, "failed temporary creation permits cleanup only")
-                .with_provider(&self.provider_id)
-                .with_effect_state(FsEffectState::PartiallyApplied),
+            FsError::new(
+                FsErrorKind::InvalidState,
+                FsOperation::PersistTemp,
+                "failed temporary creation permits cleanup only",
+            )
+            .with_provider(&self.provider_id)
+            .with_effect_state(FsEffectState::PartiallyApplied),
             PersistFailureState::NotPublishedSourceCleanupRequired,
         ))
     }
 
     fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
         Err(SpiPersistFailure::new(
-            FsError::new(FsErrorKind::InvalidState, FsOperation::PersistTemp, "failed temporary creation permits cleanup only")
-                .with_provider(&self.provider_id)
-                .with_effect_state(FsEffectState::PartiallyApplied),
+            FsError::new(
+                FsErrorKind::InvalidState,
+                FsOperation::PersistTemp,
+                "failed temporary creation permits cleanup only",
+            )
+            .with_provider(&self.provider_id)
+            .with_effect_state(FsEffectState::PartiallyApplied),
             PersistFailureState::NotPublishedSourceCleanupRequired,
         ))
     }
 
     fn cleanup(&mut self) -> FsResult<()> {
-        let Some(owner) = self.owner.as_mut() else { return Ok(()) };
+        let Some(owner) = self.owner.as_mut() else {
+            return Ok(());
+        };
         owner.cleanup().map_err(|error| {
             let operation = FsOperation::CleanupTemp;
             let logical = local_path_mapper::logical(
-                if self.rooted { LocalFileSystemScope::Rooted } else { LocalFileSystemScope::Host },
+                if self.rooted {
+                    LocalFileSystemScope::Rooted
+                } else {
+                    LocalFileSystemScope::Host
+                },
                 owner.path(),
                 operation,
             );
-            let mapped = error_mapper::map_without_path(error, operation, "temporary creation recovery cleanup failed", &self.provider_id);
+            let mapped = error_mapper::map_without_path(
+                error,
+                operation,
+                "temporary creation recovery cleanup failed",
+                &self.provider_id,
+            );
             match logical {
                 Ok(path) => mapped.with_path(path),
                 Err(_) => mapped,

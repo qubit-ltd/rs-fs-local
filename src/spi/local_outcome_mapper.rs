@@ -10,9 +10,9 @@
 use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyMethod;
+use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::CopyOutcome;
 use qubit_fs::copy::CopyStats;
-use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::metadata::AchievedAtomicity;
 use qubit_fs::metadata::FileKind;

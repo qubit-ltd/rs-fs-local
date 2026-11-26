@@ -31,6 +31,7 @@ use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
 use qubit_local_files::LocalFileError;
 use qubit_local_files::error::LocalFileErrorKind;
+use qubit_local_files::outcome::LocalCopyFailure;
 use qubit_local_files::test_support::install_test_fault;
 
 #[test]
@@ -191,24 +192,23 @@ fn test_rooted_copy_failure_paths_follow_relative_and_absolute_request_forms() {
             let root = tempfile::tempdir().expect("rooted fixture should exist");
             let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
                 .expect("rooted filesystem should construct");
-            let source = Path::parse(if source_absolute { "/missing" } else { "missing" })
-                .expect("source path should parse");
-            let target = Path::parse(if target_absolute { "/target" } else { "target" })
-                .expect("target path should parse");
+            let source =
+                Path::parse(if source_absolute { "/missing" } else { "missing" }).expect("source path should parse");
+            let target =
+                Path::parse(if target_absolute { "/target" } else { "target" }).expect("target path should parse");
 
             let failure = filesystem
-                .copy(
-                    &source,
-                    &target,
-                    CopyOptions::file().with_deadline(Some(Duration::MAX)),
-                )
+                .copy(&source, &target, CopyOptions::file().with_deadline(Some(Duration::MAX)))
                 .expect_err("missing source should fail before publication");
 
             assert_eq!(FsErrorKind::InvalidOptions, failure.error().kind());
             assert_eq!(CopyFailureState::Unchanged, failure.state());
             assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
             assert_eq!(&CopyStats::default(), failure.partial_stats());
-            let failure_path = failure.error().failure_path().expect("native source coordinate should project");
+            let failure_path = failure
+                .error()
+                .failure_path()
+                .expect("native source coordinate should project");
             assert_eq!(source_absolute, failure_path.is_absolute());
             assert_eq!(source.as_str(), failure_path.as_str());
             assert_eq!(Some(&source), failure.error().path());
@@ -218,12 +218,9 @@ fn test_rooted_copy_failure_paths_follow_relative_and_absolute_request_forms() {
             let native_failure = failure
                 .error()
                 .source()
-                .and_then(|source| source.downcast_ref::<qubit_local_files::outcome::LocalCopyFailure>())
+                .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
                 .expect("native copy failure should remain the direct cause");
-            assert_eq!(
-                qubit_local_files::error::LocalFileErrorKind::InvalidOptions,
-                native_failure.error().kind()
-            );
+            assert_eq!(LocalFileErrorKind::InvalidOptions, native_failure.error().kind());
         }
     }
 
@@ -232,11 +229,7 @@ fn test_rooted_copy_failure_paths_follow_relative_and_absolute_request_forms() {
     let source = host_path_to_logical(&root.path().join("missing")).expect("absolute Host source should convert");
     let target = host_path_to_logical(&root.path().join("target")).expect("absolute Host target should convert");
     let failure = filesystem
-        .copy(
-            &source,
-            &target,
-            CopyOptions::file().with_deadline(Some(Duration::MAX)),
-        )
+        .copy(&source, &target, CopyOptions::file().with_deadline(Some(Duration::MAX)))
         .expect_err("maximum elapsed deadline must be rejected before provider effects");
     assert_eq!(FsErrorKind::InvalidOptions, failure.error().kind());
     assert_eq!(CopyFailureState::Unchanged, failure.state());
@@ -324,16 +317,24 @@ fn test_partial_delete_mapping_retains_native_failure_path_and_effect() {
             .expect("mapped error should retain the native source");
         assert_eq!(LocalFileErrorKind::PublicationIncomplete, native.kind());
         let native_path = native.path().expect("native failure path should be retained");
-        let failure_path = error.failure_path().expect("portable failure coordinate should be projected");
+        let failure_path = error
+            .failure_path()
+            .expect("portable failure coordinate should be projected");
         assert!(
             failure_path.as_str().starts_with(target.as_str()),
             "projected failure coordinate {failure_path} should remain under request {target}"
         );
         assert_eq!(!rooted, failure_path.is_absolute());
         if rooted {
-            assert!(native_path.starts_with("/tree"), "native rooted coordinate: {native_path:?}");
+            assert!(
+                native_path.starts_with("/tree"),
+                "native rooted coordinate: {native_path:?}"
+            );
         } else {
-            assert!(native_path.starts_with(&native_target), "native Host coordinate: {native_path:?}");
+            assert!(
+                native_path.starts_with(&native_target),
+                "native Host coordinate: {native_path:?}"
+            );
         }
         assert_eq!(1, std::fs::read_dir(&native_target).expect("tree remains").count());
     }
@@ -364,11 +365,16 @@ fn test_non_recursive_delete_maps_nonempty_directory_to_conflict() {
 
         assert_eq!(FsErrorKind::Conflict, error.kind());
         assert_eq!(Some(&path), error.path());
-        assert!(error
-            .source()
-            .and_then(|source| source.downcast_ref::<LocalFileError>())
-            .is_some());
-        assert_eq!(b"keep".as_slice(), std::fs::read(directory.join("sentinel")).expect("sentinel remains"));
+        assert!(
+            error
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .is_some()
+        );
+        assert_eq!(
+            b"keep".as_slice(),
+            std::fs::read(directory.join("sentinel")).expect("sentinel remains")
+        );
     }
 }
 

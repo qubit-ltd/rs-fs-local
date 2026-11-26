@@ -30,10 +30,10 @@ use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
-use qubit_fs::metadata::Checksum;
-use qubit_fs::metadata::ChecksumAlgorithm;
 use qubit_fs::metadata::AchievedAtomicity;
 use qubit_fs::metadata::AtomicityRequirement;
+use qubit_fs::metadata::Checksum;
+use qubit_fs::metadata::ChecksumAlgorithm;
 use qubit_fs::metadata::DurabilityRequirement;
 #[cfg(unix)]
 use qubit_fs::metadata::FileKind;
@@ -626,7 +626,10 @@ fn test_copy_atomicity_guarantee_and_skip_outcomes_report_native_facts() {
         assert_eq!(0, skipped.stats().bytes);
         assert_eq!(AchievedAtomicity::NonAtomic, skipped.atomicity());
         assert!(!skipped.durable());
-        assert_eq!(b"keep-existing", fs::read(&target).expect("existing target remains").as_slice());
+        assert_eq!(
+            b"keep-existing",
+            fs::read(&target).expect("existing target remains").as_slice()
+        );
 
         let source_tree = root.path().join("tree-source");
         let target_tree = root.path().join("tree-target");
@@ -649,8 +652,7 @@ fn test_copy_atomicity_guarantee_and_skip_outcomes_report_native_facts() {
             .copy(
                 &logical_source_tree,
                 &logical_target_tree,
-                CopyOptions::tree()
-                    .with_conflict(CopyConflictPolicy::Skip),
+                CopyOptions::tree().with_conflict(CopyConflictPolicy::Skip),
             )
             .expect("complete tree Skip is unchanged and needs no publication guarantee");
         assert!(skipped_tree.unchanged(), "tree Skip outcome facts: {skipped_tree:?}");
@@ -660,7 +662,10 @@ fn test_copy_atomicity_guarantee_and_skip_outcomes_report_native_facts() {
         assert_eq!(0, skipped_tree.stats().bytes);
         assert_eq!(AchievedAtomicity::NonAtomic, skipped_tree.atomicity());
         assert!(!skipped_tree.durable());
-        assert_eq!(b"keep-tree".as_slice(), fs::read(target_tree.join("sentinel")).expect("tree target remains"));
+        assert_eq!(
+            b"keep-tree".as_slice(),
+            fs::read(target_tree.join("sentinel")).expect("tree target remains")
+        );
         assert_eq!(1, fs::read_dir(&target_tree).expect("tree target entries").count());
     }
 }

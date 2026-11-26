@@ -47,8 +47,7 @@ fn test_partial_temp_creation_recovery_survives_cleanup_retry() {
         (true, true, "rooted-temp-directory-create-cleanup"),
     ] {
         let root = tempfile::tempdir().expect("fixture root should exist");
-        std::fs::write(root.path().join("external-sentinel"), b"preserve")
-            .expect("external sentinel should exist");
+        std::fs::write(root.path().join("external-sentinel"), b"preserve").expect("external sentinel should exist");
         let filesystem = if rooted {
             LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
                 .expect("rooted filesystem should open")
@@ -80,11 +79,18 @@ fn test_partial_temp_creation_recovery_survives_cleanup_retry() {
             .source()
             .and_then(|source| source.downcast_ref::<LocalFileError>())
             .expect("native creation error should remain the cause");
-        assert!(cause.cleanup_error().is_some(), "the native creation path records its injected cleanup failure");
-        let recovery = failure.take_recovery().expect("partial native resource ownership is retained");
+        assert!(
+            cause.cleanup_error().is_some(),
+            "the native creation path records its injected cleanup failure"
+        );
+        let recovery = failure
+            .take_recovery()
+            .expect("partial native resource ownership is retained");
         let mut recovery = recovery;
         drop(_create_fault);
-        recovery.cleanup().expect("explicit cleanup retry should succeed after the injected creation cleanup failure");
+        recovery
+            .cleanup()
+            .expect("explicit cleanup retry should succeed after the injected creation cleanup failure");
         assert_eq!(
             b"preserve".as_slice(),
             std::fs::read(root.path().join("external-sentinel")).expect("external resource remains")
@@ -105,7 +111,10 @@ fn test_temp_create_failure_without_recovery_does_not_claim_partial_effect() {
         .expect_err("identity verification should fail after cleanup");
 
     assert_eq!(OpenFailureStage::ProviderOpen, failure.stage());
-    assert!(failure.recovery().is_none(), "successful native cleanup leaves no recovery owner");
+    assert!(
+        failure.recovery().is_none(),
+        "successful native cleanup leaves no recovery owner"
+    );
     assert_ne!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
     assert_eq!(
         b"preserve".as_slice(),
