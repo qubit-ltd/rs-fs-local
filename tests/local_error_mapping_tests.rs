@@ -33,6 +33,7 @@ use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
 use qubit_local_files::LocalFileError;
 use qubit_local_files::error::LocalFileErrorKind;
+use qubit_local_files::error::LocalFileOperation;
 use qubit_local_files::outcome::LocalCopyFailure;
 use qubit_local_files::test_support::install_test_fault;
 
@@ -189,7 +190,12 @@ fn test_host_and_rooted_injected_file_copy_failures_retain_effect_facts() {
             .source()
             .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
             .expect("native typed copy failure should remain the cause");
-        assert!(native_failure.source().is_some(), "rooted={rooted}");
+        let native_cause = native_failure
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .expect("native copy failure should retain its LocalFileError cause");
+        assert_eq!(LocalFileErrorKind::Io, native_cause.kind(), "rooted={rooted}");
+        assert_eq!(LocalFileOperation::Copy, native_cause.operation(), "rooted={rooted}");
         assert!(
             native_parent.is_dir(),
             "created parent is the partial effect; rooted={rooted}"
@@ -247,7 +253,12 @@ fn test_host_and_rooted_injected_symlink_copy_failures_retain_unchanged_facts() 
             .source()
             .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
             .expect("native typed copy failure should remain the cause");
-        assert!(native_failure.source().is_some(), "rooted={rooted}");
+        let native_cause = native_failure
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .expect("native copy failure should retain its LocalFileError cause");
+        assert_eq!(LocalFileErrorKind::Io, native_cause.kind(), "rooted={rooted}");
+        assert_eq!(LocalFileOperation::Copy, native_cause.operation(), "rooted={rooted}");
         assert!(
             std::fs::symlink_metadata(&native_source)
                 .expect("source remains")
