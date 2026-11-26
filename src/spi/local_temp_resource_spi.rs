@@ -28,6 +28,7 @@ use qubit_fs::temp::PersistOutcome;
 use qubit_local_files::LocalFileError;
 use qubit_local_files::LocalTempDirectory;
 use qubit_local_files::LocalTempFile;
+use qubit_local_files::LocalTempRecovery;
 use qubit_local_files::error::LocalFileEffectState;
 use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::error::LocalPersistError;
@@ -76,6 +77,56 @@ pub(crate) enum LocalTempResourceSpi {
         /// Shared limits refreshed before lifecycle operations and drop.
         cleanup_control: Option<LocalTempCleanupControl>,
     },
+}
+
+/// Cleanup-only provider session for a partially created temporary object.
+pub(crate) struct LocalTempRecoverySpi {
+    owner: Option<LocalTempRecovery>,
+    rooted: bool,
+    provider_id: String,
+}
+
+impl LocalTempRecoverySpi {
+    pub(crate) fn new(owner: LocalTempRecovery, rooted: bool, provider_id: String) -> Self {
+        Self { owner: Some(owner), rooted, provider_id }
+    }
+}
+
+impl TempResourceSpi for LocalTempRecoverySpi {
+    fn persist(&mut self, _: PersistRequest<'_>) -> Result<PersistOutcome, SpiPersistFailure> {
+        Err(SpiPersistFailure::new(
+            FsError::new(FsErrorKind::InvalidState, FsOperation::PersistTemp, "failed temporary creation permits cleanup only")
+                .with_provider(&self.provider_id)
+                .with_effect_state(FsEffectState::PartiallyApplied),
+            PersistFailureState::NotPublishedSourceCleanupRequired,
+        ))
+    }
+
+    fn keep(&mut self) -> Result<PersistOutcome, SpiPersistFailure> {
+        Err(SpiPersistFailure::new(
+            FsError::new(FsErrorKind::InvalidState, FsOperation::PersistTemp, "failed temporary creation permits cleanup only")
+                .with_provider(&self.provider_id)
+                .with_effect_state(FsEffectState::PartiallyApplied),
+            PersistFailureState::NotPublishedSourceCleanupRequired,
+        ))
+    }
+
+    fn cleanup(&mut self) -> FsResult<()> {
+        let Some(owner) = self.owner.as_mut() else { return Ok(()) };
+        owner.cleanup().map_err(|error| {
+            let operation = FsOperation::CleanupTemp;
+            let logical = local_path_mapper::logical(
+                if self.rooted { LocalFileSystemScope::Rooted } else { LocalFileSystemScope::Host },
+                owner.path(),
+                operation,
+            );
+            let mapped = error_mapper::map_without_path(error, operation, "temporary creation recovery cleanup failed", &self.provider_id);
+            match logical {
+                Ok(path) => mapped.with_path(path),
+                Err(_) => mapped,
+            }
+        })
+    }
 }
 impl LocalTempResourceSpi {
     /// Wraps a host- or rooted-authority native temporary file.

@@ -130,7 +130,7 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
             let Some(entry) = entry else {
                 return Ok(None);
             };
-            let entry = entry.map_err(|error| entry_error(error, provider_id))?;
+            let entry = entry.map_err(|error| entry_error(error, scope, relative_root, provider_id))?;
             let logical_relative = if options.has_filter() || relative_root.is_some() {
                 Some(local_path_mapper::logical(
                     native_files::path::LocalFileSystemScope::Rooted,
@@ -177,8 +177,25 @@ impl DirectoryStreamSpi for LocalDirectoryStreamSpi {
 ///
 /// A facade listing error with local provider context.
 #[inline]
-fn entry_error(error: native_files::LocalFileError, provider_id: &str) -> FsError {
-    error_mapper::map_without_path(error, FsOperation::List, "native directory walk failed", provider_id)
+fn entry_error(
+    error: native_files::LocalFileError,
+    scope: native_files::path::LocalFileSystemScope,
+    relative_root: Option<&LogicalPath>,
+    provider_id: &str,
+) -> FsError {
+    let failure_path = error.path().and_then(|path| {
+        let logical = local_path_mapper::logical(scope, path, FsOperation::List).ok()?;
+        if relative_root.is_some() {
+            LogicalPath::parse(logical.as_str().trim_start_matches('/')).ok()
+        } else {
+            Some(logical)
+        }
+    });
+    let mapped = error_mapper::map_without_path(error, FsOperation::List, "native directory walk failed", provider_id);
+    match failure_path {
+        Some(path) => mapped.with_failure_path(path),
+        None => mapped,
+    }
 }
 
 #[cfg(test)]
@@ -196,11 +213,35 @@ mod tests {
     fn test_entry_error_retains_provider_without_inventing_path() {
         let native = LocalFileError::new(LocalFileErrorKind::NotFound, LocalFileOperation::List);
 
-        let error = entry_error(native, "rooted-listing");
+        let error = entry_error(
+            native,
+            qubit_local_files::path::LocalFileSystemScope::Rooted,
+            None,
+            "rooted-listing",
+        );
 
         assert_eq!(FsErrorKind::NotFound, error.kind());
         assert_eq!(FsOperation::List, error.operation());
         assert_eq!(None, error.path());
+        assert_eq!(Some("rooted-listing"), error.provider());
+    }
+
+    #[test]
+    fn test_entry_error_projects_verified_rooted_failure_coordinate() {
+        let native = LocalFileError::new(LocalFileErrorKind::NotFound, LocalFileOperation::List)
+            .with_path(std::path::PathBuf::from("/nested/child"));
+        let requested_root = qubit_fs::Path::parse("nested").expect("relative rooted request should parse");
+
+        let error = entry_error(
+            native,
+            qubit_local_files::path::LocalFileSystemScope::Rooted,
+            Some(&requested_root),
+            "rooted-listing",
+        );
+
+        let failure_path = error.failure_path().expect("native coordinate should project into Rooted scope");
+        assert_eq!("nested/child", failure_path.as_str());
+        assert!(!failure_path.is_absolute());
         assert_eq!(Some("rooted-listing"), error.provider());
     }
 }

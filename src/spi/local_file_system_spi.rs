@@ -63,6 +63,7 @@ use qubit_fs::spi::SpiCopyFailure;
 use qubit_fs::spi::SpiRenameFailure;
 use qubit_fs::spi::StatRequest;
 use qubit_fs::spi::StatResponse;
+use qubit_fs::spi::TempCreateFailure;
 use qubit_local_files as native_files;
 
 use super::error_mapper;
@@ -71,6 +72,7 @@ use super::local_file_writer_spi::LocalFileWriterSpi;
 use super::local_options_mapper;
 use super::local_outcome_mapper;
 use super::local_temp_path_projection::LocalTempPathProjection;
+use super::local_temp_resource_spi::LocalTempRecoverySpi;
 use super::local_temp_resource_spi::LocalTempResourceSpi;
 use crate::LocalResourcePolicy;
 use crate::LocalTempCleanupControl;
@@ -237,6 +239,162 @@ mod native_option_call_recording {
 }
 
 impl LocalFileSystemSpi {
+    fn create_temp_file_recoverable_impl(
+        &self,
+        request: CreateTempFileRequest,
+    ) -> Result<OpenedTempFile, TempCreateFailure> {
+        let parent = request
+            .options()
+            .parent()
+            .map(|path| self.native_temp_parent(path))
+            .transpose()
+            .map_err(|error| TempCreateFailure::new(error, None))?;
+        let mut options = native_files::options::LocalTempFileOptions::new()
+            .with_prefix(request.options().prefix())
+            .with_suffix(request.options().suffix());
+        if let Some(parent) = parent.as_deref() {
+            options = options.with_parent(parent);
+        }
+        if request.options().creates_parent() {
+            options = options.with_create_parent();
+        }
+        let options = self.temp_file_options(options);
+        let value = match self
+            .native
+            .create_temp_file_with_options(native_option_call_recording::temp_file(&options))
+        {
+            Ok(value) => value,
+            Err(error) => {
+                let (cause, recovery) = error.into_temp_recovery_parts();
+                let partial_creation = recovery.is_some();
+                let mapped = match request.options().parent() {
+                    Some(parent) => error_mapper::map(
+                        cause,
+                        FsOperation::Provider,
+                        parent,
+                        None,
+                        &self.provider_id,
+                    ),
+                    None => error_mapper::map_without_path(
+                        cause,
+                        FsOperation::Provider,
+                        "native temporary file creation failed",
+                        &self.provider_id,
+                    ),
+                };
+                let mapped = if partial_creation {
+                    mapped.with_effect_state(FsEffectState::PartiallyApplied)
+                } else {
+                    mapped
+                };
+                let session = recovery.map(|owner| {
+                    Box::new(LocalTempRecoverySpi::new(owner, self.is_rooted(), self.provider_id.clone()))
+                        as Box<dyn qubit_fs::spi::TempResourceSpi>
+                });
+                return Err(TempCreateFailure::new(mapped, session));
+            }
+        };
+        let projection = parent
+            .as_deref()
+            .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
+        let public_path = projection
+            .as_ref()
+            .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
+            .transpose()
+            .map_err(|error| TempCreateFailure::new(error, None))?;
+        let path = self
+            .logical_path(public_path.as_deref().unwrap_or(value.path()), FsOperation::CreateTemp)
+            .map_err(|error| TempCreateFailure::new(error, None))?;
+        Ok(OpenedTempFile::new(
+            self.info(path).with_metadata(FileMetadata::new(FileKind::File)),
+            Box::new(LocalTempResourceSpi::file(
+                value,
+                self.is_rooted(),
+                self.provider_id.clone(),
+                projection,
+            )),
+        ))
+    }
+
+    fn create_temp_directory_recoverable_impl(
+        &self,
+        request: CreateTempDirectoryRequest,
+    ) -> Result<OpenedTempDirectory, TempCreateFailure> {
+        let parent = request
+            .options()
+            .parent()
+            .map(|path| self.native_temp_parent(path))
+            .transpose()
+            .map_err(|error| TempCreateFailure::new(error, None))?;
+        let mut options = native_files::options::LocalTempDirectoryOptions::new()
+            .with_prefix(request.options().prefix())
+            .with_suffix(request.options().suffix())
+            .with_cleanup_limits(self.cleanup_limits());
+        if let Some(parent) = parent.as_deref() {
+            options = options.with_parent(parent);
+        }
+        if request.options().creates_parent() {
+            options = options.with_create_parent();
+        }
+        let options = self.temp_directory_options(options);
+        let value = match self
+            .native
+            .create_temp_directory_with_options(native_option_call_recording::temp_directory(&options))
+        {
+            Ok(value) => value,
+            Err(error) => {
+                let (cause, recovery) = error.into_temp_recovery_parts();
+                let partial_creation = recovery.is_some();
+                let mapped = match request.options().parent() {
+                    Some(parent) => error_mapper::map(
+                        cause,
+                        FsOperation::Provider,
+                        parent,
+                        None,
+                        &self.provider_id,
+                    ),
+                    None => error_mapper::map_without_path(
+                        cause,
+                        FsOperation::Provider,
+                        "native temporary directory creation failed",
+                        &self.provider_id,
+                    ),
+                };
+                let mapped = if partial_creation {
+                    mapped.with_effect_state(FsEffectState::PartiallyApplied)
+                } else {
+                    mapped
+                };
+                let session = recovery.map(|owner| {
+                    Box::new(LocalTempRecoverySpi::new(owner, self.is_rooted(), self.provider_id.clone()))
+                        as Box<dyn qubit_fs::spi::TempResourceSpi>
+                });
+                return Err(TempCreateFailure::new(mapped, session));
+            }
+        };
+        let projection = parent
+            .as_deref()
+            .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
+        let public_path = projection
+            .as_ref()
+            .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
+            .transpose()
+            .map_err(|error| TempCreateFailure::new(error, None))?;
+        let path = self
+            .logical_path(public_path.as_deref().unwrap_or(value.path()), FsOperation::CreateTemp)
+            .map_err(|error| TempCreateFailure::new(error, None))?;
+        Ok(OpenedTempDirectory::new(
+            self.info(path).with_metadata(FileMetadata::new(FileKind::Directory)),
+            Box::new(LocalTempResourceSpi::directory(
+                value,
+                self.is_rooted(),
+                self.provider_id.clone(),
+                projection,
+                self.temp_cleanup_control.clone(),
+            )),
+        ))
+    }
+
     /// Maps resolved read behavior and applies the configured native open
     /// policy.
     ///
@@ -690,6 +848,22 @@ impl LocalFileSystemSpi {
         local_path_mapper::logical(self.native.scope(), path, operation)
     }
 
+    /// Projects a provider failure coordinate in the request's path form.
+    fn project_failure_path(&self, native_path: &NativePath, operation: FsOperation, request_path: &Path) -> FsResult<Path> {
+        let rooted_relative;
+        let native_path = if self.is_rooted() && !native_path.is_absolute() {
+            rooted_relative = PathBuf::from(std::path::MAIN_SEPARATOR_STR).join(native_path);
+            rooted_relative.as_path()
+        } else {
+            native_path
+        };
+        let logical = self.logical_path(native_path, operation)?;
+        if self.is_rooted() && !request_path.is_absolute() {
+            return Path::parse(logical.as_str().trim_start_matches('/'));
+        }
+        Ok(logical)
+    }
+
     /// Reports whether native paths are Rooted descendants.
     ///
     /// # Returns
@@ -728,7 +902,14 @@ impl LocalFileSystemSpi {
     /// A facade error with translated kind and local provider context.
     #[inline]
     fn map(&self, error: native_files::LocalFileError, operation: FsOperation, path: &Path) -> FsError {
-        error_mapper::map(error, operation, path, None, &self.provider_id)
+        let failure_path = error
+            .path()
+            .and_then(|native_path| self.project_failure_path(native_path, operation, path).ok());
+        let mapped = error_mapper::map(error, operation, path, None, &self.provider_id);
+        match failure_path {
+            Some(failure_path) => mapped.with_failure_path(failure_path),
+            None => mapped,
+        }
     }
 }
 
@@ -1058,30 +1239,27 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(error_mapper::copy_path_error)?;
         self.native
             .copy_with_options(&source, &target, &options)
-            .map(|value| CopyAttempt::Completed(local_outcome_mapper::copy(value)))
+            .map(|value| CopyAttempt::Completed(local_outcome_mapper::copy(value, request.options().options())))
             .map_err(|error| {
                 let state = local_outcome_mapper::copy_failure_state(error.state());
                 let partial_stats = local_outcome_mapper::copy_stats(*error.partial_stats());
                 let failure_path = error
                     .failed_source_path()
-                    .map(|path| local_path_mapper::logical(self.native.scope(), path, FsOperation::Copy))
+                    .map(|path| self.project_failure_path(path, FsOperation::Copy, request.source()))
                     .transpose();
                 let failure_target = error
                     .failed_target_path()
-                    .map(|path| local_path_mapper::logical(self.native.scope(), path, FsOperation::Copy))
+                    .map(|path| self.project_failure_path(path, FsOperation::Copy, request.target()))
                     .transpose();
                 if failure_path.is_err() || failure_target.is_err() {
-                    let mapped = FsError::with_source(
-                        FsErrorKind::ProviderContractViolation,
-                        FsOperation::Copy,
-                        "local copy failure contained an unrepresentable native failure path",
+                    return copy_contract_violation(
                         error,
-                    )
-                    .with_path(request.source().clone())
-                    .with_target(request.target().clone())
-                    .with_provider(&self.provider_id)
-                    .with_effect_state(error_mapper::copy_effect_state(state));
-                    return SpiCopyFailure::new(mapped, state, partial_stats);
+                        state,
+                        partial_stats,
+                        request.source(),
+                        request.target(),
+                        &self.provider_id,
+                    );
                 }
                 let failure_path = failure_path.expect("checked successful failure-path conversion");
                 let failure_target = failure_target.expect("checked successful failure-target conversion");
@@ -1155,50 +1333,15 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// Returns path-conversion errors or mapped native creation failures.
     fn create_temp_file(&self, request: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
-        let parent = request
-            .options()
-            .parent()
-            .map(|path| self.native_temp_parent(path))
-            .transpose()?;
-        let mut options = native_files::options::LocalTempFileOptions::new()
-            .with_prefix(request.options().prefix())
-            .with_suffix(request.options().suffix());
-        if let Some(parent) = parent.as_deref() {
-            options = options.with_parent(parent);
-        }
-        if request.options().creates_parent() {
-            options = options.with_create_parent();
-        }
-        let options = self.temp_file_options(options);
-        let value = self
-            .native
-            .create_temp_file_with_options(native_option_call_recording::temp_file(&options))
-            .map_err(|error| match request.options().parent() {
-                Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
-                None => error_mapper::map_without_path(
-                    error,
-                    FsOperation::CreateTemp,
-                    "native temporary file creation failed",
-                    &self.provider_id,
-                ),
-            })?;
-        let projection = parent
-            .as_deref()
-            .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
-        let public_path = projection
-            .as_ref()
-            .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
-            .transpose()?;
-        let path = self.logical_path(public_path.as_deref().unwrap_or(value.path()), FsOperation::CreateTemp)?;
-        Ok(OpenedTempFile::new(
-            self.info(path).with_metadata(FileMetadata::new(FileKind::File)),
-            Box::new(LocalTempResourceSpi::file(
-                value,
-                self.is_rooted(),
-                self.provider_id.clone(),
-                projection,
-            )),
-        ))
+        self.create_temp_file_recoverable_impl(request)
+            .map_err(|failure| failure.into_parts().0)
+    }
+
+    fn create_temp_file_recoverable(
+        &self,
+        request: CreateTempFileRequest,
+    ) -> Result<OpenedTempFile, TempCreateFailure> {
+        self.create_temp_file_recoverable_impl(request)
     }
 
     /// Creates a temporary directory in the configured local authority.
@@ -1216,53 +1359,40 @@ impl FileSystemSpi for LocalFileSystemSpi {
     ///
     /// Returns path-conversion errors or mapped native creation failures.
     fn create_temp_directory(&self, request: CreateTempDirectoryRequest) -> FsResult<OpenedTempDirectory> {
-        let parent = request
-            .options()
-            .parent()
-            .map(|path| self.native_temp_parent(path))
-            .transpose()?;
-        let mut options = native_files::options::LocalTempDirectoryOptions::new()
-            .with_prefix(request.options().prefix())
-            .with_suffix(request.options().suffix());
-        options = options.with_cleanup_limits(self.cleanup_limits());
-        if let Some(parent) = parent.as_deref() {
-            options = options.with_parent(parent);
-        }
-        if request.options().creates_parent() {
-            options = options.with_create_parent();
-        }
-        let options = self.temp_directory_options(options);
-        let value = self
-            .native
-            .create_temp_directory_with_options(native_option_call_recording::temp_directory(&options))
-            .map_err(|error| match request.options().parent() {
-                Some(parent) => error_mapper::map(error, FsOperation::CreateTemp, parent, None, &self.provider_id),
-                None => error_mapper::map_without_path(
-                    error,
-                    FsOperation::CreateTemp,
-                    "native temporary directory creation failed",
-                    &self.provider_id,
-                ),
-            })?;
-        let projection = parent
-            .as_deref()
-            .map(|parent| LocalTempPathProjection::new(parent, value.creation_parent()));
-        let public_path = projection
-            .as_ref()
-            .map(|projection| projection.project(value.path(), FsOperation::CreateTemp))
-            .transpose()?;
-        let path = self.logical_path(public_path.as_deref().unwrap_or(value.path()), FsOperation::CreateTemp)?;
-        Ok(OpenedTempDirectory::new(
-            self.info(path).with_metadata(FileMetadata::new(FileKind::Directory)),
-            Box::new(LocalTempResourceSpi::directory(
-                value,
-                self.is_rooted(),
-                self.provider_id.clone(),
-                projection,
-                self.temp_cleanup_control.clone(),
-            )),
-        ))
+        self.create_temp_directory_recoverable_impl(request)
+            .map_err(|failure| failure.into_parts().0)
     }
+
+    fn create_temp_directory_recoverable(
+        &self,
+        request: CreateTempDirectoryRequest,
+    ) -> Result<OpenedTempDirectory, TempCreateFailure> {
+        self.create_temp_directory_recoverable_impl(request)
+    }
+}
+
+fn copy_contract_violation<E>(
+    error: E,
+    state: CopyFailureState,
+    partial_stats: CopyStats,
+    source: &Path,
+    target: &Path,
+    provider_id: &str,
+) -> SpiCopyFailure
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let mapped = FsError::with_source(
+        FsErrorKind::ProviderContractViolation,
+        FsOperation::Copy,
+        "local copy failure contained an unrepresentable native failure path",
+        error,
+    )
+    .with_path(source.clone())
+    .with_target(target.clone())
+    .with_provider(provider_id)
+    .with_effect_state(error_mapper::copy_effect_state(state));
+    SpiCopyFailure::new(mapped, state, partial_stats)
 }
 
 impl LocalFileSystemSpi {
@@ -1278,15 +1408,20 @@ impl LocalFileSystemSpi {
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
     use std::num::NonZeroUsize;
     use std::time::Duration;
 
     use qubit_fs::FileSystem;
+    use qubit_fs::copy::CopyFailureState;
     use qubit_fs::copy::CopyOptions;
+    use qubit_fs::copy::CopyStats;
     use qubit_fs::directory::DeleteOptions;
     use qubit_fs::directory::ListOptions;
     use qubit_fs::directory::ListScope;
     use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsEffectState;
+    use qubit_fs::error::FsOperation;
     use qubit_fs::metadata::FileSystemId;
     use qubit_fs::path::Path;
     use qubit_fs::path::Path as LogicalPath;
@@ -1296,16 +1431,55 @@ mod tests {
     use qubit_fs::temp::TempOptions;
     use qubit_fs::write::WriteOptions;
     use qubit_local_files::LocalFileSystem;
+    use qubit_local_files::error::LocalFileError;
+    use qubit_local_files::error::LocalFileErrorKind;
+    use qubit_local_files::error::LocalFileOperation;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalDeleteOptions;
     use qubit_local_files::options::LocalListOptions;
     use qubit_local_files::options::LocalTempCleanupLimits;
 
     use super::LocalFileSystemSpi;
+    use super::copy_contract_violation;
     use super::native_option_call_recording::NativeOptionCall;
     use super::native_option_call_recording::take as take_native_option_calls;
     use crate::LocalTempCleanupControl;
     use crate::LocalTempCleanupResourceLimits;
+
+    #[test]
+    fn test_impossible_rooted_copy_coordinate_becomes_contract_violation() {
+        let root = tempfile::tempdir().expect("root should exist");
+        let spi = LocalFileSystemSpi::rooted(
+            FileSystemId::new("impossible-copy-coordinate").expect("id should be valid"),
+            root.path(),
+            crate::LocalResourcePolicy::unbounded(),
+        )
+        .expect("rooted SPI should open");
+        let source = LogicalPath::parse("/request-source").expect("source should parse");
+        let target = LogicalPath::parse("/request-target").expect("target should parse");
+        assert!(spi
+            .project_failure_path(std::path::Path::new("../escape"), FsOperation::Copy, &source)
+            .is_err());
+
+        let failure = copy_contract_violation(
+            LocalFileError::new(LocalFileErrorKind::Io, LocalFileOperation::Copy),
+            CopyFailureState::PartiallyPublished,
+            CopyStats::default(),
+            &source,
+            &target,
+            "local-file",
+        );
+        assert_eq!(FsErrorKind::ProviderContractViolation, failure.error().kind());
+        assert_eq!(Some(&source), failure.error().path());
+        assert_eq!(Some(&target), failure.error().target());
+        assert_eq!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
+        assert!(failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .is_some());
+        assert_eq!(CopyFailureState::PartiallyPublished, failure.state());
+    }
 
     #[test]
     fn test_execution_options_are_applied_for_host_and_rooted_facades() {

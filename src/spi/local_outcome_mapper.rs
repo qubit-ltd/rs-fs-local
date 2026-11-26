@@ -7,10 +7,12 @@
 // =============================================================================
 //! Native outcome conversion helpers.
 
+use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyMethod;
 use qubit_fs::copy::CopyOutcome;
 use qubit_fs::copy::CopyStats;
+use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::metadata::AchievedAtomicity;
 use qubit_fs::metadata::FileKind;
@@ -73,10 +75,21 @@ pub(crate) fn metadata(value: native_files::outcome::LocalFileMetadata) -> FileM
 ///
 /// Portable copy statistics, method, atomicity, durability, and metadata
 /// preservation guarantees.
-pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcome {
+pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome, options: &CopyOptions) -> CopyOutcome {
     let stats = value.stats();
+    let stats = copy_stats(stats);
+    let unchanged = options.conflict() == CopyConflictPolicy::Skip
+        && stats.skipped > 0
+        && stats.files == 0
+        && stats.directories == 0
+        && stats.symlinks == 0
+        && stats.objects == 0
+        && stats.prefixes == 0
+        && stats.bytes == 0
+        && stats.overwritten == 0
+        && stats.failed == 0;
     let mut result = CopyOutcome::new(
-        copy_stats(stats),
+        stats,
         match value.method() {
             native_files::outcome::LocalCopyMethod::StagedFile => CopyMethod::Native,
             native_files::outcome::LocalCopyMethod::Recursive => CopyMethod::Native,
@@ -88,6 +101,7 @@ pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcom
             AchievedAtomicity::NonAtomic
         },
     );
+    result = result.with_unchanged(unchanged);
     result = result.with_durable(value.durable());
     result = result.with_metadata(match value.metadata_preservation() {
         native_files::options::LocalMetadataPreservePolicy::None => MetadataPreservePolicy::None,

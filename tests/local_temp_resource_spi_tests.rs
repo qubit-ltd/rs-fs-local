@@ -20,6 +20,7 @@ use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
+use qubit_fs::error::OpenFailureStage;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::Path;
 use qubit_fs::path::PathComponent;
@@ -36,6 +37,81 @@ use qubit_fs_local::host_path_to_logical;
 use qubit_local_files::error::LocalFileError;
 use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::test_support::install_test_fault;
+
+#[test]
+fn test_partial_temp_creation_recovery_survives_cleanup_retry() {
+    for (rooted, directory, create_fault) in [
+        (false, false, "temp-identity-file-cleanup"),
+        (false, true, "temp-identity-file-cleanup"),
+        (true, false, "rooted-temp-file-open-cleanup"),
+        (true, true, "rooted-temp-directory-create-cleanup"),
+    ] {
+        let root = tempfile::tempdir().expect("fixture root should exist");
+        std::fs::write(root.path().join("external-sentinel"), b"preserve")
+            .expect("external sentinel should exist");
+        let filesystem = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+                .expect("rooted filesystem should open")
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should open")
+        };
+        let parent = if rooted {
+            Path::parse("/").expect("root path should parse")
+        } else {
+            host_path_to_logical(root.path()).expect("host parent should convert")
+        };
+        let _create_fault = install_test_fault(create_fault).expect("partial creation fault should install");
+        let mut failure = if directory {
+            filesystem
+                .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent.clone())))
+                .expect_err("partial directory creation should fail")
+        } else {
+            filesystem
+                .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+                .expect_err("partial file creation should fail")
+        };
+
+        assert_eq!(OpenFailureStage::ProviderOpen, failure.stage());
+        assert_eq!(FsOperation::CreateTemp, failure.error().operation());
+        assert_eq!(Some(&parent), failure.error().path());
+        assert_eq!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
+        let cause = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .expect("native creation error should remain the cause");
+        assert!(cause.cleanup_error().is_some(), "the native creation path records its injected cleanup failure");
+        let recovery = failure.take_recovery().expect("partial native resource ownership is retained");
+        let mut recovery = recovery;
+        drop(_create_fault);
+        recovery.cleanup().expect("explicit cleanup retry should succeed after the injected creation cleanup failure");
+        assert_eq!(
+            b"preserve".as_slice(),
+            std::fs::read(root.path().join("external-sentinel")).expect("external resource remains")
+        );
+    }
+}
+
+#[test]
+fn test_temp_create_failure_without_recovery_does_not_claim_partial_effect() {
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    std::fs::write(root.path().join("external-sentinel"), b"preserve").expect("sentinel should exist");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should open");
+    let parent = host_path_to_logical(root.path()).expect("host parent should convert");
+    let _fault = install_test_fault("temp-identity-file").expect("pre-cleanup creation fault should install");
+
+    let failure = filesystem
+        .create_temp_file(TempFileOptions::default().with_parent(Some(parent)))
+        .expect_err("identity verification should fail after cleanup");
+
+    assert_eq!(OpenFailureStage::ProviderOpen, failure.stage());
+    assert!(failure.recovery().is_none(), "successful native cleanup leaves no recovery owner");
+    assert_ne!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
+    assert_eq!(
+        b"preserve".as_slice(),
+        std::fs::read(root.path().join("external-sentinel")).expect("external sentinel remains")
+    );
+}
 
 /// Temporary resources retain the caller's parent alias across creation,
 /// explicit publication, and generated keep targets.

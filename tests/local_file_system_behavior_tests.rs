@@ -32,7 +32,8 @@ use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::Checksum;
 use qubit_fs::metadata::ChecksumAlgorithm;
-#[cfg(unix)]
+use qubit_fs::metadata::AchievedAtomicity;
+use qubit_fs::metadata::AtomicityRequirement;
 use qubit_fs::metadata::DurabilityRequirement;
 #[cfg(unix)]
 use qubit_fs::metadata::FileKind;
@@ -574,6 +575,94 @@ fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
             .expect("destination must remain")
             .is_directory_like()
     );
+}
+
+#[test]
+fn test_copy_atomicity_guarantee_and_skip_outcomes_report_native_facts() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("copy fixture root");
+        let source = root.path().join("source");
+        let target = root.path().join("target");
+        fs::write(&source, b"payload").expect("copy source");
+        let (filesystem, logical_source, logical_target) = if rooted {
+            (
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem"),
+                Path::parse("/source").expect("source path"),
+                Path::parse("/target").expect("target path"),
+            )
+        } else {
+            (
+                LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem"),
+                host_path_to_logical(&source).expect("Host source"),
+                host_path_to_logical(&target).expect("Host target"),
+            )
+        };
+
+        let copied = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file().with_atomicity(AtomicityRequirement::Required),
+            )
+            .expect("Linux Host and Rooted support the requested native file-copy atomicity");
+        assert_eq!(AchievedAtomicity::Atomic, copied.atomicity());
+        assert_eq!(b"payload", fs::read(&target).expect("target was copied").as_slice());
+        assert_eq!(1, copied.stats().files);
+        assert_eq!(7, copied.stats().bytes);
+
+        fs::write(&target, b"keep-existing").expect("existing destination");
+        let skipped = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file()
+                    .with_conflict(CopyConflictPolicy::Skip)
+                    .with_atomicity(AtomicityRequirement::Required),
+            )
+            .expect("Skip does not need to perform an atomic publication");
+        assert_eq!(1, skipped.stats().skipped);
+        assert!(skipped.unchanged());
+        assert_eq!(0, skipped.stats().files);
+        assert_eq!(0, skipped.stats().bytes);
+        assert_eq!(AchievedAtomicity::NonAtomic, skipped.atomicity());
+        assert!(!skipped.durable());
+        assert_eq!(b"keep-existing", fs::read(&target).expect("existing target remains").as_slice());
+
+        let source_tree = root.path().join("tree-source");
+        let target_tree = root.path().join("tree-target");
+        fs::create_dir(&source_tree).expect("tree source");
+        fs::write(source_tree.join("sentinel"), b"new").expect("tree source child");
+        fs::create_dir(&target_tree).expect("existing tree target");
+        fs::write(target_tree.join("sentinel"), b"keep-tree").expect("tree sentinel");
+        let (logical_source_tree, logical_target_tree) = if rooted {
+            (
+                Path::parse("/tree-source").expect("rooted source tree"),
+                Path::parse("/tree-target").expect("rooted target tree"),
+            )
+        } else {
+            (
+                host_path_to_logical(&source_tree).expect("Host source tree"),
+                host_path_to_logical(&target_tree).expect("Host target tree"),
+            )
+        };
+        let skipped_tree = filesystem
+            .copy(
+                &logical_source_tree,
+                &logical_target_tree,
+                CopyOptions::tree()
+                    .with_conflict(CopyConflictPolicy::Skip),
+            )
+            .expect("complete tree Skip is unchanged and needs no publication guarantee");
+        assert!(skipped_tree.unchanged(), "tree Skip outcome facts: {skipped_tree:?}");
+        assert_eq!(1, skipped_tree.stats().skipped);
+        assert_eq!(0, skipped_tree.stats().files);
+        assert_eq!(0, skipped_tree.stats().directories);
+        assert_eq!(0, skipped_tree.stats().bytes);
+        assert_eq!(AchievedAtomicity::NonAtomic, skipped_tree.atomicity());
+        assert!(!skipped_tree.durable());
+        assert_eq!(b"keep-tree".as_slice(), fs::read(target_tree.join("sentinel")).expect("tree target remains"));
+        assert_eq!(1, fs::read_dir(&target_tree).expect("tree target entries").count());
+    }
 }
 
 /// Replacing an existing file retains its native permissions for both

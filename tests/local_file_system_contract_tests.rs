@@ -12,7 +12,6 @@ use std::error::Error;
 use std::fs;
 use std::io::ErrorKind;
 use std::io::Write;
-#[cfg(unix)]
 use std::path::Component;
 use std::path::Path as NativePath;
 use std::path::PathBuf;
@@ -32,7 +31,6 @@ use qubit_fs::spi::FileSystemSpi;
 use qubit_fs::spi::ProviderOperation;
 use qubit_fs::write::WriteOptions;
 use qubit_fs_local::LocalResourcePolicy;
-#[cfg(unix)]
 use qubit_fs_local::host_path_to_logical;
 use qubit_fs_local::spi::LocalFileSystemSpi;
 use qubit_fs_testkit::ContractCheckId;
@@ -483,14 +481,14 @@ impl FileSystemFixture for RootedFixture {
 }
 
 /// Isolated host filesystem fixture used to exercise the host SPI path.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 struct HostFixture {
     root: tempfile::TempDir,
     file_system: FileSystem,
     random_access_operation: bool,
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl HostFixture {
     /// Creates a fresh host facade rooted at an isolated native directory.
     fn new() -> Self {
@@ -555,7 +553,7 @@ impl HostFixture {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl FileSystemFixture for HostFixture {
     fn file_system(&self) -> &FileSystem {
         &self.file_system
@@ -655,7 +653,7 @@ impl FileSystemFixture for HostFixture {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 register_file_system_contract_tests! {
     module: host_contracts,
     fixture: super::HostFixture::new,
