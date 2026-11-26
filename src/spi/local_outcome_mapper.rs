@@ -116,13 +116,31 @@ pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome, options: &Cop
 ///
 /// - `stats`: Native counters recorded while copying the tree.
 pub(crate) fn copy_stats(stats: native_files::outcome::LocalCopyStats) -> CopyStats {
+    copy_stats_from_counts(
+        stats.files(),
+        stats.symlinks(),
+        stats.directories(),
+        stats.bytes(),
+        stats.skipped(),
+        stats.overwritten(),
+    )
+}
+
+fn copy_stats_from_counts(
+    files: u64,
+    symlinks: u64,
+    directories: u64,
+    bytes: u64,
+    skipped: u64,
+    overwritten: u64,
+) -> CopyStats {
     CopyStats {
-        files: stats.files() - stats.symlinks(),
-        symlinks: stats.symlinks(),
-        directories: stats.directories(),
-        bytes: stats.bytes(),
-        skipped: stats.skipped(),
-        overwritten: stats.overwritten(),
+        files: files - symlinks,
+        symlinks,
+        directories,
+        bytes,
+        skipped,
+        overwritten,
         ..Default::default()
     }
 }
@@ -192,6 +210,7 @@ mod tests {
     use qubit_fs::metadata::FileKind;
     use qubit_local_files::outcome::LocalFileKind;
 
+    use super::copy_stats_from_counts;
     use super::file_kind;
 
     #[test]
@@ -214,5 +233,15 @@ mod tests {
         ] {
             assert_eq!(expected, file_kind(native));
         }
+    }
+
+    #[test]
+    fn test_copy_stats_separates_regular_files_links_and_regular_file_bytes() {
+        let stats = copy_stats_from_counts(3, 1, 2, 11, 0, 0);
+
+        assert_eq!(2, stats.files);
+        assert_eq!(1, stats.symlinks);
+        assert_eq!(2, stats.directories);
+        assert_eq!(11, stats.bytes);
     }
 }

@@ -864,6 +864,35 @@ impl LocalFileSystemSpi {
         Ok(logical)
     }
 
+    fn project_copy_failure_paths(
+        &self,
+        error: native_files::outcome::LocalCopyFailure,
+        state: CopyFailureState,
+        partial_stats: CopyStats,
+        failed_source: Option<&NativePath>,
+        failed_target: Option<&NativePath>,
+        request_source: &Path,
+        request_target: &Path,
+    ) -> Result<(native_files::outcome::LocalCopyFailure, Option<Path>, Option<Path>), SpiCopyFailure> {
+        let failure_path = failed_source
+            .map(|path| self.project_failure_path(path, FsOperation::Copy, request_source))
+            .transpose();
+        let failure_target = failed_target
+            .map(|path| self.project_failure_path(path, FsOperation::Copy, request_target))
+            .transpose();
+        match (failure_path, failure_target) {
+            (Ok(failure_path), Ok(failure_target)) => Ok((error, failure_path, failure_target)),
+            _ => Err(copy_contract_violation(
+                error,
+                state,
+                partial_stats,
+                request_source,
+                request_target,
+                &self.provider_id,
+            )),
+        }
+    }
+
     /// Reports whether native paths are Rooted descendants.
     ///
     /// # Returns
@@ -1243,26 +1272,20 @@ impl FileSystemSpi for LocalFileSystemSpi {
             .map_err(|error| {
                 let state = local_outcome_mapper::copy_failure_state(error.state());
                 let partial_stats = local_outcome_mapper::copy_stats(*error.partial_stats());
-                let failure_path = error
-                    .failed_source_path()
-                    .map(|path| self.project_failure_path(path, FsOperation::Copy, request.source()))
-                    .transpose();
-                let failure_target = error
-                    .failed_target_path()
-                    .map(|path| self.project_failure_path(path, FsOperation::Copy, request.target()))
-                    .transpose();
-                if failure_path.is_err() || failure_target.is_err() {
-                    return copy_contract_violation(
-                        error,
-                        state,
-                        partial_stats,
-                        request.source(),
-                        request.target(),
-                        &self.provider_id,
-                    );
-                }
-                let failure_path = failure_path.expect("checked successful failure-path conversion");
-                let failure_target = failure_target.expect("checked successful failure-target conversion");
+                let failed_source = error.failed_source_path().map(NativePath::to_path_buf);
+                let failed_target = error.failed_target_path().map(NativePath::to_path_buf);
+                let (error, failure_path, failure_target) = match self.project_copy_failure_paths(
+                    error,
+                    state,
+                    partial_stats,
+                    failed_source.as_deref(),
+                    failed_target.as_deref(),
+                    request.source(),
+                    request.target(),
+                ) {
+                    Ok(projected) => projected,
+                    Err(failure) => return failure,
+                };
                 SpiCopyFailure::new(
                     error_mapper::copy_failure(
                         error,
@@ -1421,7 +1444,6 @@ mod tests {
     use qubit_fs::directory::ListScope;
     use qubit_fs::error::FsEffectState;
     use qubit_fs::error::FsErrorKind;
-    use qubit_fs::error::FsOperation;
     use qubit_fs::metadata::FileSystemId;
     use qubit_fs::path::Path;
     use qubit_fs::path::Path as LogicalPath;
@@ -1431,16 +1453,12 @@ mod tests {
     use qubit_fs::temp::TempOptions;
     use qubit_fs::write::WriteOptions;
     use qubit_local_files::LocalFileSystem;
-    use qubit_local_files::error::LocalFileError;
-    use qubit_local_files::error::LocalFileErrorKind;
-    use qubit_local_files::error::LocalFileOperation;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalDeleteOptions;
     use qubit_local_files::options::LocalListOptions;
     use qubit_local_files::options::LocalTempCleanupLimits;
 
     use super::LocalFileSystemSpi;
-    use super::copy_contract_violation;
     use super::native_option_call_recording::NativeOptionCall;
     use super::native_option_call_recording::take as take_native_option_calls;
     use crate::LocalTempCleanupControl;
@@ -1457,31 +1475,44 @@ mod tests {
         .expect("rooted SPI should open");
         let source = LogicalPath::parse("/request-source").expect("source should parse");
         let target = LogicalPath::parse("/request-target").expect("target should parse");
-        assert!(
-            spi.project_failure_path(std::path::Path::new("../escape"), FsOperation::Copy, &source)
-                .is_err()
-        );
+        let native_failure = spi
+            .native
+            .copy_with_options(
+                std::path::Path::new("missing-source"),
+                std::path::Path::new("native-target"),
+                &LocalCopyOptions::new(),
+            )
+            .expect_err("missing source should produce a native typed copy failure");
+        let state = super::local_outcome_mapper::copy_failure_state(native_failure.state());
+        let partial_stats = super::local_outcome_mapper::copy_stats(*native_failure.partial_stats());
+        let failure = spi
+            .project_copy_failure_paths(
+                native_failure,
+                state,
+                partial_stats,
+                Some(std::path::Path::new("../escape")),
+                None,
+                &source,
+                &target,
+            )
+            .expect_err("impossible native coordinate must become a provider contract violation");
 
-        let failure = copy_contract_violation(
-            LocalFileError::new(LocalFileErrorKind::Io, LocalFileOperation::Copy),
-            CopyFailureState::PartiallyPublished,
-            CopyStats::default(),
-            &source,
-            &target,
-            "local-file",
-        );
         assert_eq!(FsErrorKind::ProviderContractViolation, failure.error().kind());
         assert_eq!(Some(&source), failure.error().path());
         assert_eq!(Some(&target), failure.error().target());
-        assert_eq!(Some(FsEffectState::PartiallyApplied), failure.error().effect_state());
+        assert_eq!(Some("local-file"), failure.error().provider());
+        assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
         assert!(
             failure
                 .error()
                 .source()
-                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .and_then(|source| source.downcast_ref::<qubit_local_files::outcome::LocalCopyFailure>())
                 .is_some()
         );
-        assert_eq!(CopyFailureState::PartiallyPublished, failure.state());
+        let (error, state, partial_stats) = failure.into_parts();
+        assert_eq!(CopyFailureState::Unchanged, state);
+        assert_eq!(CopyStats::default(), partial_stats);
+        assert_eq!(FsErrorKind::ProviderContractViolation, error.kind());
     }
 
     #[test]

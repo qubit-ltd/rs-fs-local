@@ -7,6 +7,7 @@
 // =============================================================================
 //! Behavioral coverage for host and rooted local filesystem adapters.
 
+use std::error::Error;
 use std::fs;
 use std::io::ErrorKind;
 #[cfg(unix)]
@@ -22,6 +23,7 @@ use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyOptions;
+use qubit_fs::copy::CopyStats;
 use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::copy::ServerSidePreference;
 use qubit_fs::directory::CreateDirectoryOptions;
@@ -56,6 +58,8 @@ use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
+use qubit_local_files::error::LocalFileErrorKind;
+use qubit_local_files::outcome::LocalCopyFailure;
 use tempfile::TempDir;
 use tempfile::tempdir;
 
@@ -389,6 +393,77 @@ fn test_host_and_rooted_partial_copy_statistics_separate_symlinks() {
         assert_eq!(2, failure.partial_stats().files + failure.partial_stats().symlinks);
         assert_eq!(u64::from(copied_link), failure.partial_stats().symlinks);
         assert!(failure.partial_stats().files >= failure.partial_stats().symlinks);
+    }
+}
+
+/// Portable metadata requirements for symlink file copies fail before creating
+/// target parents when the native backend cannot preserve them.
+#[cfg(unix)]
+#[test]
+fn test_symlink_portable_metadata_requirement_fails_before_target_mutation() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("copy fixture root");
+        let source = root.path().join("source-link");
+        symlink("referent", &source).expect("source symlink");
+        let target_native = root.path().join("missing-parent").join("target-link");
+        let (filesystem, logical_source, logical_target) = if rooted {
+            (
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem"),
+                Path::parse("source-link").expect("relative source"),
+                Path::parse("missing-parent/target-link").expect("relative target"),
+            )
+        } else {
+            (
+                LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem"),
+                host_path_to_logical(&source).expect("Host source"),
+                host_path_to_logical(&target_native).expect("Host target"),
+            )
+        };
+
+        let failure = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file()
+                    .with_create_parent(true)
+                    .with_preserve_metadata(MetadataPreservePolicy::Portable),
+            )
+            .expect_err("Portable metadata cannot be guaranteed for symlink file copies");
+
+        assert_eq!(
+            FsErrorKind::RequirementNotMet,
+            failure.error().kind(),
+            "rooted={rooted}"
+        );
+        assert_eq!(CopyFailureState::Unchanged, failure.state(), "rooted={rooted}");
+        assert_eq!(
+            Some(FsEffectState::Unchanged),
+            failure.error().effect_state(),
+            "rooted={rooted}"
+        );
+        assert_eq!(CopyStats::default(), *failure.partial_stats(), "rooted={rooted}");
+        let native_failure = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
+            .expect("native copy failure should remain the cause");
+        let native_cause = native_failure
+            .source()
+            .and_then(|source| source.downcast_ref::<qubit_local_files::LocalFileError>())
+            .expect("native requirement error should remain nested cause");
+        assert_eq!(
+            LocalFileErrorKind::RequirementNotMet,
+            native_cause.kind(),
+            "rooted={rooted}"
+        );
+        assert!(!root.path().join("missing-parent").exists(), "rooted={rooted}");
+        assert!(
+            fs::symlink_metadata(&source)
+                .expect("source remains")
+                .file_type()
+                .is_symlink()
+        );
+        assert!(fs::symlink_metadata(&target_native).is_err(), "rooted={rooted}");
     }
 }
 

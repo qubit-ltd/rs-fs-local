@@ -14,6 +14,8 @@ use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::CopyStats;
 use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::DeleteOptions;
+use qubit_fs::directory::ListOptions;
+use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
@@ -57,6 +59,82 @@ fn test_publication_incomplete_retains_partial_effect_and_native_source() {
             .and_then(|source| source.downcast_ref::<LocalFileError>())
             .is_some()
     );
+}
+
+#[test]
+fn test_rooted_recursive_create_failure_projects_partial_child_path() {
+    let root = tempfile::tempdir().expect("rooted fixture root should exist");
+    let path = Path::parse("created/blocked").expect("relative rooted path should parse");
+    let filesystem = LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded())
+        .expect("rooted filesystem should construct");
+    let _fault =
+        install_test_fault("rooted-create-directory-component-second").expect("rooted create fault should install");
+
+    let error = filesystem
+        .create_directory(&path, CreateDirectoryOptions::default().with_recursive(true))
+        .expect_err("injected second-component error should interrupt creation");
+
+    assert_eq!(FsErrorKind::Io, error.kind());
+    assert_eq!(FsOperation::CreateDir, error.operation());
+    assert_eq!(Some(FsEffectState::PartiallyApplied), error.effect_state());
+    assert_eq!(Some(&path), error.path());
+    assert_eq!(Some(&path), error.failure_path());
+    assert_eq!(Some("local-file"), error.provider());
+    assert!(
+        error
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .is_some()
+    );
+    assert!(root.path().join("created").is_dir());
+    assert!(!root.path().join("created/blocked").exists());
+}
+
+#[test]
+fn test_host_and_rooted_lazy_listing_failures_project_native_coordinates() {
+    for rooted in [false, true] {
+        let root = tempfile::tempdir().expect("listing fixture root should exist");
+        std::fs::create_dir(root.path().join("nested")).expect("listing directory should exist");
+        std::fs::write(root.path().join("nested/entry"), b"entry").expect("listing entry should exist");
+        let filesystem = if rooted {
+            LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem")
+        } else {
+            LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem")
+        };
+        let requested = if rooted {
+            Path::parse("nested").expect("relative Rooted path")
+        } else {
+            host_path_to_logical(&root.path().join("nested")).expect("absolute Host path")
+        };
+        let mut stream = filesystem
+            .list(&ListScope::Path(requested.clone()), ListOptions::default())
+            .expect("lazy list should open before traversal");
+        let _fault = install_test_fault("walker-entry").expect("walker fault should install");
+
+        let error = stream
+            .next_entry()
+            .expect_err("injected lazy walker error should surface");
+
+        assert_eq!(FsOperation::List, error.operation(), "rooted={rooted}");
+        assert_eq!(Some("local-file"), error.provider(), "rooted={rooted}");
+        assert_eq!(
+            Some(&requested),
+            error.path(),
+            "request path should remain available; rooted={rooted}"
+        );
+        let failure_path = error.failure_path().expect("known walker namespace should project");
+        assert_eq!(rooted, !failure_path.is_absolute(), "rooted={rooted}");
+        assert!(
+            failure_path.as_str().ends_with("nested"),
+            "failure path: {failure_path}"
+        );
+        assert!(
+            error
+                .source()
+                .and_then(|source| source.downcast_ref::<LocalFileError>())
+                .is_some()
+        );
+    }
 }
 
 #[test]
