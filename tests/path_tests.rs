@@ -24,3 +24,7 @@ fn test_native_resolves_rooted_relative_logical_path_from_virtual_pwd() {
         .stat(&path)
         .expect("rooted relative path must resolve from the virtual PWD");
 }
+
+mod path_tests {
+    mod local_path_mapper_tests;
+}

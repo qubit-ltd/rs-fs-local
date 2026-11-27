@@ -210,6 +210,59 @@ fn test_local_provider_rejects_unsupported_configuration_shapes() {
     );
 }
 
+#[test]
+fn test_local_provider_rejects_metadata_before_chained_fallback() {
+    let registry = FileSystemRegistry::default();
+    registry
+        .register(LocalFileSystemProvider::host(LocalResourcePolicy::unbounded()))
+        .expect("local provider should register");
+    let root = tempfile::tempdir().expect("fallback root should be created");
+    let fallback = LocalFileSystemProvider::rooted_with_descriptor(
+        ProviderDescriptor::new(ProviderId::new("metadata-fallback").expect("provider id must be valid")),
+        FileSystemId::new("metadata-fallback-root").expect("filesystem id must be valid"),
+        root.path(),
+        LocalResourcePolicy::unbounded(),
+    )
+    .expect("fallback provider should open");
+    let received_schemes = Arc::new(Mutex::new(Vec::new()));
+    registry
+        .register(ChainFallbackProvider {
+            inner: fallback,
+            received_schemes: Arc::clone(&received_schemes),
+        })
+        .expect("fallback provider should register");
+    let metadata = NonSensitiveMetadata::from(
+        UserMetadata::new()
+            .with("label", "external")
+            .expect("metadata should be valid"),
+    );
+    let config = FileSystemConfig::new(ConnectionUri::parse("file:///data").expect("URI should parse"))
+        .with_metadata(metadata)
+        .with_selection(
+            ProviderSelection::chain(["local-file", "metadata-fallback"])
+                .expect("provider chain should parse")
+                .with_fallback_policy(FallbackPolicy::OnAbsence),
+        );
+
+    let error = registry
+        .resolve_config(&config)
+        .expect_err("unsupported metadata must be a configuration failure");
+    let FileSystemRegistryError::Creation(creation) = error else {
+        panic!("expected provider creation error")
+    };
+    assert_eq!(1, creation.attempts().len());
+    assert_eq!("local-file", creation.attempts()[0].provider_id().as_str());
+    let failure = creation.decisive_attempt().failure();
+    assert_eq!(ProviderFailureKind::InvalidConfiguration, failure.kind());
+    assert_eq!(FsErrorKind::InvalidOptions, failure.error().kind());
+    assert!(
+        received_schemes
+            .lock()
+            .expect("fallback call log should not be poisoned")
+            .is_empty()
+    );
+}
+
 /// A named local selection makes one unsupported attempt for a non-`file:` URI.
 #[test]
 fn test_named_local_provider_rejects_non_file_uri_without_fallback() {

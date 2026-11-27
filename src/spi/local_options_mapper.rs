@@ -250,13 +250,18 @@ pub(crate) fn rename(options: &ResolvedRenameOptions) -> native_files::options::
 ///
 /// # Returns
 ///
-/// Native conflict, metadata, symlink, atomicity, durability, recursion, and
-/// parent-creation policy.
+/// Native options selected from the facade request and tightened by the
+/// provider's resource defaults. `scope` controls whether requested symlink
+/// following can be represented safely. Resource ceilings and deadlines from
+/// `defaults` remain effective even when a request supplies larger limits.
 ///
 /// # Errors
 ///
 /// Returns `RequirementNotMet` for continue-on-error, required server-side
-/// execution, or metadata preservation beyond portable permissions.
+/// execution, or metadata preservation beyond portable permissions. Copy
+/// conflicts including Skip are delegated to the native backend; an unchanged
+/// all-skipped outcome is identified by the outcome mapper from native effect
+/// and statistics, not inferred from these options.
 pub(crate) fn copy(
     options: &ResolvedCopyOptions,
     scope: native_files::path::LocalFileSystemScope,
@@ -498,7 +503,9 @@ mod tests {
     use qubit_local_files::LocalFileSystem;
     use qubit_local_files::options::LocalCopyOptions;
     use qubit_local_files::options::LocalCopySourceMode;
+    use qubit_local_files::options::LocalListOptions;
     use qubit_local_files::options::LocalMetadataPreservePolicy;
+    use qubit_local_files::path::LocalFileSystemScope;
 
     use super::copy_source_options;
     use super::list;
@@ -539,8 +546,8 @@ mod tests {
     struct DeadlineProbe {
         inner: LocalFileSystemSpi,
         captured: Arc<Mutex<Option<Option<Duration>>>>,
-        defaults: qubit_local_files::options::LocalListOptions,
-        scope: qubit_local_files::path::LocalFileSystemScope,
+        defaults: LocalListOptions,
+        scope: LocalFileSystemScope,
     }
 
     impl FileSystemSpi for DeadlineProbe {

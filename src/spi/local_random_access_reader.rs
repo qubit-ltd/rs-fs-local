@@ -11,6 +11,7 @@ use std::io::Result;
 use std::io::Seek;
 use std::io::SeekFrom;
 
+use qubit_fs::error::FsError;
 use qubit_fs::error::FsOperation;
 use qubit_fs::error::FsResult;
 use qubit_fs::path::Path;
@@ -85,7 +86,7 @@ impl LocalRandomAccessReader {
     /// # Parameters
     ///
     /// - `error`: Native I/O error produced by seeking or reading the handle.
-    fn map_io(&self, error: std::io::Error) -> qubit_fs::error::FsError {
+    fn map_io(&self, error: std::io::Error) -> FsError {
         let native_error = native_files::error::LocalFileError::from_io(
             native_files::error::LocalFileOperation::Read,
             None,

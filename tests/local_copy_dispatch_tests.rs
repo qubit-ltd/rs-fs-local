@@ -11,6 +11,7 @@ use qubit_fs::copy::CopyMethod;
 use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::CopyStats;
 use qubit_fs::copy::MetadataPreservePolicy;
+use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::path::Path;
 use qubit_fs_local::LocalFileSystems;
@@ -35,6 +36,7 @@ fn test_local_unrepresentable_copy_fails_before_target_creation() {
 
     assert_eq!(FsErrorKind::RequirementNotMet, failure.error().kind());
     assert_eq!(CopyFailureState::Unchanged, failure.state());
+    assert_eq!(Some(FsEffectState::Unchanged), failure.error().effect_state());
     assert_eq!(&CopyStats::default(), failure.partial_stats());
     assert_eq!(Some(&source), failure.error().path());
     assert_eq!(Some(&target), failure.error().target());

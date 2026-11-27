@@ -15,7 +15,9 @@ parsing and native-path conversion part of application code.
 This README documents `qubit-fs-local` 0.12.0 (package version `0.12.0`).
 
 This version uses `qubit-fs` 0.4 and `qubit-local-files` 0.6.0. Provider ceilings tighten resources
-without overriding request behavior; writers preserve existing metadata.
+without overriding request behavior. Writers request native `PreserveExisting`
+metadata behavior for staged replacement; first creation and append follow their
+own native behavior.
 Logical path and temporary publication contracts remain those of the portable
 facade. See the [user guide](doc/user_guide.md#provider-resource-ceilings).
 Subtree list prefixes also prune unrelated directory descent while preserving
@@ -50,8 +52,11 @@ For an application that must keep reports below a stable native root such as
 `/srv/app-data`, create a rooted facade with the application's stable filesystem
 identity, then use logical paths inside that authority. Rooted relative paths
 resolve from the virtual working directory, which starts at `/`; absolute
-logical paths are also accepted. The example uses a temporary project-local
-root so it can be run without elevated access:
+logical paths are also accepted. The example uses an exclusively owned
+temporary root, so it runs without elevated access and leaves existing
+directories untouched. The runnable documentation snippets use `tempfile`;
+add it with `cargo add --dev tempfile@3.27` for tests and examples, or
+`cargo add tempfile@3.27` for a regular binary.
 
 <!-- fs-local-example: direct -->
 ```rust
@@ -61,16 +66,18 @@ use qubit_fs::metadata::FileSystemId;
 use qubit_fs_local::{LocalFileSystems, LocalResourcePolicy};
 
 let policy = LocalResourcePolicy::standard();
-let root = std::env::current_dir()?.join("target/local-fs-guide");
-std::fs::create_dir_all(root.join("reports"))?;
-std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
+let root = tempfile::tempdir()?;
+std::fs::create_dir_all(root.path().join("reports"))?;
+std::fs::write(root.path().join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let file_system = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    root.as_path(),
+    root.path(),
     policy,
 )?;
 let metadata = file_system.stat(&LogicalPath::parse("/reports/summary.csv")?)?;
 println!("{metadata:?}");
+drop(file_system);
+root.close()?;
     Ok(())
 }
 ```
@@ -140,8 +147,10 @@ asynchronous local `FileSystem` facade.
   Applications must link this crate (for example, `use qubit_fs_local as _;`)
   before calling `FileSystemRegistry::from_inventory()`.
 - The provider accepts absolute `file:` URIs only. It rejects a remote
-  authority, query, relative path, non-`file` scheme, and configuration options
-  or credentials.
+  authority, query, relative path, non-`file` scheme, and non-empty configuration
+  options, metadata, or credentials. A recognized `file:` configuration error
+  is terminal under `OnAbsence`; only an unsupported scheme can continue through
+  that fallback policy.
 - Rooted provider construction opens the native authority immediately. If it
   fails, construction returns an error and no provider is available for
   registration or fallback. The default `rooted` descriptor is `local-file`

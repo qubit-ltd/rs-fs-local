@@ -1,0 +1,24 @@
+name: Adapter Package Archive
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-archive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Check centralized infrastructure snapshot
+        run: ./update-infra.sh --check
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.94.0
+      - name: Prepare candidate source dependencies
+        run: ./.infra/bin/prepare-local-path-dependencies.sh
+      - name: Verify candidate package archive
+        run: ./.infra/bin/infra-tool.sh rs-infra-verify --project "$GITHUB_WORKSPACE" run --suite package

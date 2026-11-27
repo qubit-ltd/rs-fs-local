@@ -77,6 +77,7 @@ pub(crate) enum LocalTempResourceSpi {
         cleanup_control: Option<LocalTempCleanupControl>,
     },
 }
+
 impl LocalTempResourceSpi {
     /// Wraps a host- or rooted-authority native temporary file.
     ///
@@ -414,11 +415,13 @@ fn persist_file(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
+            let state = persist_failure_state(error.state(), error.source_state());
+            let native_effect = error.error().effect_state();
+            let effect = persist_effect_state_for_native_error(native_effect, state);
             let (error, state, source_state, _, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                map_persist_error(error, stage, logical_target, provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                map_persist_error(error, stage, logical_target, provider_id).with_effect_state(effect),
                 state,
             ))
         }
@@ -455,11 +458,13 @@ fn persist_directory(
     match resource.persist_with(target, options) {
         Ok(result) => Ok(result),
         Err(error) => {
+            let state = persist_failure_state(error.state(), error.source_state());
+            let native_effect = error.error().effect_state();
+            let effect = persist_effect_state_for_native_error(native_effect, state);
             let (error, state, source_state, _, stage) = restore_persist_resource(slot, error);
             let state = persist_failure_state(state, source_state);
             Err(SpiPersistFailure::new(
-                map_persist_error(error, stage, logical_target, provider_id)
-                    .with_effect_state(persist_effect_state(state)),
+                map_persist_error(error, stage, logical_target, provider_id).with_effect_state(effect),
                 state,
             ))
         }
@@ -794,6 +799,30 @@ const fn persist_effect_state(state: PersistFailureState) -> FsEffectState {
     }
 }
 
+/// Preserves a native namespace effect, falling back to publication state.
+///
+/// # Parameters
+///
+/// - `native_effect`: Effect explicitly recorded by native persistence.
+/// - `state`: Publication state used when native effect is unavailable.
+///
+/// # Returns
+///
+/// The effect state exposed by the filesystem facade.
+fn persist_effect_state_for_native_error(
+    native_effect: Option<LocalFileEffectState>,
+    state: PersistFailureState,
+) -> FsEffectState {
+    match native_effect {
+        Some(LocalFileEffectState::Unchanged) => FsEffectState::Unchanged,
+        Some(LocalFileEffectState::PartiallyApplied) => FsEffectState::PartiallyApplied,
+        Some(LocalFileEffectState::Applied) => FsEffectState::Applied,
+        Some(LocalFileEffectState::Indeterminate) => FsEffectState::Indeterminate,
+        Some(_) => FsEffectState::Indeterminate,
+        None => persist_effect_state(state),
+    }
+}
+
 /// Builds the failure returned for an already-terminal temporary resource.
 ///
 /// # Returns
@@ -963,7 +992,10 @@ mod tests {
     use qubit_local_files::options::LocalPersistOptions;
     use qubit_local_files::options::LocalTempDirectoryOptions;
     use qubit_local_files::options::LocalTempFileOptions;
+    use qubit_local_files::outcome::LocalPersistFailureState;
     use qubit_local_files::outcome::LocalPersistStage;
+    use qubit_local_files::outcome::LocalTempSourceState;
+    use qubit_local_files::path::LocalFileSystemScope;
     #[cfg(unix)]
     use qubit_local_files::policy::LocalDurabilityRequirement;
     #[cfg(unix)]
@@ -1057,7 +1089,7 @@ mod tests {
         let failure = keep_file(
             &mut resource,
             "projection-test-provider",
-            qubit_local_files::path::LocalFileSystemScope::Host,
+            LocalFileSystemScope::Host,
             Some(&projection),
         )
         .expect_err("projection contract violation");
@@ -1078,7 +1110,7 @@ mod tests {
                 .map(LocalFileError::kind),
         );
         assert_eq!(
-            qubit_local_files::outcome::LocalTempSourceState::Owned,
+            LocalTempSourceState::Owned,
             resource
                 .as_ref()
                 .expect("native resource restored to slot")
@@ -1102,13 +1134,13 @@ mod tests {
             (
                 "temp-file-source-sync",
                 LocalPersistStage::SynchronizeSource,
-                qubit_local_files::outcome::LocalPersistFailureState::NotPublished,
+                LocalPersistFailureState::NotPublished,
                 FsEffectState::Unchanged,
             ),
             (
                 "temp-file-parent-sync",
                 LocalPersistStage::SynchronizeDestination,
-                qubit_local_files::outcome::LocalPersistFailureState::Published,
+                LocalPersistFailureState::Published,
                 FsEffectState::Applied,
             ),
         ] {
@@ -1130,12 +1162,11 @@ mod tests {
             let parts = error.into_parts();
             assert_eq!(expected_stage, parts.stage);
             assert_eq!(expected_state, parts.state);
-            let expected_source =
-                if expected_state == qubit_local_files::outcome::LocalPersistFailureState::NotPublished {
-                    qubit_local_files::outcome::LocalTempSourceState::Owned
-                } else {
-                    qubit_local_files::outcome::LocalTempSourceState::CleanupRequired
-                };
+            let expected_source = if expected_state == LocalPersistFailureState::NotPublished {
+                LocalTempSourceState::Owned
+            } else {
+                LocalTempSourceState::CleanupRequired
+            };
             assert_eq!(expected_source, parts.source_state);
             let state = persist_failure_state(parts.state, parts.source_state);
             let mapped = map_persist_error(
@@ -1154,7 +1185,7 @@ mod tests {
                     .is_some()
             );
 
-            if expected_source == qubit_local_files::outcome::LocalTempSourceState::Owned {
+            if expected_source == LocalTempSourceState::Owned {
                 let mut resource = parts.resource;
                 resource.cleanup().expect("unpublished source remains cleanable");
                 assert!(!target.exists());

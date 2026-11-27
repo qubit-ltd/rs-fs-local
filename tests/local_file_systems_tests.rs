@@ -157,10 +157,16 @@ fn test_local_capabilities_include_empty_directory_only_when_supported() {
                         FileSystemCapabilitySupport::Unsupported
                     }
                 }
-                FileSystemCapability::AtomicRename
-                | FileSystemCapability::AtomicReplace
-                | FileSystemCapability::AtomicFileCopy
-                | FileSystemCapability::AtomicTempPersist => {
+                FileSystemCapability::AtomicRename | FileSystemCapability::AtomicTempPersist => {
+                    if cfg!(target_os = "freebsd") {
+                        FileSystemCapabilitySupport::Unsupported
+                    } else if cfg!(any(unix, windows)) {
+                        FileSystemCapabilitySupport::Conditional
+                    } else {
+                        FileSystemCapabilitySupport::Unsupported
+                    }
+                }
+                FileSystemCapability::AtomicReplace | FileSystemCapability::AtomicFileCopy => {
                     if cfg!(any(unix, windows)) {
                         FileSystemCapabilitySupport::Conditional
                     } else {

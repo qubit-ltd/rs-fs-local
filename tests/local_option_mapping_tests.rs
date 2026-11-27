@@ -17,6 +17,7 @@ use qubit_fs::directory::CreateDirectoryOptions;
 use qubit_fs::directory::ListFilter;
 use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
+use qubit_fs::error::FsError;
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::error::FsOperation;
 use qubit_fs::metadata::Checksum;
@@ -211,7 +212,7 @@ fn test_list_deadline_request_zero() {
         )
         .expect_err("zero request deadline should fail while the provider opens the walker");
     assert_eq!(FsErrorKind::Timeout, error.kind());
-    assert_eq!(qubit_fs::error::FsOperation::List, error.operation());
+    assert_eq!(FsOperation::List, error.operation());
 }
 
 /// A zero provider budget is enforced while the native walker opens.
@@ -241,10 +242,10 @@ fn assert_provider_zero_deadline(request_deadline: Option<Duration>) {
         )
         .expect_err("zero provider deadline should fail while the provider opens the walker");
     assert_eq!(FsErrorKind::Timeout, error.kind());
-    assert_eq!(qubit_fs::error::FsOperation::List, error.operation());
+    assert_eq!(FsOperation::List, error.operation());
 }
 
-fn assert_refusal(error: &qubit_fs::error::FsError, operation: FsOperation, reason: &str) {
+fn assert_refusal(error: &FsError, operation: FsOperation, reason: &str) {
     assert_eq!(FsErrorKind::RequirementNotMet, error.kind());
     assert_eq!(operation, error.operation());
     assert!(error.to_string().contains(reason), "unexpected refusal: {error}");

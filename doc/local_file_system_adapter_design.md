@@ -223,7 +223,12 @@ native copy fails        → SpiCopyFailure(mapped state + partial stats)
 
 `LocalCopyFailureState::{Unchanged, PartiallyPublished, Published,
 Indeterminate}` maps one-to-one with native resource-limit statistics; staging
-cleanup errors remain typed diagnostics.
+cleanup errors remain typed diagnostics. A completed `Skip` result is marked
+unchanged only when it records at least one skipped item and every copy,
+publication, byte, overwrite, and failure count is zero. That no-publication
+outcome reports `NonAtomic` and non-durable; the facade may accept it even when
+the request required atomicity or durability because no copy operation was
+performed. Mixed or partially completed copies do not use this exception.
 
 ### 8.3 Rename primitive and states
 
@@ -250,6 +255,13 @@ native_files::LocalFileWriter → local writer adapter
 I/O errors, publication method, achieved atomicity/durability, and
 `RetryableNotPublished`, `NotPublished`, `Published`, and `Indeterminate` are
 preserved. The adapter does not rename, fsync, or clean staging itself.
+
+Writer options select native `LocalWriteMetadataPolicy::PreserveExisting`.
+This affects staged replacement of an existing destination: Unix preserves
+owner, permissions, and supported extended metadata; Windows Host uses native
+replacement merging, and Windows Rooted preserves portable permissions. The
+policy does not govern first creation, which publishes staging metadata under
+native inheritance rules, or append, which follows native write behavior.
 
 ### 9.3 Directory stream
 
@@ -342,12 +354,17 @@ Private functions in `spi/error_mapper.rs` centralize mapping. Native
 `persist` and `keep` failures include their `LocalPersistStage` in the
 diagnostic message. This text is for diagnostics, not a string-parsing API;
 recovery uses typed state/effect, and the original `LocalFileError` remains the
-direct source. `map` and
-`map_without_path` add provider, logical path, and target context; copy failure
-uses a separate typed `LocalCopyFailure` mapping path. Typed I/O sources take
-precedence. `InvalidPath`, `InvalidOptions`, `NotDirectory`, and `IsDirectory`
-remain distinct. `cause_kind()` selects the base category and `effect_state()`
-adds only known effects; requirement and indeterminate states are retained.
+direct source (copy failures retain their typed `LocalCopyFailure` source).
+`map` and `map_without_path` attach the adapter's provider ID and available
+logical request context; they do not derive identity from the native path.
+Error-kind precedence is: preserve an explicit native `cause_kind()` for
+`InvalidPath`, `InvalidOptions`, `InvalidState`, `NotDirectory`,
+`IsDirectory`, and `TypeConflict`; otherwise map an attached I/O kind before
+falling back to the native cause kind. Without a cause, `PublicationIncomplete`
+maps to `Io` and `Indeterminate` remains `Indeterminate`. Effect state is
+attached separately and never overrides the cause category. Requirement and
+indeterminate states remain typed, and impossible adapter states use
+`ProviderContractViolation`.
 Impossible adapter states use `ProviderContractViolation`.
 
 ## 13. Registry integration
@@ -355,7 +372,10 @@ Impossible adapter states use `ProviderContractViolation`.
 The `registry` feature provides `LocalFileSystemProvider`, the default
 `local-file` identity and `file` alias, absolute local `file:` URI decoding, and
 concrete `FileSystemResolution`. Remote authorities, unsupported
-query/options/credentials, relative paths, and non-`file` schemes are rejected.
+query/options/credentials, non-empty `FileSystemConfig` metadata, relative
+paths, and non-`file` schemes are rejected. After the non-`file` scheme check
+and URI structure parsing, options, metadata, and credentials are rejected
+before provider-specific URI path decoding.
 Unsupported schemes return `ProviderFailureKind::Unsupported` and may continue
 under `OnAbsence`; recognized invalid `file:` requests and rooted
 initialization failures are terminal. `rooted_with_descriptor` preserves the
@@ -365,12 +385,16 @@ Named selection chooses one provider; fallback requires an explicit chain, auto
 selection, or registry default selection.
 
 Host URI decoding validates that the path can be represented by the native
-platform before constructing a resolution. On Windows, Host `file:` URIs need
-an absolute drive path such as `file:///C:/reports/summary.csv`; a drive-less
-path such as `file:///tmp/data` is invalid. Rooted URIs are decoded inside the
-registered authority. Canonical URI replay must preserve provider selection
-and filesystem identity because neither the Rooted authority nor its identity
-is encoded in the URI.
+platform before constructing a resolution. Unix Host
+`file:///reports/summary.csv` decodes to `/reports/summary.csv`; replay through
+Host selects the `local-host` filesystem identity. On Windows, Host `file:` URIs
+need an absolute drive path such as `file:///C:/reports/summary.csv`, which
+decodes to `/C:/reports/summary.csv`; a drive-less path such as
+`file:///tmp/data` is invalid. Rooted URIs such as
+`file:///reports/summary.csv` decode inside the registered authority on both
+platform families. Canonical URI replay must preserve the Rooted provider
+selection/descriptor and filesystem identity because neither the Rooted
+authority nor its identity is encoded in the URI.
 
 The opt-in `registry` feature also submits one process-host provider to the
 synchronous filesystem inventory. Its factory selects the finite
@@ -383,7 +407,15 @@ to include its inventory submission in the final binary.
 The adapter must not contain Unix/Windows business branches for copy, walking,
 containment, symlinks, publication, or durability. Only representation-level
 path differences remain here; operating-system logic belongs in
-`qubit-local-files`.
+`qubit-local-files`. Linux and Windows are the adapter's regular behavioral-test
+platforms; atomicity and durability are conditional capabilities subject to
+native operation and filesystem support. FreeBSD is temporarily unsupported
+by the native crate for important copy, rename, staged-write, and
+temporary-publication paths. Reconsider support only after verifying safe Host
+and Rooted no-replace primitives, recording filesystem and mount details for
+metadata failures, resolving descriptor-exhaustion cleanup, and passing the
+relevant native tests and doctests on a declared FreeBSD filesystem. See the
+[native FreeBSD compatibility status](https://github.com/qubit-ltd/rs-local-files/blob/main/doc/freebsd-compatibility.md).
 
 ## 15. Module organization
 
@@ -396,13 +428,17 @@ src/
 ├── local_file_systems.rs
 ├── local_list_resource_limits.rs
 ├── local_resource_policy.rs
+├── local_temp_cleanup_control.rs
+├── local_temp_cleanup_resource_limits.rs
 ├── spi/
 │   ├── local_file_system_spi.rs
 │   ├── local_options_mapper.rs
 │   ├── local_outcome_mapper.rs
 │   ├── local_file_writer_spi.rs
 │   ├── local_directory_stream_spi.rs
+│   ├── local_range_reader.rs
 │   ├── local_temp_resource_spi.rs
+│   ├── local_temp_path_projection.rs
 │   └── error_mapper.rs
 ├── path/local_path_mapper.rs
 └── registry/

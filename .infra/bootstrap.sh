@@ -148,7 +148,36 @@ case "$entrypoint" in
     .infra/bin/ci-check.sh)
         source "$shared_root/.infra/lib/cleanup-build-artifacts.sh"
         prepare_dependencies
-        run_latest rs-infra-ci --project "$project_root" "$@" check
+        run_source_verification() {
+            for suite in lock build test doc; do
+                run_latest rs-infra-verify --project "$project_root" run --suite "$suite"
+            done
+        }
+        case "${RS_INFRA_CI_ROUTE:-}" in
+            source-verify)
+                run_source_verification
+                ;;
+            source-full)
+                run_source_verification
+                run_latest rs-infra-ci --project "$project_root" check
+                ;;
+            source-verify-plan)
+                echo "source verification plan (archive suite excluded):"
+                for suite in lock build test doc; do
+                    echo "  rs-infra-verify --project $project_root run --suite $suite"
+                done
+                ;;
+            source-full-plan)
+                echo "source verification plan (archive suite excluded):"
+                for suite in lock build test doc; do
+                    echo "  rs-infra-verify --project $project_root run --suite $suite"
+                done
+                run_latest rs-infra-ci --project "$project_root" plan
+                ;;
+            *)
+                run_latest rs-infra-ci --project "$project_root" "$@" check
+                ;;
+        esac
         ;;
     .infra/bin/coverage.sh)
         prepare_dependencies

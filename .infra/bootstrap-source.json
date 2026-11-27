@@ -20,7 +20,7 @@
     },
     ".infra/bin/ci-check.sh": {
       "executable": true,
-      "sha256": "c308224aa9e6eb8050dc529d887ad549d6267c032551539ce31a55fdefd4d3bf"
+      "sha256": "eb348184858773c207686f18aeec2472a2e547309c0bf6c641a8fe118372fcb4"
     },
     ".infra/bin/coverage.sh": {
       "executable": true,
@@ -60,7 +60,7 @@
     },
     ".infra/bootstrap.sh": {
       "executable": true,
-      "sha256": "efb236dddf9f03c929071b1b86afffe827542d9cc7b44dc31f2de927c9265f39"
+      "sha256": "f998a562538399cd848ddc49a51b3720b6021bcc8aff653b7416c9977d14a025"
     },
     ".infra/dependency/policy.toml": {
       "executable": false,

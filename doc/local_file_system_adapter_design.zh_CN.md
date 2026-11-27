@@ -332,7 +332,10 @@ depth 和 open-directory budgets 及其 `ResourceLimit`/partial stats 必须原�
 
 `LocalCopyFailureState::{Unchanged, PartiallyPublished, Published, Indeterminate}` 与
 partial stats 一一映射到 `SpiCopyFailure`。Native staging cleanup failure 保留为
-typed source/安全 diagnostics，不能丢弃主 copy failure。
+typed source/安全 diagnostics，不能丢弃主 copy failure。只有至少一个条目被 skipped，且
+copy、发布、字节、覆盖和失败计数均为零时，完成的 `Skip` 结果才标记为 unchanged。这个无发布
+结果报告 `NonAtomic` 且不具备 durability；因为没有执行 copy，门面可以接受 atomicity 或 durability
+为 `Required` 的请求。发生混合或部分复制时不适用此例外。
 
 ### 8.2 Rename primitive
 
@@ -372,6 +375,10 @@ native_files::LocalFileWriter
 - `Indeterminate`。
 
 Adapter 不自行执行 rename、fsync 或 staging cleanup。
+
+Writer options 选择 native `LocalWriteMetadataPolicy::PreserveExisting`。此策略只影响已有目标的
+暂存替换：Unix 保留 owner、权限和受支持的扩展元数据；Windows Host 使用原生替换合并，Windows
+Rooted 保留可移植权限。首次创建遵循原生继承规则并发布暂存元数据；追加则遵循原生写入行为。
 
 ### 9.3 Directory stream
 
@@ -470,26 +477,27 @@ nonblocking/async 本地原语之前：
 错误映射集中在 `spi/error_mapper.rs` 的私有 free functions 中，不把 mapper 暴露为应用 API。
 原生 `persist` 和 `keep` 失败的诊断文案会包含对应的 `LocalPersistStage`。文案仅用于诊断，
 不是供程序解析的接口；恢复应依据类型化的 state/effect，原始 `LocalFileError` 仍是直接 source。
-`map` 与 `map_without_path` 补齐 canonical provider、逻辑路径和 target context；copy
-failure 通过独立的 typed `LocalCopyFailure` 映射路径保留完整状态。host 与 rooted SPI
-共享这组映射函数。
+copy failure 则保留 typed `LocalCopyFailure` source。`map` 与 `map_without_path` 根据 adapter
+descriptor 添加 provider ID 和可用的逻辑请求上下文，不从 native path 推导 identity。host 与
+rooted SPI 共享这组映射函数。
 
 映射规则：
 
-- 有 typed I/O source 时优先按 `std::io::ErrorKind` 映射到最精确的 `FsErrorKind`；无
-  source 时才回退到 native kind；`PathCodec` 失败保持 `InvalidPath`；
+- native `cause_kind()` 对 `InvalidPath`、`InvalidOptions`、`InvalidState`、`NotDirectory`、
+  `IsDirectory` 和 `TypeConflict` 优先；其他 cause 在有 typed I/O source 时使用其
+  `std::io::ErrorKind`，否则回退 native kind。无 cause 时 `PublicationIncomplete` 映射为 `Io`，
+  `Indeterminate` 保持 `Indeterminate`；`PathCodec` 失败保持 `InvalidPath`；
 - `InvalidPath`/`InvalidOptions` 与 `NotDirectory`/`IsDirectory` 保持各自分类，不折叠为
   `Conflict` 或普通 I/O；
 - public operation、source path 和 target path 取自 request；provider id 使用 adapter
   属性声明的 provider descriptor（host 默认是 `local-file`，rooted provider 可使用
   自定义 descriptor identity）；
 - native path 仅在确认不会越过安全边界时进入 message；
-- `std::io::Error` 保留为 source，不自动格式化；copy failure 还保留完整的
-  `LocalCopyFailure`，因此 staging path 与 cleanup error 可通过 typed source 诊断；
+- `std::io::Error` 保留为 source，不自动格式化；copy 的 typed failure 保留为
+  `LocalCopyFailure` source，因此 staging path 与 cleanup error 可通过 typed source 诊断；
 - native requirement failure 映射为 `RequirementNotMet`；
 - native indeterminate 映射为 `Indeterminate`；
-- native `cause_kind()` 优先决定基础 `FsErrorKind`，`effect_state()` 仅补充已知的
-  `FsEffectState`，两者不能互相覆盖；
+- `effect_state()` 独立映射已知的 `FsEffectState`，不能覆盖错误分类；
 - adapter 自身产生不可能状态时使用 `ProviderContractViolation`，不伪装成 I/O。
 
 门面会补齐并规范化通用上下文，adapter 不伪造其他 provider identity。
@@ -512,7 +520,8 @@ Cleanup error 描述本次调用的效果。若 cleanup 已移除 Owned 源资�
   `FsErrorKind::UnsupportedOperation`；在 `FallbackPolicy::OnAbsence` 下，registry
   可以继续尝试后续 provider；
 - 接受无 authority 或空 authority 的 `file:` URI；
-- 拒绝 remote authority、未支持 query 和 secret；
+- 拒绝 remote authority、未支持 query、options、非空 `FileSystemConfig` metadata 和 credential；
+- 检查非 `file` scheme 并解析 URI 结构后，在解码 provider 专属 URI path 前拒绝 options、metadata 和 credential；
 - provider-specific 解码 URI path；
 - 将等价的绝对 `file:` 输入重新编码为唯一的 canonical URI（空 authority、规范化
   percent escape）；
@@ -528,12 +537,18 @@ Host URI 解码会在创建 resolution 前检查路径能否由本机表示。Wi
 包含绝对盘符路径，例如 `file:///C:/reports/summary.csv`；`file:///tmp/data` 等无盘符路径非法。
 Rooted URI 在注册 authority 内解码。Canonical URI 不包含 Rooted authority 或其 identity，重放时
 必须同时保存 provider selection 和 filesystem identity。
+Unix Host 的 `file:///reports/summary.csv` 解码为 `/reports/summary.csv`，通过 Host 重放时使用
+`local-host` filesystem identity。Windows Host 的 `file:///C:/reports/summary.csv` 解码为
+`/C:/reports/summary.csv`，重放时保留盘符。两种平台下，Rooted provider 都会把
+`file:///reports/summary.csv` 解码到已注册 authority 内；canonical URI 不携带 authority 或
+Rooted identity。
 
 非 `file` 请求属于 provider 不适用的情况，返回 `Unsupported`，因此可以在
 `OnAbsence` fallback chain 中交给其他 provider。已经识别为 `file` 的请求如果包含
 remote authority、query、options、credentials 或非法路径，则返回
 `InvalidConfiguration`（或对应的 `InitializationFailed`），不能借助 `OnAbsence`
 跳过；rooted authority 无法打开也会终止解析。
+配置中的非空 metadata 与 options、credentials 一样会在 provider-specific path 解码前拒绝。
 
 Fallback 只由显式的 `chain`、`Auto` 或 registry 默认 selection 提供。`FileSystemConfig` 未
 设置 selection 时，registry 会从 URI scheme 派生 `Named` selection；该 selection 只调用一个
@@ -558,7 +573,11 @@ Registry feature 只增加配置/解析适配，不把 registry 依赖带入默�
 ## 14. 平台边界
 
 生产 adapter 源码不应包含 copy、walk、root containment、symlink、publication 或
-durability 的 `cfg(unix)` / `cfg(windows)` 分支。
+durability 的 `cfg(unix)` / `cfg(windows)` 分支。Linux 与 Windows 是 adapter 常规行为测试平台；
+atomicity 和 durability 仍取决于原生操作及文件系统。原生 crate 暂时不支持 FreeBSD 上重要的
+copy、rename、暂存写入和临时发布路径。只有验证安全的 Host/Rooted no-replace 原语、记录 metadata
+失败时的文件系统与挂载信息、解决 descriptor 耗尽后的 cleanup，并在声明的 FreeBSD 文件系统上
+通过相关 native 测试和 doctest 后，才能重新考虑支持。详见[原生 FreeBSD 兼容性说明](https://github.com/qubit-ltd/rs-local-files/blob/main/doc/freebsd-compatibility.zh_CN.md)。
 
 允许的少量平台差异仅限 representation adapter，例如选择已由
 `qubit-local-files` 提供的 path codec。只要出现操作系统业务判断，就应下沉到
@@ -575,13 +594,17 @@ src/
 ├── local_file_systems.rs
 ├── local_list_resource_limits.rs
 ├── local_resource_policy.rs
+├── local_temp_cleanup_control.rs
+├── local_temp_cleanup_resource_limits.rs
 ├── spi/
 │   ├── local_file_system_spi.rs
 │   ├── local_options_mapper.rs
 │   ├── local_outcome_mapper.rs
 │   ├── local_file_writer_spi.rs
 │   ├── local_directory_stream_spi.rs
+│   ├── local_range_reader.rs
 │   ├── local_temp_resource_spi.rs
+│   ├── local_temp_path_projection.rs
 │   └── error_mapper.rs
 ├── path/
 │   └── local_path_mapper.rs

@@ -210,8 +210,12 @@ pub(crate) const fn rename_effect_state(state: RenameFailureState) -> FsEffectSt
 
 /// Selects the most precise portable kind available from a native failure.
 ///
-/// Native I/O sources are authoritative because the stable native category is
-/// intentionally coarser than `std::io::ErrorKind`.
+/// Explicit native argument, state, and file-kind causes take precedence.
+/// Otherwise an attached I/O source refines the native category, and the
+/// remaining native cause is mapped directly. Without a cause,
+/// `PublicationIncomplete` maps to `Io` and `Indeterminate` remains
+/// `Indeterminate`. Provider identity belongs to the surrounding error
+/// context and does not affect classification.
 ///
 /// # Parameters
 ///
@@ -300,6 +304,7 @@ fn io_kind(kind: std::io::ErrorKind) -> FsErrorKind {
     match kind {
         std::io::ErrorKind::NotFound => FsErrorKind::NotFound,
         std::io::ErrorKind::AlreadyExists => FsErrorKind::AlreadyExists,
+        std::io::ErrorKind::DirectoryNotEmpty => FsErrorKind::Conflict,
         std::io::ErrorKind::NotADirectory => FsErrorKind::NotDirectory,
         std::io::ErrorKind::PermissionDenied => FsErrorKind::PermissionDenied,
         std::io::ErrorKind::InvalidInput => FsErrorKind::InvalidPath,
@@ -430,6 +435,7 @@ mod tests {
             (IoErrorKind::PermissionDenied, FsErrorKind::PermissionDenied),
             (IoErrorKind::NotFound, FsErrorKind::NotFound),
             (IoErrorKind::AlreadyExists, FsErrorKind::AlreadyExists),
+            (IoErrorKind::DirectoryNotEmpty, FsErrorKind::Conflict),
             (IoErrorKind::InvalidInput, FsErrorKind::InvalidPath),
             (IoErrorKind::InvalidData, FsErrorKind::DataCorruption),
             (IoErrorKind::TimedOut, FsErrorKind::Timeout),

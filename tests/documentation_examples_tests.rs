@@ -231,17 +231,23 @@ fn example_profiles(markdown: &str) -> Result<Vec<ExampleProfile>, String> {
 
 fn profile_dependencies(profile: ExampleProfile) -> Vec<&'static str> {
     match profile {
-        ExampleProfile::Direct => vec!["qubit-fs", "qubit-fs-local"],
+        ExampleProfile::Direct => vec!["qubit-fs", "qubit-fs-local", "tempfile"],
         ExampleProfile::DirectCleanup => vec!["qubit-fs", "qubit-fs-local", "tempfile"],
-        ExampleProfile::Registry => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry"],
-        ExampleProfile::Selection => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry", "qubit-spi"],
+        ExampleProfile::Registry => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry", "tempfile"],
+        ExampleProfile::Selection => vec![
+            "qubit-fs",
+            "qubit-fs-local",
+            "qubit-fs-registry",
+            "qubit-spi",
+            "tempfile",
+        ],
     }
 }
 
-fn should_run_example(document: &str, block_index: usize, profile: ExampleProfile) -> bool {
+fn should_run_example(document: &str, _block_index: usize, profile: ExampleProfile) -> bool {
     match profile {
         ExampleProfile::Direct => {
-            (block_index == 0 && ["README.md", "README.zh_CN.md"].contains(&document))
+            ["README.md", "README.zh_CN.md"].contains(&document)
                 || ["doc/user_guide.md", "doc/user_guide.zh_CN.md"].contains(&document)
         }
         ExampleProfile::DirectCleanup => document == "doc/user_guide.md" || document == "doc/user_guide.zh_CN.md",
@@ -281,6 +287,35 @@ fn test_cleanup_profile_is_explicit_and_runnable() {
 }
 
 #[test]
+fn test_published_rust_fences_are_visible_source() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+        "doc/local_file_system_adapter_design.md",
+        "doc/local_file_system_adapter_design.zh_CN.md",
+    ] {
+        let source = fs::read_to_string(root.join(document)).expect("document should be readable");
+        let mut in_rust_fence = false;
+        for line in source.lines() {
+            if line.trim() == "```rust" {
+                in_rust_fence = true;
+            } else if line.trim() == "```" {
+                in_rust_fence = false;
+            } else if in_rust_fence {
+                assert!(
+                    !line.starts_with("# "),
+                    "{document} must compile the visible fence without hidden rustdoc lines"
+                );
+            }
+        }
+        assert!(!in_rust_fence, "{document} has a closed Rust fence");
+    }
+}
+
+#[test]
 fn test_runnable_example_selection_covers_guide_registry() {
     for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
         let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(document)).unwrap();
@@ -294,7 +329,6 @@ fn test_runnable_example_selection_covers_guide_registry() {
             }
         }
     }
-    assert!(!should_run_example("README.md", 1, ExampleProfile::Direct));
     assert!(!should_run_example(
         "doc/local_file_system_adapter_design.md",
         0,
@@ -443,7 +477,7 @@ fn test_all_published_rust_examples_have_supported_profiles() {
 #[test]
 fn test_direct_profile_does_not_inject_registry_or_spi() {
     let deps = profile_dependencies(ExampleProfile::Direct);
-    assert_eq!(deps, ["qubit-fs", "qubit-fs-local"]);
+    assert_eq!(deps, ["qubit-fs", "qubit-fs-local", "tempfile"]);
 }
 
 #[test]
@@ -472,6 +506,118 @@ fn toml_path(path: &Path) -> String {
         .expect("Cargo manifest path must be UTF-8")
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
+}
+
+fn locked_registry_version(root: &Path, package: &str) -> String {
+    let source = fs::read_to_string(root.join("Cargo.lock")).expect("read checked-in lockfile");
+    let lock: toml::Value = toml::from_str(&source).expect("parse checked-in lockfile");
+    lock["package"]
+        .as_array()
+        .expect("lockfile package list")
+        .iter()
+        .find(|entry| {
+            entry["name"].as_str() == Some(package)
+                && entry["source"]
+                    .as_str()
+                    .is_some_and(|source| source.starts_with("registry+"))
+        })
+        .and_then(|entry| entry["version"].as_str())
+        .unwrap_or_else(|| panic!("Cargo.lock has no registry package {package}"))
+        .to_owned()
+}
+
+fn candidate_source_root(variable: &str) -> Option<PathBuf> {
+    std::env::var_os(variable).map(|manifest| {
+        PathBuf::from(manifest)
+            .parent()
+            .expect("candidate manifest has a parent")
+            .to_path_buf()
+    })
+}
+
+fn pin_profile_package(root: &Path, workspace: &Path, package: &str, version: &str) {
+    let output = Command::new(env!("CARGO"))
+        .args(["update", "--package", package, "--precise", version])
+        .current_dir(workspace)
+        .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+        .output()
+        .expect("pin profile dependency to checked-in lock version");
+    assert!(
+        output.status.success(),
+        "could not pin {package} to {version}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn package_version(manifest: &Path) -> String {
+    let source = fs::read_to_string(manifest).expect("read candidate package manifest");
+    let parsed: toml::Value = toml::from_str(&source).expect("parse candidate package manifest");
+    parsed["package"]["version"]
+        .as_str()
+        .expect("candidate package version")
+        .to_owned()
+}
+
+fn candidate_sha(repository: &Path) -> String {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            repository.to_str().expect("UTF-8 candidate path"),
+            "rev-parse",
+            "HEAD",
+        ])
+        .output()
+        .expect("read candidate source revision");
+    assert!(
+        output.status.success(),
+        "could not read candidate SHA for {}: {}",
+        repository.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .expect("candidate SHA is UTF-8")
+        .trim()
+        .to_owned()
+}
+
+fn example_workspace_sentinels() -> [(&'static str, &'static [u8]); 4] {
+    [
+        (
+            "target/local-fs-guide/reports/summary.csv",
+            b"owned quick-start sentinel",
+        ),
+        (
+            "target/local-fs-registry-guide/reports/summary.csv",
+            b"owned registry sentinel",
+        ),
+        (
+            "target/local-fs-selection-guide/tenant-a/reports/summary.csv",
+            b"owned tenant-a sentinel",
+        ),
+        (
+            "target/local-fs-selection-guide/tenant-b/reports/summary.csv",
+            b"owned tenant-b sentinel",
+        ),
+    ]
+}
+
+fn assert_example_workspace_sentinels(workspace: &Path, temp_root: &Path) {
+    for (relative, expected) in example_workspace_sentinels() {
+        assert_eq!(
+            fs::read(workspace.join(relative)).expect("pre-existing demo sentinel remains readable"),
+            expected,
+            "documentation example must leave owned path {relative} untouched"
+        );
+    }
+    let remaining = fs::read_dir(temp_root)
+        .expect("isolated temporary parent remains readable")
+        .map(|entry| entry.expect("temporary parent entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(remaining, [std::ffi::OsStr::new("owned-sentinel")]);
+    assert_eq!(
+        fs::read(temp_root.join("owned-sentinel")).expect("temporary-parent sentinel remains readable"),
+        b"temporary parent is caller-owned"
+    );
 }
 
 fn dependency_package_id(graph: &serde_json::Value, consumer_id: &str, name: &str) -> Result<String, String> {
@@ -584,33 +730,43 @@ fn test_readme_and_user_guide_examples_compile() {
     let package: toml::Value = toml::from_str(&source).expect("parse manifest");
     let filesystem = dependency_spec(root, &package["dependencies"]["qubit-fs"]);
     let registry = dependency_spec(root, &package["dependencies"]["qubit-fs-registry"]);
-    let spi = dependency_spec(root, &package["dependencies"]["qubit-spi"]);
     let tempfile_requirement = package["dev-dependencies"]["tempfile"]
         .as_str()
         .expect("tempfile development dependency requirement");
     let sibling_root = root.parent().expect("candidate checkout has a parent");
-    let candidate_manifest = std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST").map(PathBuf::from);
+    let candidate_manifest = std::env::var_os("QUBIT_LOCAL_FILES_CANDIDATE_MANIFEST")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| sibling_root.join("rs-local-files/Cargo.toml"));
     let candidate_root = candidate_manifest
-        .as_ref()
-        .map(|manifest| manifest.parent().expect("candidate manifest parent").to_path_buf());
+        .parent()
+        .expect("candidate manifest parent")
+        .to_path_buf();
+    // IO and SPI are candidates only when their manifests are explicitly
+    // selected; otherwise keep the versions from the checked-in lockfile.
+    let io_candidate_root = candidate_source_root("QUBIT_IO_CANDIDATE_MANIFEST");
+    let spi_candidate_root = candidate_source_root("QUBIT_SPI_CANDIDATE_MANIFEST");
+    let locked_io_version = locked_registry_version(root, "qubit-io");
+    let locked_spi_version = locked_registry_version(root, "qubit-spi");
     let mut patches = Vec::new();
-    for (package, sibling) in [
-        ("qubit-fs", "rs-fs"),
-        ("qubit-local-files", "rs-local-files"),
-        ("qubit-fs-registry", "rs-fs-registry"),
-        // Registry examples use APIs newer than the compatibility-pinned rs-redact checkout.
-        ("qubit-io", "rs-io"),
-        ("qubit-spi", "rs-spi"),
-    ] {
-        let path = if package == "qubit-local-files" {
-            candidate_root.clone().unwrap_or_else(|| sibling_root.join(sibling))
-        } else {
-            sibling_root.join(sibling)
-        };
-        if path.join("Cargo.toml").is_file() {
-            patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
-        }
+    let mut candidate_sources = vec![
+        ("qubit-fs", sibling_root.join("rs-fs")),
+        ("qubit-local-files", candidate_root.clone()),
+        ("qubit-fs-registry", sibling_root.join("rs-fs-registry")),
+    ];
+    if let Some(path) = &io_candidate_root {
+        candidate_sources.push(("qubit-io", path.clone()));
     }
+    if let Some(path) = &spi_candidate_root {
+        candidate_sources.push(("qubit-spi", path.clone()));
+    }
+    for (package, path) in candidate_sources {
+        patches.push(format!("{package} = {{ path = \"{}\" }}", toml_path(&path)));
+    }
+    let spi = if spi_candidate_root.is_some() {
+        dependency_spec(root, &package["dependencies"]["qubit-spi"])
+    } else {
+        format!("{{ version = \"={locked_spi_version}\" }}")
+    };
     let documents = [
         "README.md",
         "README.zh_CN.md",
@@ -641,6 +797,18 @@ fn test_readme_and_user_guide_examples_compile() {
         ExampleProfile::Selection,
     ] {
         let workspace = tempfile::tempdir().expect("isolated profile example crate");
+        for (relative, contents) in example_workspace_sentinels() {
+            let path = workspace.path().join(relative);
+            fs::create_dir_all(path.parent().expect("sentinel path parent")).expect("same-name sentinel parent");
+            fs::write(path, contents).expect("same-name caller-owned sentinel");
+        }
+        let temporary_root = workspace.path().join("temporary-products");
+        fs::create_dir(&temporary_root).expect("isolated temporary parent");
+        fs::write(
+            temporary_root.join("owned-sentinel"),
+            b"temporary parent is caller-owned",
+        )
+        .expect("caller-owned temporary-parent sentinel");
         let bin = workspace.path().join("src/bin");
         fs::create_dir_all(&bin).expect("bin directory");
         for (document_index, block_index, _, example_profile, block) in &examples {
@@ -677,9 +845,7 @@ fn test_readme_and_user_guide_examples_compile() {
         if profile == ExampleProfile::Selection {
             manifest.push_str(&format!("qubit-spi = {spi}\n"));
         }
-        if profile == ExampleProfile::DirectCleanup {
-            manifest.push_str(&format!("tempfile = \"{tempfile_requirement}\"\n"));
-        }
+        manifest.push_str(&format!("tempfile = \"{tempfile_requirement}\"\n"));
         if !patches.is_empty() {
             manifest.push_str("\n[patch.crates-io]\n");
             manifest.push_str(&patches.join("\n"));
@@ -696,18 +862,31 @@ fn test_readme_and_user_guide_examples_compile() {
             "direct dependencies for {profile:?}"
         );
 
-        let metadata = Command::new(env!("CARGO"))
-            .args(["metadata", "--format-version", "1"])
+        let lock = Command::new(env!("CARGO"))
+            .arg("generate-lockfile")
             .current_dir(workspace.path())
             .output()
-            .expect("resolve example dependencies");
+            .expect("generate candidate profile lockfile");
+        assert!(lock.status.success(), "{}", String::from_utf8_lossy(&lock.stderr));
+        if io_candidate_root.is_none() {
+            pin_profile_package(root, workspace.path(), "qubit-io", &locked_io_version);
+        }
+        if !profile.is_direct() && spi_candidate_root.is_none() {
+            pin_profile_package(root, workspace.path(), "qubit-spi", &locked_spi_version);
+        }
+        let metadata = Command::new(env!("CARGO"))
+            .args(["metadata", "--locked", "--format-version", "1"])
+            .current_dir(workspace.path())
+            .output()
+            .expect("resolve locked example dependency graph");
         assert!(
             metadata.status.success(),
             "{}",
             String::from_utf8_lossy(&metadata.stderr)
         );
         let graph: serde_json::Value = serde_json::from_slice(&metadata.stdout).expect("parse dependency graph");
-        if let Some(candidate_manifest) = &candidate_manifest {
+        let resolve = &graph["resolve"]["nodes"];
+        {
             let consumer_id = graph["packages"]
                 .as_array()
                 .unwrap()
@@ -728,7 +907,7 @@ fn test_readme_and_user_guide_examples_compile() {
                 .as_str()
                 .unwrap();
             let local_id = dependency_package_id(&graph, consumer_id, "qubit-fs-local").unwrap();
-            validate_candidate_local_files_edge(&graph, &local_id, candidate_manifest)
+            validate_candidate_local_files_edge(&graph, &local_id, &candidate_manifest)
                 .unwrap_or_else(|error| panic!("candidate identity for {profile:?}: {error}"));
         }
         let mut expected_graph = expected.clone();
@@ -750,7 +929,126 @@ fn test_readme_and_user_guide_examples_compile() {
                 "unique package identity for {name} in {profile:?}"
             );
         }
-        let resolve = &graph["resolve"]["nodes"];
+        for (name, expected_path) in [
+            ("qubit-fs", sibling_root.join("rs-fs/Cargo.toml")),
+            ("qubit-fs-local", root.join("Cargo.toml")),
+            ("qubit-local-files", candidate_manifest.clone()),
+        ] {
+            let resolved = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap();
+            assert_eq!(resolved["source"], serde_json::Value::Null, "{name} source");
+            assert_eq!(
+                PathBuf::from(resolved["manifest_path"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                expected_path.canonicalize().unwrap(),
+                "{name} candidate manifest"
+            );
+            let expected_version = package_version(&expected_path);
+            assert_eq!(
+                resolved["version"].as_str(),
+                Some(expected_version.as_str()),
+                "{name} version"
+            );
+        }
+        if !profile.is_direct() {
+            let registry_manifest = sibling_root.join("rs-fs-registry/Cargo.toml");
+            let registry = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == "qubit-fs-registry")
+                .unwrap();
+            assert_eq!(registry["source"], serde_json::Value::Null, "registry source");
+            assert_eq!(
+                PathBuf::from(registry["manifest_path"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                registry_manifest.canonicalize().unwrap(),
+                "registry candidate manifest"
+            );
+            let expected_version = package_version(&registry_manifest);
+            assert_eq!(
+                registry["version"].as_str(),
+                Some(expected_version.as_str()),
+                "registry candidate version"
+            );
+            let registry_node = resolve
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == registry["id"])
+                .unwrap();
+            let features = registry_node["features"].as_array().unwrap();
+            assert!(
+                features.iter().any(|feature| feature == "inventory"),
+                "Registry profile must enable the candidate inventory feature"
+            );
+            assert!(
+                !features.iter().any(|feature| feature == "async"),
+                "synchronous Registry examples must not enable async"
+            );
+            let spi_id = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == "qubit-spi")
+                .unwrap()["id"]
+                .as_str()
+                .unwrap();
+            let spi_node = resolve
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"].as_str() == Some(spi_id))
+                .unwrap();
+            assert!(
+                spi_node["features"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|feature| feature == "inventory"),
+                "Registry profile must enable candidate SPI inventory"
+            );
+        }
+        for (name, candidate_root, locked_version) in [
+            ("qubit-io", io_candidate_root.as_ref(), locked_io_version.as_str()),
+            ("qubit-spi", spi_candidate_root.as_ref(), locked_spi_version.as_str()),
+        ] {
+            if name == "qubit-spi" && profile.is_direct() {
+                continue;
+            }
+            let resolved = graph["packages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap();
+            if let Some(candidate_root) = candidate_root {
+                assert_eq!(resolved["source"], serde_json::Value::Null, "{name} candidate source");
+                assert_eq!(
+                    PathBuf::from(resolved["manifest_path"].as_str().unwrap())
+                        .canonicalize()
+                        .unwrap(),
+                    candidate_root.join("Cargo.toml").canonicalize().unwrap(),
+                    "{name} candidate manifest"
+                );
+            } else {
+                assert!(
+                    resolved["source"].as_str().unwrap().starts_with("registry+"),
+                    "{name} registry source"
+                );
+                assert_eq!(
+                    resolved["version"].as_str(),
+                    Some(locked_version),
+                    "{name} locked version"
+                );
+            }
+        }
         let package_id = graph["packages"]
             .as_array()
             .unwrap()
@@ -825,6 +1123,60 @@ fn test_readme_and_user_guide_examples_compile() {
             !profile.is_direct(),
             "local feature isolation for {profile:?}"
         );
+        let mut source_revisions = vec![
+            ("qubit-fs-local", root.to_path_buf()),
+            ("qubit-fs", sibling_root.join("rs-fs")),
+            ("qubit-local-files", candidate_root.clone()),
+        ];
+        if !profile.is_direct() {
+            source_revisions.push(("qubit-fs-registry", sibling_root.join("rs-fs-registry")));
+        }
+        if let Some(path) = &io_candidate_root {
+            source_revisions.push(("qubit-io", path.clone()));
+        }
+        if let Some(path) = &spi_candidate_root {
+            source_revisions.push(("qubit-spi", path.clone()));
+        }
+        let revisions = source_revisions
+            .into_iter()
+            .map(|(name, path)| format!("{name}={}", candidate_sha(&path)))
+            .collect::<Vec<_>>()
+            .join(",");
+        let identities = graph["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entry| {
+                [
+                    "qubit-fs-local",
+                    "qubit-fs",
+                    "qubit-local-files",
+                    "qubit-fs-registry",
+                    "qubit-io",
+                    "qubit-spi",
+                ]
+                .contains(&entry["name"].as_str().unwrap())
+            })
+            .map(|entry| {
+                let id = entry["id"].as_str().unwrap();
+                let node = resolve
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["id"].as_str() == Some(id))
+                    .unwrap();
+                let source = entry["source"].as_str().map_or_else(
+                    || format!("path:{}", entry["manifest_path"].as_str().unwrap()),
+                    str::to_owned,
+                );
+                format!(
+                    "{}@{} source={} features={}",
+                    entry["name"], entry["version"], source, node["features"]
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        eprintln!("documentation graph {profile:?}: candidates=[{revisions}] identities=[{identities}]");
         let status = Command::new(env!("CARGO"))
             .args(["check", "--locked", "--quiet", "--bins"])
             .current_dir(workspace.path())
@@ -841,15 +1193,61 @@ fn test_readme_and_user_guide_examples_compile() {
                 .args(["run", "--locked", "--quiet", "--bin", &binary])
                 .current_dir(workspace.path())
                 .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .env("TMPDIR", &temporary_root)
+                .env("TEMP", &temporary_root)
+                .env("TMP", &temporary_root)
                 .status()
                 .expect("run selected document example");
             assert!(
                 status.success(),
                 "{document} example {block_index} for {profile:?} must run"
             );
+            assert_example_workspace_sentinels(workspace.path(), &temporary_root);
+        }
+        if profile == ExampleProfile::Direct {
+            let (_, _, _, _, readme_example) = examples
+                .iter()
+                .find(|(_, block_index, document, example_profile, _)| {
+                    *document == "README.md" && *block_index == 0 && *example_profile == profile
+                })
+                .expect("English README rooted example");
+            let source = if readme_example.trim_start().starts_with("fn main()") {
+                format!("{readme_example}\n")
+            } else {
+                format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{readme_example}\n}}\n")
+            };
+            let injected = source.replace(
+                "drop(file_system);\nroot.close()?;",
+                "return Err(\"injected owned-example failure\".into());",
+            );
+            assert_ne!(source, injected, "failure probe must run before explicit cleanup");
+            fs::write(bin.join("doc_ownership_failure.rs"), injected).expect("failure probe source");
+            let compiled = Command::new(env!("CARGO"))
+                .args(["check", "--locked", "--quiet", "--bin", "doc_ownership_failure"])
+                .current_dir(workspace.path())
+                .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .status()
+                .expect("compile the failure-path ownership probe");
+            assert!(compiled.success(), "ownership failure probe must compile");
+            let failed = Command::new(env!("CARGO"))
+                .args(["run", "--locked", "--quiet", "--bin", "doc_ownership_failure"])
+                .current_dir(workspace.path())
+                .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .env("TMPDIR", &temporary_root)
+                .env("TEMP", &temporary_root)
+                .env("TMP", &temporary_root)
+                .output()
+                .expect("run the injected failure-path ownership probe");
+            assert!(!failed.status.success(), "injected example failure must be observed");
+            assert!(
+                String::from_utf8_lossy(&failed.stderr).contains("injected owned-example failure"),
+                "failure probe must reach the injected error: {}",
+                String::from_utf8_lossy(&failed.stderr)
+            );
+            assert_example_workspace_sentinels(workspace.path(), &temporary_root);
         }
     }
-    if let Some(candidate_manifest) = candidate_manifest {
+    {
         let metadata = Command::new(env!("CARGO"))
             .args(["metadata", "--locked", "--all-features", "--format-version", "1"])
             .current_dir(root)

@@ -151,6 +151,7 @@ impl LocalFileSystemProvider {
     ///
     /// - `id`: Stable identity exposed by each resolved rooted filesystem.
     /// - `root`: Native directory retained as the provider authority.
+    /// - `policy`: Resource limits and lifecycle policy applied to resolutions.
     ///
     /// # Returns
     ///

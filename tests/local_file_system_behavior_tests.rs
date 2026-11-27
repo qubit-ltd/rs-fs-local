@@ -7,6 +7,7 @@
 // =============================================================================
 //! Behavioral coverage for host and rooted local filesystem adapters.
 
+use std::error::Error;
 use std::fs;
 use std::io::ErrorKind;
 #[cfg(unix)]
@@ -22,6 +23,7 @@ use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyOptions;
+use qubit_fs::copy::CopyStats;
 use qubit_fs::copy::MetadataPreservePolicy;
 use qubit_fs::copy::ServerSidePreference;
 use qubit_fs::directory::CreateDirectoryOptions;
@@ -30,9 +32,10 @@ use qubit_fs::directory::ListOptions;
 use qubit_fs::directory::ListScope;
 use qubit_fs::error::FsEffectState;
 use qubit_fs::error::FsErrorKind;
+use qubit_fs::metadata::AchievedAtomicity;
+use qubit_fs::metadata::AtomicityRequirement;
 use qubit_fs::metadata::Checksum;
 use qubit_fs::metadata::ChecksumAlgorithm;
-#[cfg(unix)]
 use qubit_fs::metadata::DurabilityRequirement;
 #[cfg(unix)]
 use qubit_fs::metadata::FileKind;
@@ -55,6 +58,9 @@ use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::host_path_to_logical;
 use qubit_io::Output;
+use qubit_local_files::LocalFileError;
+use qubit_local_files::error::LocalFileErrorKind;
+use qubit_local_files::outcome::LocalCopyFailure;
 use tempfile::TempDir;
 use tempfile::tempdir;
 
@@ -391,6 +397,77 @@ fn test_host_and_rooted_partial_copy_statistics_separate_symlinks() {
     }
 }
 
+/// Portable metadata requirements for symlink file copies fail before creating
+/// target parents when the native backend cannot preserve them.
+#[cfg(unix)]
+#[test]
+fn test_symlink_portable_metadata_requirement_fails_before_target_mutation() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("copy fixture root");
+        let source = root.path().join("source-link");
+        symlink("referent", &source).expect("source symlink");
+        let target_native = root.path().join("missing-parent").join("target-link");
+        let (filesystem, logical_source, logical_target) = if rooted {
+            (
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem"),
+                Path::parse("source-link").expect("relative source"),
+                Path::parse("missing-parent/target-link").expect("relative target"),
+            )
+        } else {
+            (
+                LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem"),
+                host_path_to_logical(&source).expect("Host source"),
+                host_path_to_logical(&target_native).expect("Host target"),
+            )
+        };
+
+        let failure = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file()
+                    .with_create_parent(true)
+                    .with_preserve_metadata(MetadataPreservePolicy::Portable),
+            )
+            .expect_err("Portable metadata cannot be guaranteed for symlink file copies");
+
+        assert_eq!(
+            FsErrorKind::RequirementNotMet,
+            failure.error().kind(),
+            "rooted={rooted}"
+        );
+        assert_eq!(CopyFailureState::Unchanged, failure.state(), "rooted={rooted}");
+        assert_eq!(
+            Some(FsEffectState::Unchanged),
+            failure.error().effect_state(),
+            "rooted={rooted}"
+        );
+        assert_eq!(CopyStats::default(), *failure.partial_stats(), "rooted={rooted}");
+        let native_failure = failure
+            .error()
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalCopyFailure>())
+            .expect("native copy failure should remain the cause");
+        let native_cause = native_failure
+            .source()
+            .and_then(|source| source.downcast_ref::<LocalFileError>())
+            .expect("native requirement error should remain nested cause");
+        assert_eq!(
+            LocalFileErrorKind::RequirementNotMet,
+            native_cause.kind(),
+            "rooted={rooted}"
+        );
+        assert!(!root.path().join("missing-parent").exists(), "rooted={rooted}");
+        assert!(
+            fs::symlink_metadata(&source)
+                .expect("source remains")
+                .file_type()
+                .is_symlink()
+        );
+        assert!(fs::symlink_metadata(&target_native).is_err(), "rooted={rooted}");
+    }
+}
+
 /// Successful local writer commits expose their concrete publication method.
 #[test]
 fn test_rooted_writer_commit_reports_atomic_rename_publication() {
@@ -574,6 +651,99 @@ fn test_rooted_copy_maps_source_mode_and_type_conflict_skip() {
             .expect("destination must remain")
             .is_directory_like()
     );
+}
+
+#[test]
+fn test_copy_atomicity_guarantee_and_skip_outcomes_report_native_facts() {
+    for rooted in [false, true] {
+        let root = tempdir().expect("copy fixture root");
+        let source = root.path().join("source");
+        let target = root.path().join("target");
+        fs::write(&source, b"payload").expect("copy source");
+        let (filesystem, logical_source, logical_target) = if rooted {
+            (
+                LocalFileSystems::rooted(root.path(), LocalResourcePolicy::unbounded()).expect("Rooted filesystem"),
+                Path::parse("/source").expect("source path"),
+                Path::parse("/target").expect("target path"),
+            )
+        } else {
+            (
+                LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("Host filesystem"),
+                host_path_to_logical(&source).expect("Host source"),
+                host_path_to_logical(&target).expect("Host target"),
+            )
+        };
+
+        let copied = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file().with_atomicity(AtomicityRequirement::Required),
+            )
+            .expect("Linux Host and Rooted support the requested native file-copy atomicity");
+        assert_eq!(AchievedAtomicity::Atomic, copied.atomicity());
+        assert_eq!(b"payload", fs::read(&target).expect("target was copied").as_slice());
+        assert_eq!(1, copied.stats().files);
+        assert_eq!(7, copied.stats().bytes);
+
+        fs::write(&target, b"keep-existing").expect("existing destination");
+        let skipped = filesystem
+            .copy(
+                &logical_source,
+                &logical_target,
+                CopyOptions::file()
+                    .with_conflict(CopyConflictPolicy::Skip)
+                    .with_atomicity(AtomicityRequirement::Required),
+            )
+            .expect("Skip does not need to perform an atomic publication");
+        assert_eq!(1, skipped.stats().skipped);
+        assert!(skipped.unchanged());
+        assert_eq!(0, skipped.stats().files);
+        assert_eq!(0, skipped.stats().bytes);
+        assert_eq!(AchievedAtomicity::NonAtomic, skipped.atomicity());
+        assert!(!skipped.durable());
+        assert_eq!(
+            b"keep-existing",
+            fs::read(&target).expect("existing target remains").as_slice()
+        );
+
+        let source_tree = root.path().join("tree-source");
+        let target_tree = root.path().join("tree-target");
+        fs::create_dir(&source_tree).expect("tree source");
+        fs::write(source_tree.join("sentinel"), b"new").expect("tree source child");
+        fs::create_dir(&target_tree).expect("existing tree target");
+        fs::write(target_tree.join("sentinel"), b"keep-tree").expect("tree sentinel");
+        let (logical_source_tree, logical_target_tree) = if rooted {
+            (
+                Path::parse("/tree-source").expect("rooted source tree"),
+                Path::parse("/tree-target").expect("rooted target tree"),
+            )
+        } else {
+            (
+                host_path_to_logical(&source_tree).expect("Host source tree"),
+                host_path_to_logical(&target_tree).expect("Host target tree"),
+            )
+        };
+        let skipped_tree = filesystem
+            .copy(
+                &logical_source_tree,
+                &logical_target_tree,
+                CopyOptions::tree().with_conflict(CopyConflictPolicy::Skip),
+            )
+            .expect("complete tree Skip is unchanged and needs no publication guarantee");
+        assert!(skipped_tree.unchanged(), "tree Skip outcome facts: {skipped_tree:?}");
+        assert_eq!(1, skipped_tree.stats().skipped);
+        assert_eq!(0, skipped_tree.stats().files);
+        assert_eq!(0, skipped_tree.stats().directories);
+        assert_eq!(0, skipped_tree.stats().bytes);
+        assert_eq!(AchievedAtomicity::NonAtomic, skipped_tree.atomicity());
+        assert!(!skipped_tree.durable());
+        assert_eq!(
+            b"keep-tree".as_slice(),
+            fs::read(target_tree.join("sentinel")).expect("tree target remains")
+        );
+        assert_eq!(1, fs::read_dir(&target_tree).expect("tree target entries").count());
+    }
 }
 
 /// Replacing an existing file retains its native permissions for both

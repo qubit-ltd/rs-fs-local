@@ -15,6 +15,8 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::temp::TempOptions;
 use qubit_fs::temp::TempResourceState;
+#[cfg(feature = "registry")]
+use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_local::LocalTempCleanupControl;
@@ -26,8 +28,7 @@ use qubit_local_files::error::LocalFileOperation;
 use qubit_local_files::test_support::install_test_fault;
 
 #[cfg(feature = "registry")]
-static CONST_HOST_PROVIDER: qubit_fs_local::LocalFileSystemProvider =
-    qubit_fs_local::LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
+static CONST_HOST_PROVIDER: LocalFileSystemProvider = LocalFileSystemProvider::host(LocalResourcePolicy::unbounded());
 
 #[test]
 fn test_rooted_cleanup_recovers_after_explicit_budget_increase() {

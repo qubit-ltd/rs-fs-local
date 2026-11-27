@@ -48,7 +48,9 @@ cargo add qubit-fs-local@0.12 --features registry
 
 这些命令描述候选版本约束。crates.io 安装需要等待兼容的 `qubit-fs` 0.4、
 `qubit-local-files` 0.6 和 `qubit-fs-registry` 0.8 发布；当前验证使用已登记的候选 path
-依赖图。使用 `qubit-fs-local` 0.11 的客户端必须同时迁移 core 与 adapter，因为公开 core
+依赖图。指南示例使用 `tempfile` 独占拥有测试目录；可通过
+`cargo add --dev tempfile@3.27` 添加测试依赖，普通 binary 则将它作为常规依赖。
+使用 `qubit-fs-local` 0.11 的客户端必须同时迁移 core 与 adapter，因为公开 core
 类型会跨越这条依赖边界。启用 registry 的客户端还应同步 registry crate。
 
 ## 核心工作流
@@ -65,9 +67,9 @@ use qubit_fs_local::{
     LocalListResourceLimits, LocalResourcePolicy,
 };
 
-let root = std::env::current_dir()?.join("target/local-fs-guide");
-std::fs::create_dir_all(root.join("reports"))?;
-std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
+let root = tempfile::tempdir()?;
+std::fs::create_dir_all(root.path().join("reports"))?;
+std::fs::write(root.path().join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let policy = LocalResourcePolicy::bounded(
     LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
     LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
@@ -75,13 +77,15 @@ let policy = LocalResourcePolicy::bounded(
 );
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    root.as_path(),
+    root.path(),
     policy,
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
 assert_eq!(metadata.len(), Some(b"name,total\nsample,1\n".len() as u64));
 println!("{metadata:?}");
+drop(fs);
+root.close()?;
     Ok(())
 }
 ```
@@ -101,9 +105,11 @@ authority 时才选择 `host(policy)`。当文件系统标识需要由应用提�
 取更严格者，请求省略预算也不会移除 provider 上限。这不是跨并发请求的累计配额。
 
 适配层先根据完整请求构造操作行为，再调用原生 `tighten_resource_limits` 收紧预算。
-provider 上限不会开启递归、忽略缺失目标、创建父目录或改变覆盖策略。writer 显式使用
-原生 `PreserveExisting`，可移植 API 不增加原生元数据策略开关。临时资源发布把
-命名空间绝对目标传给 `persist_with`。门面仍遵循 `qubit_fs::Path` 的逻辑规范化契约；
+provider 上限不会开启递归、忽略缺失目标、创建父目录或改变覆盖策略。writer 在暂存替换时
+使用原生 `PreserveExisting`：Unix 会保留 owner、权限和受支持的扩展元数据；Windows Host
+使用原生替换合并，Windows Rooted 则保留可移植权限。首次创建发布暂存文件的元数据，追加
+遵循原生写入行为。可移植 API 不提供这个原生策略开关。临时资源发布把命名空间绝对目标传给
+`persist_with`。门面仍遵循 `qubit_fs::Path` 的逻辑规范化契约；
 原生 Host 对 `link/..` 的保留不改变逻辑路径语法，也不会恢复已由可移植层折叠的组件。
 如果需要原生的点组件遍历，应直接使用 `qubit-local-files`。
 
@@ -130,6 +136,15 @@ provider 上限不会开启递归、忽略缺失目标、创建父目录或改�
 | request list `max_entries` | prefix 过滤后返回的条目 | 门面 |
 | copy/delete 上限 | 对应操作的原生遍历和 payload 工作 | 原生操作 |
 
+### Copy 跳过结果
+
+使用 `CopyConflictPolicy::Skip` 时，如果本次复制完全没有产生变化，结果会标记为
+`CopyOutcome::unchanged()`：至少有一项计入 skipped，而文件、目录、链接、对象、prefix、
+字节、覆盖和失败计数均为零。因为没有发布动作，结果报告 `NonAtomic` 且不具备 durability。
+对于这种已证明的无操作，门面不会要求请求的 copy atomicity 或 durability 已经实现。若复制或发布
+了任意条目，就不属于这个例外，必须按实际结果检查保证和统计。Local provider 一旦开始 native
+copy 就接管请求；失败会保留原生状态和部分统计，不会回退到门面的 stream copy。
+
 ### 列举子树
 
 `ListOptions` 使用子树 prefix 时，适配层仍以原请求根启动列举，并保留结果过滤；同时会告知
@@ -151,15 +166,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use qubit_fs::Path;
     use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
 
-    let temp = std::env::temp_dir().join(format!("qubit-fs-local-subtree-{}", std::process::id()));
-    if temp.exists() {
-        std::fs::remove_dir_all(&temp)?;
-    }
-    std::fs::create_dir_all(temp.join("reports/archive"))?;
-    std::fs::write(temp.join("reports/summary.csv"), b"total\n1\n")?;
-    std::fs::write(temp.join("outside.txt"), b"ignored")?;
+    let temp = tempfile::tempdir()?;
+    let temp_path = temp.path();
+    std::fs::create_dir_all(temp_path.join("reports/archive"))?;
+    std::fs::write(temp_path.join("reports/summary.csv"), b"total\n1\n")?;
+    std::fs::write(temp_path.join("outside.txt"), b"ignored")?;
     let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
-    let root = host_path_to_logical(&temp)?;
+    let root = host_path_to_logical(temp_path)?;
     let prefix = Path::parse(&format!("{}/reports", root.as_str()))?;
     let report = Path::parse(&format!("{}/reports/summary.csv", root.as_str()))?;
     let outside = Path::parse(&format!("{}/outside.txt", root.as_str()))?;
@@ -186,6 +199,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let _prefix = limited.next_entry()?.expect("子树 prefix 会返回");
     assert!(limited.next_entry().is_err(), "条目预算耗尽会返回错误");
+    drop(limited);
+    drop(listing);
+    drop(filesystem);
+    temp.close()?;
     Ok(())
 }
 ```
@@ -298,6 +315,9 @@ control.set_limits(Some(LocalTempCleanupResourceLimits::new(
 )));
 directory.cleanup()?;
 assert_eq!(root.path().read_dir()?.count(), 0);
+drop(directory);
+drop(fs);
+root.close()?;
     Ok(())
 }
 ```
@@ -313,8 +333,9 @@ assert_eq!(root.path().read_dir()?.count(), 0);
 应分别创建 control。registry 用户可以保留 `LocalFileSystemProvider::temp_cleanup_control()`；
 直接使用 SPI 时，应在创建 filesystem 前调用 `with_temp_cleanup_control` 绑定 control。
 
-writer 和临时会话的打开遵循 `qubit-fs` 0.4 的 `OpenFailure` 契约。应保留恢复会话与显式清理
-错误，具体见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
+writer 和临时会话的打开遵循 `qubit-fs` 0.4 的 `OpenFailure` 契约。如果临时资源创建已开始，
+随后创建失败且清理也失败，open failure 可以保留恢复会话。应保留该会话，先检查显式 cleanup
+错误，再决定是否重试。更多说明见[核心恢复指南](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.zh_CN.md)。
 
 ## 进阶用法
 
@@ -346,14 +367,14 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
-let root = std::env::current_dir()?.join("target/local-fs-registry-guide");
-std::fs::create_dir_all(root.join("reports"))?;
+let root = tempfile::tempdir()?;
+std::fs::create_dir_all(root.path().join("reports"))?;
 let payload = b"tenant,amount\nA,1\n";
-std::fs::write(root.join("reports/summary.csv"), payload)?;
+std::fs::write(root.path().join("reports/summary.csv"), payload)?;
 let registry = FileSystemRegistry::default();
 registry.register(LocalFileSystemProvider::rooted(
     FileSystemId::new("guide-reports")?,
-    &root,
+    root.path(),
     LocalResourcePolicy::standard(),
 )?)?;
 let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
@@ -361,6 +382,9 @@ let resolution = registry.resolve_config(&config)?;
 assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
 assert_eq!(resolution.file_system().properties().info().id().as_str(), "guide-reports");
 assert_eq!(resolution.file_system().stat(resolution.path())?.len(), Some(payload.len() as u64));
+drop(resolution);
+drop(registry);
+root.close()?;
     Ok(())
 }
 ```
@@ -390,25 +414,25 @@ use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
 
-let root_a = std::env::current_dir()?.join("target/local-fs-selection-guide/tenant-a");
-let root_b = std::env::current_dir()?.join("target/local-fs-selection-guide/tenant-b");
-std::fs::create_dir_all(root_a.join("reports"))?;
-std::fs::create_dir_all(root_b.join("reports"))?;
+let root_a = tempfile::tempdir()?;
+let root_b = tempfile::tempdir()?;
+std::fs::create_dir_all(root_a.path().join("reports"))?;
+std::fs::create_dir_all(root_b.path().join("reports"))?;
 let payload_a = b"tenant,amount\nA,1\n";
 let payload_b = b"tenant,amount\nB,200\n";
-std::fs::write(root_a.join("reports/summary.csv"), payload_a)?;
-std::fs::write(root_b.join("reports/summary.csv"), payload_b)?;
+std::fs::write(root_a.path().join("reports/summary.csv"), payload_a)?;
+std::fs::write(root_b.path().join("reports/summary.csv"), payload_b)?;
 let registry = FileSystemRegistry::default();
 registry.register(LocalFileSystemProvider::rooted_with_descriptor(
     ProviderDescriptor::new(ProviderId::new("tenant-a")?),
     FileSystemId::new("tenant-a-files")?,
-    &root_a,
+    root_a.path(),
     LocalResourcePolicy::standard(),
 )?)?;
 registry.register(LocalFileSystemProvider::rooted_with_descriptor(
     ProviderDescriptor::new(ProviderId::new("tenant-b")?),
     FileSystemId::new("tenant-b-files")?,
-    &root_b,
+    root_b.path(),
     LocalResourcePolicy::standard(),
 )?)?;
 
@@ -426,6 +450,11 @@ assert_ne!(
 );
 assert_eq!(first.file_system().stat(first.path())?.len(), Some(payload_a.len() as u64));
 assert_eq!(second.file_system().stat(second.path())?.len(), Some(payload_b.len() as u64));
+drop(first);
+drop(second);
+drop(registry);
+root_a.close()?;
+root_b.close()?;
     Ok(())
 }
 ```
@@ -450,6 +479,12 @@ provider 重放时，会得到相同的 URI 和逻辑路径，但文件系统会
 | `ProviderNative` | 在原生复制前以 `RequirementNotMet` 拒绝；没有 provider 原生元数据复制契约。 | 接受；使用原生移动行为，不执行 provider 专属元数据操作。 |
 | `All` | 在原生复制前以 `RequirementNotMet` 拒绝；无法表达全部元数据类别。 | 接受；使用原生移动行为，不承诺保留所有可观察字段。 |
 
+Writer 元数据遵循另一套原生契约。Adapter 对已有目标的暂存替换使用
+`LocalWriteMetadataPolicy::PreserveExisting`。首次创建只发布暂存文件的元数据，并遵循原生
+继承规则；追加遵循原生写入行为。Unix 替换会保留 owner、权限和受支持的扩展元数据；Windows
+Host 使用原生替换合并，Windows Rooted 保留可移植权限。该 writer 策略不会扩大上表中 copy
+或临时资源 persist 的保证。
+
 成功的 `persist` 中，Host 和 Rooted 文件及目录均通过原生 move/rename 路径发布。
 overwrite 会用临时源替换旧目标，因此结果项采用源权限，旧目标属性随旧项移除。
 原生移动无法执行时不会复制到新文件；跨设备或其他不支持的移动会作为发布失败返回。
@@ -472,9 +507,9 @@ filesystem 读取实际 ID：`file_system.properties().info().provider_id()`。r
 `qubit-fs-registry` 返回。应检查返回错误，而非假设 URI 已被接受。
 
 provider 会拒绝超出本地文件契约的配置：远程 authority、query、相对路径、非 `file` scheme、
-options 和 credentials。
-它按 URI component 解码百分号编码的路径字节；编码后的分隔符和 NUL 字节会被拒绝，避免其
-改变逻辑层级。
+options、非空的 `FileSystemConfig` metadata 和 credentials。识别 `file:` scheme 并解析 URI
+结构后，provider 会先检查 options、metadata 和 credentials，再解码 provider 专属 URI path。
+编码后的分隔符和 NUL 字节会被拒绝，避免它们改变逻辑层级。
 
 对于非 `file` scheme，provider 返回 `Unsupported`，错误 kind 为
 `UnsupportedOperation`。使用 `FallbackPolicy::OnAbsence` 的 registry 可以继续尝试下一个
@@ -486,6 +521,11 @@ Windows Host provider 的 `file:` URI 必须带绝对盘符路径，例如
 `file:///C:/reports/summary.csv`；`file:///tmp/data` 等无盘符路径属于非法 Host 配置。
 Rooted URI 则在已注册的 rooted authority 内解释。重放 Rooted resolution 时，应将 provider
 selection 和 filesystem identity 与 canonical URI 一并保存。
+Unix Host 的 `file:///reports/summary.csv` 会解析为逻辑路径 `/reports/summary.csv`，经 Host
+重放时使用 `local-host` identity。Windows Host 的 `file:///C:/reports/summary.csv` 会解析为
+`/C:/reports/summary.csv`，重放时仍保留盘符。Rooted provider 在 Unix 和 Windows 上都会把
+`file:///reports/summary.csv` 解释为已注册根目录下的逻辑路径；URI 本身不包含该根目录或
+Rooted filesystem identity。
 
 只有显式的 `ProviderSelection::chain`、自动的 `ProviderSelection::auto()`，或经由 registry
 默认 selection 的解析才会启用 fallback。`FileSystemConfig` 未设置 selection 时，
@@ -520,12 +560,19 @@ published 的恢复状态和 `PersistFailure::publication_target()`。这份历�
 | 现象 | 检查项 |
 | --- | --- |
 | 无法使用 `LocalFileSystemProvider` | 启用 `registry` feature。 |
-| `file:` URI 无法解析 | 确认它是绝对 URI、没有远程 authority 或 query，且未提供 options 或 credentials。 |
+| `file:` URI 无法解析 | 确认它是绝对 URI、没有远程 authority 或 query，且未提供 options、非空 metadata 或 credentials。 |
 | rooted 门面无法打开 | 确认原生根目录存在并能被进程打开。 |
 | 路径不可用 | Host 要求绝对层级化 `qubit_fs::Path`；Rooted 接受绝对或相对路径，相对路径从虚拟工作目录（初始为 `/`）解析。门面返回的临时资源路径是绝对路径。 |
 
 ## 限制与最佳实践
 
+- 能力支持取决于原生平台和文件系统。Linux 与 Windows 是 adapter 的常规行为测试平台；
+  具体操作或文件系统仍可能无法满足 atomicity、durability 等请求级要求。`qubit-local-files`
+  暂时不支持 FreeBSD 上的重要 copy、rename、暂存写入和临时发布路径。编译通过或某个孤立 API
+  调用成功，都不能证明 FreeBSD 全面受支持。重新考虑支持前，需验证安全的 Host/Rooted
+  no-replace 操作、记录 metadata 失败时 CI runner 的文件系统与挂载参数、解决 descriptor 耗尽后的
+  cleanup 情况，并在明确声明的 FreeBSD 文件系统上通过相关原生测试与 doctest。详见
+  [原生 FreeBSD 兼容性说明](https://github.com/qubit-ltd/rs-local-files/blob/main/doc/freebsd-compatibility.zh_CN.md)。
 - 公共门面是同步的；本 crate 不提供异步本地文件系统门面。
 - rooted containment 与原生文件系统行为属于 provider 边界；应保留 rooted 门面，而非在应用中反复拼接原生路径。
 - 将 `file:` URI 视为仅本地输入。远程 authority 和 URI options 有意不作为该 provider 的配置通道。

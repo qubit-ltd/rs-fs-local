@@ -7,8 +7,10 @@
 // =============================================================================
 //! Native outcome conversion helpers.
 
+use qubit_fs::copy::CopyConflictPolicy;
 use qubit_fs::copy::CopyFailureState;
 use qubit_fs::copy::CopyMethod;
+use qubit_fs::copy::CopyOptions;
 use qubit_fs::copy::CopyOutcome;
 use qubit_fs::copy::CopyStats;
 use qubit_fs::copy::MetadataPreservePolicy;
@@ -73,10 +75,21 @@ pub(crate) fn metadata(value: native_files::outcome::LocalFileMetadata) -> FileM
 ///
 /// Portable copy statistics, method, atomicity, durability, and metadata
 /// preservation guarantees.
-pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcome {
+pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome, options: &CopyOptions) -> CopyOutcome {
     let stats = value.stats();
+    let stats = copy_stats(stats);
+    let unchanged = options.conflict() == CopyConflictPolicy::Skip
+        && stats.skipped > 0
+        && stats.files == 0
+        && stats.directories == 0
+        && stats.symlinks == 0
+        && stats.objects == 0
+        && stats.prefixes == 0
+        && stats.bytes == 0
+        && stats.overwritten == 0
+        && stats.failed == 0;
     let mut result = CopyOutcome::new(
-        copy_stats(stats),
+        stats,
         match value.method() {
             native_files::outcome::LocalCopyMethod::StagedFile => CopyMethod::Native,
             native_files::outcome::LocalCopyMethod::Recursive => CopyMethod::Native,
@@ -88,6 +101,7 @@ pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcom
             AchievedAtomicity::NonAtomic
         },
     );
+    result = result.with_unchanged(unchanged);
     result = result.with_durable(value.durable());
     result = result.with_metadata(match value.metadata_preservation() {
         native_files::options::LocalMetadataPreservePolicy::None => MetadataPreservePolicy::None,
@@ -102,13 +116,45 @@ pub(crate) fn copy(value: native_files::outcome::LocalCopyOutcome) -> CopyOutcom
 ///
 /// - `stats`: Native counters recorded while copying the tree.
 pub(crate) fn copy_stats(stats: native_files::outcome::LocalCopyStats) -> CopyStats {
+    copy_stats_from_counts(
+        stats.files(),
+        stats.symlinks(),
+        stats.directories(),
+        stats.bytes(),
+        stats.skipped(),
+        stats.overwritten(),
+    )
+}
+
+/// Converts native counters while treating symlinks separately from files.
+///
+/// # Parameters
+///
+/// - `files`: Native entry count classified as files, including symlinks.
+/// - `symlinks`: Native entry count classified as symbolic links.
+/// - `directories`: Native entry count classified as directories.
+/// - `bytes`: Total bytes copied from regular files.
+/// - `skipped`: Native entry count skipped by copy policy.
+/// - `overwritten`: Native entry count that replaced existing targets.
+///
+/// # Returns
+///
+/// Copy statistics with symlinks excluded from the regular file count.
+fn copy_stats_from_counts(
+    files: u64,
+    symlinks: u64,
+    directories: u64,
+    bytes: u64,
+    skipped: u64,
+    overwritten: u64,
+) -> CopyStats {
     CopyStats {
-        files: stats.files() - stats.symlinks(),
-        symlinks: stats.symlinks(),
-        directories: stats.directories(),
-        bytes: stats.bytes(),
-        skipped: stats.skipped(),
-        overwritten: stats.overwritten(),
+        files: files - symlinks,
+        symlinks,
+        directories,
+        bytes,
+        skipped,
+        overwritten,
         ..Default::default()
     }
 }
@@ -178,6 +224,7 @@ mod tests {
     use qubit_fs::metadata::FileKind;
     use qubit_local_files::outcome::LocalFileKind;
 
+    use super::copy_stats_from_counts;
     use super::file_kind;
 
     #[test]
@@ -200,5 +247,15 @@ mod tests {
         ] {
             assert_eq!(expected, file_kind(native));
         }
+    }
+
+    #[test]
+    fn test_copy_stats_separates_regular_files_links_and_regular_file_bytes() {
+        let stats = copy_stats_from_counts(3, 1, 2, 11, 0, 0);
+
+        assert_eq!(2, stats.files);
+        assert_eq!(1, stats.symlinks);
+        assert_eq!(2, stats.directories);
+        assert_eq!(11, stats.bytes);
     }
 }

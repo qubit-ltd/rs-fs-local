@@ -17,6 +17,8 @@ mod local_outcome_mapper;
 mod local_random_access_reader;
 mod local_range_reader;
 mod local_temp_path_projection;
+mod local_temp_recovery_spi;
 mod local_temp_resource_spi;
 
 pub use local_file_system_spi::LocalFileSystemSpi;
+pub(crate) use local_temp_recovery_spi::LocalTempRecoverySpi;
