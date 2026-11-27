@@ -232,7 +232,8 @@ impl LocalFileSystems {
 /// The input must be an absolute host-native path. Relative paths are not
 /// implicitly resolved against the caller's current working directory, and a
 /// rooted logical path must be parsed separately rather than by passing a
-/// host root prefix here.
+/// host root prefix here. On Windows, drive-letter paths are supported;
+/// UNC paths are not currently converted by this adapter.
 ///
 /// # Returns
 ///

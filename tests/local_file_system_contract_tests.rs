@@ -205,7 +205,7 @@ fn test_windows_random_access_replacement_evidence_for_host_and_rooted_scopes() 
                 )
             } else {
                 let spi = LocalFileSystemSpi::new(LocalResourcePolicy::unbounded()).expect("create Host SPI");
-                let path = qubit_fs_local::host_path_to_logical(&original).expect("convert Host path");
+                let path = host_path_to_logical(&original).expect("convert Host path");
                 (FileSystem::from_spi(spi).expect("create Host facade"), path)
             };
             let info = file_system.properties().info();

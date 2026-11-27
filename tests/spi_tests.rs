@@ -63,3 +63,7 @@ fn test_local_range_window_and_metadata() {
         }
     }
 }
+
+mod spi_tests {
+    mod local_range_reader_tests;
+}

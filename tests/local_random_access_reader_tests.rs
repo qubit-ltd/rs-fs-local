@@ -75,7 +75,7 @@ fn test_open_missing_file_maps_native_error_context() {
 }
 
 #[test]
-fn test_facade_random_access_overflow_maps_native_io_context() {
+fn test_facade_rejects_unrepresentable_random_access_offset() {
     let fixture = Fixture::new();
     let native_path = fixture._root.path().join("payload");
     std::fs::write(&native_path, b"abcdef").expect("seed file");

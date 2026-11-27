@@ -231,17 +231,23 @@ fn example_profiles(markdown: &str) -> Result<Vec<ExampleProfile>, String> {
 
 fn profile_dependencies(profile: ExampleProfile) -> Vec<&'static str> {
     match profile {
-        ExampleProfile::Direct => vec!["qubit-fs", "qubit-fs-local"],
+        ExampleProfile::Direct => vec!["qubit-fs", "qubit-fs-local", "tempfile"],
         ExampleProfile::DirectCleanup => vec!["qubit-fs", "qubit-fs-local", "tempfile"],
-        ExampleProfile::Registry => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry"],
-        ExampleProfile::Selection => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry", "qubit-spi"],
+        ExampleProfile::Registry => vec!["qubit-fs", "qubit-fs-local", "qubit-fs-registry", "tempfile"],
+        ExampleProfile::Selection => vec![
+            "qubit-fs",
+            "qubit-fs-local",
+            "qubit-fs-registry",
+            "qubit-spi",
+            "tempfile",
+        ],
     }
 }
 
-fn should_run_example(document: &str, block_index: usize, profile: ExampleProfile) -> bool {
+fn should_run_example(document: &str, _block_index: usize, profile: ExampleProfile) -> bool {
     match profile {
         ExampleProfile::Direct => {
-            (block_index == 0 && ["README.md", "README.zh_CN.md"].contains(&document))
+            ["README.md", "README.zh_CN.md"].contains(&document)
                 || ["doc/user_guide.md", "doc/user_guide.zh_CN.md"].contains(&document)
         }
         ExampleProfile::DirectCleanup => document == "doc/user_guide.md" || document == "doc/user_guide.zh_CN.md",
@@ -281,6 +287,35 @@ fn test_cleanup_profile_is_explicit_and_runnable() {
 }
 
 #[test]
+fn test_published_rust_fences_are_visible_source() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for document in [
+        "README.md",
+        "README.zh_CN.md",
+        "doc/user_guide.md",
+        "doc/user_guide.zh_CN.md",
+        "doc/local_file_system_adapter_design.md",
+        "doc/local_file_system_adapter_design.zh_CN.md",
+    ] {
+        let source = fs::read_to_string(root.join(document)).expect("document should be readable");
+        let mut in_rust_fence = false;
+        for line in source.lines() {
+            if line.trim() == "```rust" {
+                in_rust_fence = true;
+            } else if line.trim() == "```" {
+                in_rust_fence = false;
+            } else if in_rust_fence {
+                assert!(
+                    !line.starts_with("# "),
+                    "{document} must compile the visible fence without hidden rustdoc lines"
+                );
+            }
+        }
+        assert!(!in_rust_fence, "{document} has a closed Rust fence");
+    }
+}
+
+#[test]
 fn test_runnable_example_selection_covers_guide_registry() {
     for document in ["doc/user_guide.md", "doc/user_guide.zh_CN.md"] {
         let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(document)).unwrap();
@@ -294,7 +329,6 @@ fn test_runnable_example_selection_covers_guide_registry() {
             }
         }
     }
-    assert!(!should_run_example("README.md", 1, ExampleProfile::Direct));
     assert!(!should_run_example(
         "doc/local_file_system_adapter_design.md",
         0,
@@ -443,7 +477,7 @@ fn test_all_published_rust_examples_have_supported_profiles() {
 #[test]
 fn test_direct_profile_does_not_inject_registry_or_spi() {
     let deps = profile_dependencies(ExampleProfile::Direct);
-    assert_eq!(deps, ["qubit-fs", "qubit-fs-local"]);
+    assert_eq!(deps, ["qubit-fs", "qubit-fs-local", "tempfile"]);
 }
 
 #[test]
@@ -482,7 +516,7 @@ fn locked_registry_version(root: &Path, package: &str) -> String {
         .expect("lockfile package list")
         .iter()
         .find(|entry| {
-            entry["name"] == package
+            entry["name"].as_str() == Some(package)
                 && entry["source"]
                     .as_str()
                     .is_some_and(|source| source.starts_with("registry+"))
@@ -526,7 +560,12 @@ fn package_version(manifest: &Path) -> String {
 
 fn candidate_sha(repository: &Path) -> String {
     let output = Command::new("git")
-        .args(["-C", repository.to_str().expect("UTF-8 candidate path"), "rev-parse", "HEAD"])
+        .args([
+            "-C",
+            repository.to_str().expect("UTF-8 candidate path"),
+            "rev-parse",
+            "HEAD",
+        ])
         .output()
         .expect("read candidate source revision");
     assert!(
@@ -539,6 +578,46 @@ fn candidate_sha(repository: &Path) -> String {
         .expect("candidate SHA is UTF-8")
         .trim()
         .to_owned()
+}
+
+fn example_workspace_sentinels() -> [(&'static str, &'static [u8]); 4] {
+    [
+        (
+            "target/local-fs-guide/reports/summary.csv",
+            b"owned quick-start sentinel",
+        ),
+        (
+            "target/local-fs-registry-guide/reports/summary.csv",
+            b"owned registry sentinel",
+        ),
+        (
+            "target/local-fs-selection-guide/tenant-a/reports/summary.csv",
+            b"owned tenant-a sentinel",
+        ),
+        (
+            "target/local-fs-selection-guide/tenant-b/reports/summary.csv",
+            b"owned tenant-b sentinel",
+        ),
+    ]
+}
+
+fn assert_example_workspace_sentinels(workspace: &Path, temp_root: &Path) {
+    for (relative, expected) in example_workspace_sentinels() {
+        assert_eq!(
+            fs::read(workspace.join(relative)).expect("pre-existing demo sentinel remains readable"),
+            expected,
+            "documentation example must leave owned path {relative} untouched"
+        );
+    }
+    let remaining = fs::read_dir(temp_root)
+        .expect("isolated temporary parent remains readable")
+        .map(|entry| entry.expect("temporary parent entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(remaining, [std::ffi::OsStr::new("owned-sentinel")]);
+    assert_eq!(
+        fs::read(temp_root.join("owned-sentinel")).expect("temporary-parent sentinel remains readable"),
+        b"temporary parent is caller-owned"
+    );
 }
 
 fn dependency_package_id(graph: &serde_json::Value, consumer_id: &str, name: &str) -> Result<String, String> {
@@ -671,10 +750,7 @@ fn test_readme_and_user_guide_examples_compile() {
     let mut patches = Vec::new();
     let mut candidate_sources = vec![
         ("qubit-fs", sibling_root.join("rs-fs")),
-        (
-            "qubit-local-files",
-            candidate_root.clone(),
-        ),
+        ("qubit-local-files", candidate_root.clone()),
         ("qubit-fs-registry", sibling_root.join("rs-fs-registry")),
     ];
     if let Some(path) = &io_candidate_root {
@@ -721,6 +797,18 @@ fn test_readme_and_user_guide_examples_compile() {
         ExampleProfile::Selection,
     ] {
         let workspace = tempfile::tempdir().expect("isolated profile example crate");
+        for (relative, contents) in example_workspace_sentinels() {
+            let path = workspace.path().join(relative);
+            fs::create_dir_all(path.parent().expect("sentinel path parent")).expect("same-name sentinel parent");
+            fs::write(path, contents).expect("same-name caller-owned sentinel");
+        }
+        let temporary_root = workspace.path().join("temporary-products");
+        fs::create_dir(&temporary_root).expect("isolated temporary parent");
+        fs::write(
+            temporary_root.join("owned-sentinel"),
+            b"temporary parent is caller-owned",
+        )
+        .expect("caller-owned temporary-parent sentinel");
         let bin = workspace.path().join("src/bin");
         fs::create_dir_all(&bin).expect("bin directory");
         for (document_index, block_index, _, example_profile, block) in &examples {
@@ -757,9 +845,7 @@ fn test_readme_and_user_guide_examples_compile() {
         if profile == ExampleProfile::Selection {
             manifest.push_str(&format!("qubit-spi = {spi}\n"));
         }
-        if profile == ExampleProfile::DirectCleanup {
-            manifest.push_str(&format!("tempfile = \"{tempfile_requirement}\"\n"));
-        }
+        manifest.push_str(&format!("tempfile = \"{tempfile_requirement}\"\n"));
         if !patches.is_empty() {
             manifest.push_str("\n[patch.crates-io]\n");
             manifest.push_str(&patches.join("\n"));
@@ -781,11 +867,7 @@ fn test_readme_and_user_guide_examples_compile() {
             .current_dir(workspace.path())
             .output()
             .expect("generate candidate profile lockfile");
-        assert!(
-            lock.status.success(),
-            "{}",
-            String::from_utf8_lossy(&lock.stderr)
-        );
+        assert!(lock.status.success(), "{}", String::from_utf8_lossy(&lock.stderr));
         if io_candidate_root.is_none() {
             pin_profile_package(root, workspace.path(), "qubit-io", &locked_io_version);
         }
@@ -866,9 +948,10 @@ fn test_readme_and_user_guide_examples_compile() {
                 expected_path.canonicalize().unwrap(),
                 "{name} candidate manifest"
             );
+            let expected_version = package_version(&expected_path);
             assert_eq!(
                 resolved["version"].as_str(),
-                Some(package_version(&expected_path)),
+                Some(expected_version.as_str()),
                 "{name} version"
             );
         }
@@ -888,9 +971,10 @@ fn test_readme_and_user_guide_examples_compile() {
                 registry_manifest.canonicalize().unwrap(),
                 "registry candidate manifest"
             );
+            let expected_version = package_version(&registry_manifest);
             assert_eq!(
                 registry["version"].as_str(),
-                Some(package_version(&registry_manifest)),
+                Some(expected_version.as_str()),
                 "registry candidate version"
             );
             let registry_node = resolve
@@ -954,8 +1038,15 @@ fn test_readme_and_user_guide_examples_compile() {
                     "{name} candidate manifest"
                 );
             } else {
-                assert!(resolved["source"].as_str().unwrap().starts_with("registry+"), "{name} registry source");
-                assert_eq!(resolved["version"].as_str(), Some(locked_version), "{name} locked version");
+                assert!(
+                    resolved["source"].as_str().unwrap().starts_with("registry+"),
+                    "{name} registry source"
+                );
+                assert_eq!(
+                    resolved["version"].as_str(),
+                    Some(locked_version),
+                    "{name} locked version"
+                );
             }
         }
         let package_id = graph["packages"]
@@ -1035,10 +1126,7 @@ fn test_readme_and_user_guide_examples_compile() {
         let mut source_revisions = vec![
             ("qubit-fs-local", root.to_path_buf()),
             ("qubit-fs", sibling_root.join("rs-fs")),
-            (
-                "qubit-local-files",
-                candidate_root.clone(),
-            ),
+            ("qubit-local-files", candidate_root.clone()),
         ];
         if !profile.is_direct() {
             source_revisions.push(("qubit-fs-registry", sibling_root.join("rs-fs-registry")));
@@ -1083,10 +1171,7 @@ fn test_readme_and_user_guide_examples_compile() {
                 );
                 format!(
                     "{}@{} source={} features={}",
-                    entry["name"],
-                    entry["version"],
-                    source,
-                    node["features"]
+                    entry["name"], entry["version"], source, node["features"]
                 )
             })
             .collect::<Vec<_>>()
@@ -1108,12 +1193,58 @@ fn test_readme_and_user_guide_examples_compile() {
                 .args(["run", "--locked", "--quiet", "--bin", &binary])
                 .current_dir(workspace.path())
                 .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .env("TMPDIR", &temporary_root)
+                .env("TEMP", &temporary_root)
+                .env("TMP", &temporary_root)
                 .status()
                 .expect("run selected document example");
             assert!(
                 status.success(),
                 "{document} example {block_index} for {profile:?} must run"
             );
+            assert_example_workspace_sentinels(workspace.path(), &temporary_root);
+        }
+        if profile == ExampleProfile::Direct {
+            let (_, _, _, _, readme_example) = examples
+                .iter()
+                .find(|(_, block_index, document, example_profile, _)| {
+                    *document == "README.md" && *block_index == 0 && *example_profile == profile
+                })
+                .expect("English README rooted example");
+            let source = if readme_example.trim_start().starts_with("fn main()") {
+                format!("{readme_example}\n")
+            } else {
+                format!("fn main() -> Result<(), Box<dyn std::error::Error>> {{\n{readme_example}\n}}\n")
+            };
+            let injected = source.replace(
+                "drop(file_system);\nroot.close()?;",
+                "return Err(\"injected owned-example failure\".into());",
+            );
+            assert_ne!(source, injected, "failure probe must run before explicit cleanup");
+            fs::write(bin.join("doc_ownership_failure.rs"), injected).expect("failure probe source");
+            let compiled = Command::new(env!("CARGO"))
+                .args(["check", "--locked", "--quiet", "--bin", "doc_ownership_failure"])
+                .current_dir(workspace.path())
+                .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .status()
+                .expect("compile the failure-path ownership probe");
+            assert!(compiled.success(), "ownership failure probe must compile");
+            let failed = Command::new(env!("CARGO"))
+                .args(["run", "--locked", "--quiet", "--bin", "doc_ownership_failure"])
+                .current_dir(workspace.path())
+                .env("CARGO_TARGET_DIR", root.join("target/documentation-examples"))
+                .env("TMPDIR", &temporary_root)
+                .env("TEMP", &temporary_root)
+                .env("TMP", &temporary_root)
+                .output()
+                .expect("run the injected failure-path ownership probe");
+            assert!(!failed.status.success(), "injected example failure must be observed");
+            assert!(
+                String::from_utf8_lossy(&failed.stderr).contains("injected owned-example failure"),
+                "failure probe must reach the injected error: {}",
+                String::from_utf8_lossy(&failed.stderr)
+            );
+            assert_example_workspace_sentinels(workspace.path(), &temporary_root);
         }
     }
     {

@@ -7,8 +7,12 @@
 // =============================================================================
 //! Submit the bounded host provider to the synchronous filesystem inventory.
 
-qubit_spi::submit_sync_provider! {
-    inventory_entry = qubit_fs_registry::sync_file_system_providers::Entry;
-    spec = qubit_fs_registry::FileSystemSpec;
+use qubit_fs_registry::FileSystemSpec;
+use qubit_fs_registry::sync_file_system_providers::Entry;
+use qubit_spi::submit_sync_provider;
+
+submit_sync_provider! {
+    inventory_entry = Entry;
+    spec = FileSystemSpec;
     provider = super::LocalFileSystemProvider::host(crate::LocalResourcePolicy::standard());
 }

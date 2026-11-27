@@ -10,6 +10,7 @@
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
+use qubit_fs::path::Path as LogicalPath;
 #[cfg(windows)]
 use qubit_fs::read::ReadOptions;
 use qubit_fs_local::LocalFileSystemProvider;
@@ -164,7 +165,7 @@ fn test_windows_host_registry_round_trips_native_file() {
 }
 
 #[cfg(windows)]
-fn encode_host_uri_parent(path: &qubit_fs::path::Path) -> String {
+fn encode_host_uri_parent(path: &LogicalPath) -> String {
     let mut result = String::new();
     for byte in path.as_str().bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b':' | b'%' | b'-' | b'.' | b'_' | b'~') {

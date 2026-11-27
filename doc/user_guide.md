@@ -56,7 +56,10 @@ cargo add qubit-fs-local@0.12 --features registry
 These commands describe the candidate version constraints. A crates.io install
 requires publication of compatible `qubit-fs` 0.4, `qubit-local-files` 0.6,
 and `qubit-fs-registry` 0.8 releases; the current validation uses the
-registered candidate path graph. Clients on `qubit-fs-local` 0.11 must migrate
+registered candidate path graph. Runnable guide examples use `tempfile` for
+exclusive fixture ownership; add it as a dev dependency with
+`cargo add --dev tempfile@3.27` (or as a regular dependency for a binary).
+Clients on `qubit-fs-local` 0.11 must migrate
 the core and adapter together because public core types cross that dependency
 boundary. Clients enabling registry support must align the registry crate too.
 
@@ -74,9 +77,9 @@ use qubit_fs_local::{
     LocalListResourceLimits, LocalResourcePolicy,
 };
 
-let root = std::env::current_dir()?.join("target/local-fs-guide");
-std::fs::create_dir_all(root.join("reports"))?;
-std::fs::write(root.join("reports/summary.csv"), b"name,total\nsample,1\n")?;
+let root = tempfile::tempdir()?;
+std::fs::create_dir_all(root.path().join("reports"))?;
+std::fs::write(root.path().join("reports/summary.csv"), b"name,total\nsample,1\n")?;
 let policy = LocalResourcePolicy::bounded(
     LocalListResourceLimits::new(32, 10_000, 4 * 1024 * 1024, 32, Duration::from_secs(30))?,
     LocalCopyResourceLimits::new(32, 10_000, 64 * 1024 * 1024, 32, Duration::from_secs(30))?,
@@ -84,13 +87,15 @@ let policy = LocalResourcePolicy::bounded(
 );
 let fs = LocalFileSystems::rooted_with_id(
     FileSystemId::new("app-data")?,
-    root.as_path(),
+    root.path(),
     policy,
 )?;
 let report = LogicalPath::parse("/reports/summary.csv")?;
 let metadata = fs.stat(&report)?;
 assert_eq!(metadata.len(), Some(b"name,total\nsample,1\n".len() as u64));
 println!("{metadata:?}");
+drop(fs);
+root.close()?;
     Ok(())
 }
 ```
@@ -116,9 +121,13 @@ remove a provider limit. These are not aggregate quotas across concurrent reques
 The adapter constructs operation behavior from the complete request, then
 applies native `tighten_resource_limits`. Provider ceilings cannot turn on
 recursion, ignore a missing target, create parents, or change overwrite policy.
-Writers explicitly select native `PreserveExisting`; the portable API does not
-expose a native metadata-policy switch. Temporary publication passes absolute
-namespace targets to `persist_with`. Logical `qubit_fs::Path` normalization
+Writers select native `PreserveExisting` for staged replacement. On Unix this
+protocol preserves owner, permissions, and supported extended metadata;
+Windows Host uses native replacement merging, while Windows Rooted preserves
+portable permissions. First creation publishes staging metadata and append
+follows native write behavior. The portable API does not expose this native
+policy switch. Temporary publication passes absolute namespace targets to
+`persist_with`. Logical `qubit_fs::Path` normalization
 remains the facade contract; native Host preservation of `link/..` does not
 change logical path syntax or restore components already normalized by the
 portable layer. Native dot traversal is available through `qubit-local-files`.
@@ -152,6 +161,19 @@ The three limit families count different work:
 | Request list `max_entries` | Entries returned after prefix filtering | Facade |
 | Copy/delete limits | Native traversal and payload work for that operation | Native operation |
 
+### Copy skip outcomes
+
+With `CopyConflictPolicy::Skip`, a complete no-op is reported as
+`CopyOutcome::unchanged()`: at least one item is counted as skipped and no
+file, directory, link, object, prefix, byte, overwrite, or failure count is
+reported. The outcome reports `NonAtomic` and not durable because no
+publication occurred. In this verified no-op case the facade does not require
+the requested copy atomicity or durability to have been achieved. A result
+that copied or published any item is not this exception and keeps its actual
+guarantees and statistics. The local provider owns the copy request once it
+starts native copy; failures retain native state and partial statistics and do
+not fall back to a facade stream copy.
+
 ### Listing a subtree
 
 When `ListOptions` uses a subtree prefix, the adapter keeps the requested
@@ -182,15 +204,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use qubit_fs::Path;
     use qubit_fs_local::{host_path_to_logical, LocalFileSystems, LocalResourcePolicy};
 
-    let temp = std::env::temp_dir().join(format!("qubit-fs-local-subtree-{}", std::process::id()));
-    if temp.exists() {
-        std::fs::remove_dir_all(&temp)?;
-    }
-    std::fs::create_dir_all(temp.join("reports/archive"))?;
-    std::fs::write(temp.join("reports/summary.csv"), b"total\n1\n")?;
-    std::fs::write(temp.join("outside.txt"), b"ignored")?;
+    let temp = tempfile::tempdir()?;
+    let temp_path = temp.path();
+    std::fs::create_dir_all(temp_path.join("reports/archive"))?;
+    std::fs::write(temp_path.join("reports/summary.csv"), b"total\n1\n")?;
+    std::fs::write(temp_path.join("outside.txt"), b"ignored")?;
     let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded())?;
-    let root = host_path_to_logical(&temp)?;
+    let root = host_path_to_logical(temp_path)?;
     let prefix = Path::parse(&format!("{}/reports", root.as_str()))?;
     let report = Path::parse(&format!("{}/reports/summary.csv", root.as_str()))?;
     let outside = Path::parse(&format!("{}/outside.txt", root.as_str()))?;
@@ -217,7 +237,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let _prefix = limited.next_entry()?.expect("subtree prefix is returned");
     assert!(limited.next_entry().is_err(), "entry budget exhaustion is an error");
-    std::fs::remove_dir_all(temp)?;
+    drop(limited);
+    drop(listing);
+    drop(filesystem);
+    temp.close()?;
     Ok(())
 }
 ```
@@ -310,6 +333,9 @@ control.set_limits(Some(LocalTempCleanupResourceLimits::new(
 )));
 directory.cleanup()?;
 assert_eq!(root.path().read_dir()?.count(), 0);
+drop(directory);
+drop(fs);
+root.close()?;
     Ok(())
 }
 ```
@@ -366,7 +392,10 @@ RSS limits or aggregate concurrent-request quotas. Temporary-resource lifecycle
 cleanup remains separate from ordinary deletion budgets.
 
 Opening writer or temporary sessions follows the `qubit-fs` 0.4 `OpenFailure` contract.
-Preserve its recovery session and any explicit cleanup error; see the
+If temporary creation fails after native work began and cleanup also fails,
+the open failure can retain a recovery session. Keep it and inspect its
+explicit cleanup error before retrying cleanup. Preserve its recovery session;
+see the
 [core recovery guide](https://github.com/qubit-ltd/rs-fs/blob/main/doc/user_guide.md).
 
 ## Advanced Usage
@@ -402,14 +431,14 @@ use qubit_fs::path::ConnectionUri;
 use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 
-let root = std::env::current_dir()?.join("target/local-fs-registry-guide");
-std::fs::create_dir_all(root.join("reports"))?;
+let root = tempfile::tempdir()?;
+std::fs::create_dir_all(root.path().join("reports"))?;
 let payload = b"tenant,amount\nA,1\n";
-std::fs::write(root.join("reports/summary.csv"), payload)?;
+std::fs::write(root.path().join("reports/summary.csv"), payload)?;
 let registry = FileSystemRegistry::default();
 registry.register(LocalFileSystemProvider::rooted(
     FileSystemId::new("guide-reports")?,
-    &root,
+    root.path(),
     LocalResourcePolicy::standard(),
 )?)?;
 let config = FileSystemConfig::new(ConnectionUri::parse("file:///reports/summary.csv")?);
@@ -417,6 +446,9 @@ let resolution = registry.resolve_config(&config)?;
 assert_eq!(resolution.path().as_str(), "/reports/summary.csv");
 assert_eq!(resolution.file_system().properties().info().id().as_str(), "guide-reports");
 assert_eq!(resolution.file_system().stat(resolution.path())?.len(), Some(payload.len() as u64));
+drop(resolution);
+drop(registry);
+root.close()?;
     Ok(())
 }
 ```
@@ -450,25 +482,25 @@ use qubit_fs_local::{LocalFileSystemProvider, LocalResourcePolicy};
 use qubit_fs_registry::{FileSystemConfig, FileSystemRegistry};
 use qubit_spi::{ProviderDescriptor, ProviderId, ProviderSelection};
 
-let root_a = std::env::current_dir()?.join("target/local-fs-selection-guide/tenant-a");
-let root_b = std::env::current_dir()?.join("target/local-fs-selection-guide/tenant-b");
-std::fs::create_dir_all(root_a.join("reports"))?;
-std::fs::create_dir_all(root_b.join("reports"))?;
+let root_a = tempfile::tempdir()?;
+let root_b = tempfile::tempdir()?;
+std::fs::create_dir_all(root_a.path().join("reports"))?;
+std::fs::create_dir_all(root_b.path().join("reports"))?;
 let payload_a = b"tenant,amount\nA,1\n";
 let payload_b = b"tenant,amount\nB,200\n";
-std::fs::write(root_a.join("reports/summary.csv"), payload_a)?;
-std::fs::write(root_b.join("reports/summary.csv"), payload_b)?;
+std::fs::write(root_a.path().join("reports/summary.csv"), payload_a)?;
+std::fs::write(root_b.path().join("reports/summary.csv"), payload_b)?;
 let registry = FileSystemRegistry::default();
 registry.register(LocalFileSystemProvider::rooted_with_descriptor(
     ProviderDescriptor::new(ProviderId::new("tenant-a")?),
     FileSystemId::new("tenant-a-files")?,
-    &root_a,
+    root_a.path(),
     LocalResourcePolicy::standard(),
 )?)?;
 registry.register(LocalFileSystemProvider::rooted_with_descriptor(
     ProviderDescriptor::new(ProviderId::new("tenant-b")?),
     FileSystemId::new("tenant-b-files")?,
-    &root_b,
+    root_b.path(),
     LocalResourcePolicy::standard(),
 )?)?;
 
@@ -486,6 +518,11 @@ assert_ne!(
 );
 assert_eq!(first.file_system().stat(first.path())?.len(), Some(payload_a.len() as u64));
 assert_eq!(second.file_system().stat(second.path())?.len(), Some(payload_b.len() as u64));
+drop(first);
+drop(second);
+drop(registry);
+root_a.close()?;
+root_b.close()?;
     Ok(())
 }
 ```
@@ -504,6 +541,15 @@ Copy and temporary-resource persistence have different metadata behavior. The
 table describes this provider's accepted requests and observable guarantees;
 unknown or unrepresented fields are outside the contract, not necessarily
 lost.
+
+Writer metadata is a separate native contract. The adapter uses
+`LocalWriteMetadataPolicy::PreserveExisting` for staged replacement of an
+existing target. It does not change initial creation, which publishes staging
+metadata subject to native inheritance rules, or append, which follows native
+write behavior. Unix replacement preserves owner, permissions, and supported
+extended metadata; Windows Host uses native replacement merging, while Windows
+Rooted preserves portable permissions. This writer policy does not expand the
+copy or temporary-persist guarantees in the table.
 
 | Policy | Copy | Successful `persist` (file and directory) |
 | --- | --- | --- |
@@ -547,9 +593,11 @@ resolution errors are returned by `qubit-fs-registry`. Inspect the returned
 error rather than assuming a URI was accepted.
 
 The provider rejects configurations outside its local-file contract: a remote
-authority, query, relative path, non-`file` scheme, options, and credentials.
-It decodes percent-encoded path bytes per URI component; encoded separators
-and NUL bytes are rejected so they cannot alter the logical hierarchy.
+authority, query, relative path, non-`file` scheme, options, non-empty
+`FileSystemConfig` metadata, and credentials. After recognizing the `file:`
+scheme and parsing URI structure, it checks options, metadata, and credentials
+before decoding the provider-specific URI path. Encoded separators and NUL
+bytes are rejected so they cannot alter the logical hierarchy.
 
 For a non-`file` scheme, the provider returns `Unsupported` with an
 `UnsupportedOperation` error. A registry using `FallbackPolicy::OnAbsence` may
@@ -563,6 +611,13 @@ for example `file:///C:/reports/summary.csv`; drive-less paths such as
 `file:///tmp/data` are invalid Host configuration. Rooted URIs are interpreted
 inside the registered rooted authority. Persist the provider selection and
 filesystem identity with a canonical URI when replaying a Rooted resolution.
+On Unix Host, `file:///reports/summary.csv` resolves to the logical path
+`/reports/summary.csv` and replay through Host uses the `local-host` identity.
+On Windows Host, `file:///C:/reports/summary.csv` resolves to
+`/C:/reports/summary.csv` and retains its drive-qualified logical path on
+replay. A Rooted provider interprets `file:///reports/summary.csv` below its
+registered root on either platform family. The URI contains neither that root
+nor the Rooted filesystem identity.
 
 Fallback requires an explicit `ProviderSelection::chain`, an automatic
 `ProviderSelection::auto()`, or resolution through the registry's default
@@ -613,6 +668,17 @@ the direct error source.
 
 ## Limitations and Best Practices
 
+- Capability support is conditional on the native platform and filesystem. Linux
+  and Windows are the adapter's regular behavioral-test platforms; atomicity
+  and durability requirements can still be rejected for a particular operation
+  or filesystem. FreeBSD is temporarily unsupported by `qubit-local-files` for
+  important copy, rename, staged-write, and temporary-publication paths. A
+  passing build or an isolated successful API call does not establish full
+  FreeBSD support. Reconsideration requires verified safe Host and Rooted
+  no-replace operations, recorded CI filesystem and mount details for metadata
+  failures, resolution of descriptor-exhaustion cleanup, and the relevant native
+  tests and doctests passing on a declared FreeBSD filesystem. See the
+  [native FreeBSD compatibility status](https://github.com/qubit-ltd/rs-local-files/blob/main/doc/freebsd-compatibility.md).
 - The public facade is synchronous; this crate has no asynchronous local
   filesystem facade.
 - Rooted containment and native filesystem behavior are provider boundaries;

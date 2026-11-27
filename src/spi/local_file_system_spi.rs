@@ -816,6 +816,7 @@ impl LocalFileSystemSpi {
     ///
     /// - `source`: Logical source path; Rooted paths may be relative.
     /// - `target`: Logical target path; Rooted paths may be relative.
+    /// - `operation`: Facade operation attached to any conversion error.
     ///
     /// # Returns
     ///
@@ -823,7 +824,10 @@ impl LocalFileSystemSpi {
     ///
     /// # Errors
     ///
-    /// Returns path-conversion errors from the local path mapper.
+    /// Returns path-conversion errors from the local path mapper, annotated
+    /// with operation, provider, logical source/target, failing endpoint, and
+    /// unchanged effect state. Native I/O has not started when conversion
+    /// fails.
     fn native_pair(&self, operation: FsOperation, source: &Path, target: &Path) -> FsResult<(PathBuf, PathBuf)> {
         let source_native = self.native_path(source).map_err(|error| {
             error
