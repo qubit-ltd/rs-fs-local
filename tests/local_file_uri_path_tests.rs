@@ -10,6 +10,7 @@
 use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::path::ConnectionUri;
+#[cfg(windows)]
 use qubit_fs::path::Path as LogicalPath;
 #[cfg(windows)]
 use qubit_fs::read::ReadOptions;

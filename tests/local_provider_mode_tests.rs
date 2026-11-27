@@ -17,6 +17,7 @@ use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalResourcePolicy;
 use qubit_fs_registry::FileSystemConfig;
 use qubit_fs_registry::FileSystemRegistry;
+#[cfg(windows)]
 use qubit_fs_registry::FileSystemRegistryError;
 use qubit_spi::ProviderDescriptor;
 use qubit_spi::ProviderId;

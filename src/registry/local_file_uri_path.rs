@@ -344,9 +344,9 @@ mod tests {
     #[test]
     fn test_decode_rejects_malformed_and_unsafe_encoded_components() {
         #[cfg(not(windows))]
-        let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F"];
+        let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F", "/%2E%2E"];
         #[cfg(windows)]
-        let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F", "/%5C"];
+        let raw_paths = ["/%", "/%0", "/%GG", "/%00", "/%2F", "/%5C", "/%2E%2E"];
 
         for raw in raw_paths {
             let failure = decode(raw).expect_err("malformed or unsafe URI path must be rejected");
