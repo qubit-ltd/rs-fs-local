@@ -10,6 +10,7 @@
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::Path as NativePath;
+use std::path::PathBuf;
 
 use qubit_fs::FileSystem;
 use qubit_fs::copy::CopyFailureState;
@@ -40,6 +41,115 @@ use qubit_local_files::error::LocalFileError;
 use qubit_local_files::error::LocalFileErrorKind;
 use qubit_local_files::outcome::LocalCopyFailure;
 use qubit_local_files::test_support::install_test_fault;
+
+#[cfg(unix)]
+struct RestoreDirectoryPermissions {
+    path: PathBuf,
+    permissions: std::fs::Permissions,
+}
+
+#[cfg(unix)]
+impl Drop for RestoreDirectoryPermissions {
+    fn drop(&mut self) {
+        let _ = std::fs::set_permissions(&self.path, self.permissions.clone());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn test_recovery_cleanup_failure_maps_context_and_allows_retry() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().expect("fixture root should exist");
+    std::fs::write(root.path().join("external-sentinel"), b"preserve").expect("external sentinel should exist");
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem should open");
+    let parent = host_path_to_logical(root.path()).expect("host parent should convert");
+    let create_fault = install_test_fault("temp-identity-file-cleanup").expect("partial creation fault should install");
+    let mut failure = filesystem
+        .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+        .expect_err("identity failure should retain partial cleanup ownership");
+    let cause = failure
+        .error()
+        .source()
+        .and_then(|source| source.downcast_ref::<LocalFileError>())
+        .expect("native creation error should remain the cause");
+    assert!(
+        cause.cleanup_error().is_some(),
+        "creation retained the sandbox cleanup failure"
+    );
+    let sandbox_candidates: Vec<_> = std::fs::read_dir(root.path())
+        .expect("read fixture root")
+        .map(|entry| entry.expect("fixture entry").path())
+        .filter(|path| path.file_name() != Some(OsStr::new("external-sentinel")))
+        .collect();
+    assert_eq!(
+        1,
+        sandbox_candidates.len(),
+        "partial creation leaves one sandbox in the fixture"
+    );
+    let sandbox = sandbox_candidates.into_iter().next().expect("sandbox candidate");
+    assert!(
+        sandbox.starts_with(root.path()),
+        "sandbox must stay inside the test fixture"
+    );
+    let original_permissions = std::fs::metadata(&sandbox).expect("sandbox metadata").permissions();
+    let _restore_permissions = RestoreDirectoryPermissions {
+        path: sandbox.clone(),
+        permissions: original_permissions.clone(),
+    };
+    std::fs::set_permissions(
+        &sandbox,
+        std::fs::Permissions::from_mode(original_permissions.mode() & !0o222),
+    )
+    .expect("make only the fixture sandbox read-only");
+
+    let mut recovery = failure
+        .take_recovery()
+        .expect("partial native resource ownership is retained");
+    drop(create_fault);
+    let cleanup_error = recovery
+        .cleanup()
+        .expect_err("read-only sandbox should reject native cleanup");
+    assert_eq!(FsErrorKind::PermissionDenied, cleanup_error.kind());
+    assert_eq!(FsOperation::CleanupTemp, cleanup_error.operation());
+    assert_eq!(Some(&parent), cleanup_error.path());
+    assert_eq!(Some("local-file"), cleanup_error.provider());
+    assert_eq!(
+        qubit_fs::error::RecoveryCleanupState::Indeterminate,
+        recovery.cleanup_state()
+    );
+
+    std::fs::set_permissions(&sandbox, original_permissions).expect("restore sandbox permissions");
+    recovery
+        .cleanup()
+        .expect("cleanup retry succeeds after permission restoration");
+    assert_eq!(
+        b"preserve".as_slice(),
+        std::fs::read(root.path().join("external-sentinel")).expect("external resource remains")
+    );
+}
+
+#[test]
+fn test_host_rejects_relative_temp_parent_for_file_and_directory() {
+    let filesystem = LocalFileSystems::host(LocalResourcePolicy::unbounded()).expect("host filesystem");
+    let parent = Path::parse("relative-parent").expect("relative parent path parses");
+
+    let file_error = filesystem
+        .create_temp_file(TempFileOptions::default().with_parent(Some(parent.clone())))
+        .expect_err("Host temp files require absolute parents");
+    assert_eq!(OpenFailureStage::Preflight, file_error.stage());
+    assert_eq!(FsErrorKind::InvalidPath, file_error.error().kind());
+    assert_eq!(FsOperation::CreateTemp, file_error.error().operation());
+    assert_eq!(Some(&parent), file_error.error().path());
+
+    let directory_error = filesystem
+        .create_temp_directory(TempDirectoryOptions::default().with_parent(Some(parent.clone())))
+        .expect_err("Host temp directories require absolute parents");
+    assert_eq!(OpenFailureStage::Preflight, directory_error.stage());
+    assert_eq!(FsErrorKind::InvalidPath, directory_error.error().kind());
+    assert_eq!(FsOperation::CreateTemp, directory_error.error().operation());
+    assert_eq!(Some(&parent), directory_error.error().path());
+}
 
 #[test]
 fn test_partial_temp_creation_recovery_survives_cleanup_retry() {

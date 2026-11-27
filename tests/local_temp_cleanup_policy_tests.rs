@@ -15,6 +15,7 @@ use qubit_fs::error::FsErrorKind;
 use qubit_fs::metadata::FileSystemId;
 use qubit_fs::temp::TempOptions;
 use qubit_fs::temp::TempResourceState;
+#[cfg(feature = "registry")]
 use qubit_fs_local::LocalFileSystemProvider;
 use qubit_fs_local::LocalFileSystems;
 use qubit_fs_local::LocalResourcePolicy;

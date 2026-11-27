@@ -911,12 +911,9 @@ impl LocalFileSystemSpi {
     /// - `error`: Native copy failure to retain on projection errors.
     /// - `state`: Native publication state of the failed copy.
     /// - `partial_stats`: Native copy statistics recorded before failure.
-    /// - `failed_source`: Optional native source coordinate where copying
-    ///   failed.
-    /// - `failed_target`: Optional native target coordinate where copying
-    ///   failed.
-    /// - `request_source`: Source path supplied by the caller.
-    /// - `request_target`: Target path supplied by the caller.
+    /// - `failed_paths`: Optional native source and target coordinates where
+    ///   copying failed.
+    /// - `request_paths`: Source and target paths supplied by the caller.
     ///
     /// # Returns
     ///
@@ -931,11 +928,11 @@ impl LocalFileSystemSpi {
         error: native_files::outcome::LocalCopyFailure,
         state: CopyFailureState,
         partial_stats: CopyStats,
-        failed_source: Option<&NativePath>,
-        failed_target: Option<&NativePath>,
-        request_source: &Path,
-        request_target: &Path,
+        failed_paths: (Option<&NativePath>, Option<&NativePath>),
+        request_paths: (&Path, &Path),
     ) -> Result<(native_files::outcome::LocalCopyFailure, Option<Path>, Option<Path>), SpiCopyFailure> {
+        let (failed_source, failed_target) = failed_paths;
+        let (request_source, request_target) = request_paths;
         let failure_path = failed_source
             .map(|path| self.project_failure_path(path, FsOperation::Copy, request_source))
             .transpose();
@@ -1340,10 +1337,8 @@ impl FileSystemSpi for LocalFileSystemSpi {
                     error,
                     state,
                     partial_stats,
-                    failed_source.as_deref(),
-                    failed_target.as_deref(),
-                    request.source(),
-                    request.target(),
+                    (failed_source.as_deref(), failed_target.as_deref()),
+                    (request.source(), request.target()),
                 ) {
                     Ok(projected) => projected,
                     Err(failure) => return failure,
@@ -1538,6 +1533,7 @@ mod tests {
     use std::time::Duration;
 
     use qubit_fs::FileSystem;
+    use qubit_fs::FsResult;
     use qubit_fs::copy::CopyFailureState;
     use qubit_fs::copy::CopyOptions;
     use qubit_fs::copy::CopyStats;
@@ -1546,12 +1542,21 @@ mod tests {
     use qubit_fs::directory::ListScope;
     use qubit_fs::error::FsEffectState;
     use qubit_fs::error::FsErrorKind;
+    use qubit_fs::error::FsOperation;
+    use qubit_fs::metadata::FileKind;
     use qubit_fs::metadata::FileSystemId;
     use qubit_fs::path::Path;
     use qubit_fs::path::Path as LogicalPath;
     use qubit_fs::read::ReadOptions;
+    use qubit_fs::spi::CreateTempDirectoryRequest;
+    use qubit_fs::spi::CreateTempFileRequest;
+    use qubit_fs::spi::FileSystemSpi;
+    use qubit_fs::spi::OpenedTempDirectory;
+    use qubit_fs::spi::OpenedTempFile;
     use qubit_fs::spi::ProviderOperation;
     use qubit_fs::spi::ProviderProperties;
+    use qubit_fs::spi::StatRequest;
+    use qubit_fs::spi::StatResponse;
     use qubit_fs::temp::TempOptions;
     use qubit_fs::write::WriteOptions;
     use qubit_local_files::LocalFileSystem;
@@ -1566,6 +1571,115 @@ mod tests {
     use super::native_option_call_recording::take as take_native_option_calls;
     use crate::LocalTempCleanupControl;
     use crate::LocalTempCleanupResourceLimits;
+
+    /// Legacy-only adapter that exercises FileSystemSpi's default recovery
+    /// bridge while delegating creation to the local provider's old methods.
+    struct LegacyTempFileSystemSpi(LocalFileSystemSpi);
+
+    impl FileSystemSpi for LegacyTempFileSystemSpi {
+        fn properties(&self) -> ProviderProperties {
+            FileSystemSpi::properties(&self.0)
+        }
+
+        fn stat(&self, request: StatRequest<'_>) -> FsResult<StatResponse> {
+            FileSystemSpi::stat(&self.0, request)
+        }
+
+        fn create_temp_file(&self, request: CreateTempFileRequest) -> FsResult<OpenedTempFile> {
+            FileSystemSpi::create_temp_file(&self.0, request)
+        }
+
+        fn create_temp_directory(&self, request: CreateTempDirectoryRequest) -> FsResult<OpenedTempDirectory> {
+            FileSystemSpi::create_temp_directory(&self.0, request)
+        }
+    }
+
+    #[test]
+    fn test_legacy_temp_methods_remain_compatible_with_default_recovery_bridge() {
+        let filesystem = FileSystem::from_spi(LegacyTempFileSystemSpi(
+            LocalFileSystemSpi::new(crate::LocalResourcePolicy::unbounded()).expect("local SPI"),
+        ))
+        .expect("facade");
+
+        let file = filesystem
+            .create_temp_file(TempOptions::default())
+            .expect("legacy temp-file method must create a validated resource");
+        let file_path = file.path().clone();
+        assert_eq!(
+            FileKind::File,
+            filesystem.stat(&file_path).expect("file metadata").kind().clone()
+        );
+        drop(file);
+        assert_eq!(
+            FsErrorKind::NotFound,
+            filesystem
+                .stat(&file_path)
+                .expect_err("dropped file must be cleaned")
+                .kind()
+        );
+
+        let directory = filesystem
+            .create_temp_directory(TempOptions::default())
+            .expect("legacy temp-directory method must create a validated resource");
+        let directory_path = directory.path().clone();
+        assert_eq!(
+            FileKind::Directory,
+            filesystem
+                .stat(&directory_path)
+                .expect("directory metadata")
+                .kind()
+                .clone()
+        );
+        drop(directory);
+        assert_eq!(
+            FsErrorKind::NotFound,
+            filesystem
+                .stat(&directory_path)
+                .expect_err("dropped directory must be cleaned")
+                .kind()
+        );
+
+        let invalid_parent = Path::parse("/%2F").expect("escaped separator path parses logically");
+        let file_error = filesystem
+            .create_temp_file(TempOptions::default().with_parent(Some(invalid_parent.clone())))
+            .expect_err("legacy temp-file method must map invalid Host parent errors");
+        assert_eq!(FsErrorKind::InvalidPath, file_error.error().kind());
+        assert_eq!(FsOperation::CreateTemp, file_error.error().operation());
+        assert_eq!(Some(&invalid_parent), file_error.error().path());
+        assert_eq!(Some("local-file"), file_error.error().provider());
+
+        let directory_error = filesystem
+            .create_temp_directory(TempOptions::default().with_parent(Some(invalid_parent.clone())))
+            .expect_err("legacy temp-directory method must map invalid Host parent errors");
+        assert_eq!(FsErrorKind::InvalidPath, directory_error.error().kind());
+        assert_eq!(FsOperation::CreateTemp, directory_error.error().operation());
+        assert_eq!(Some(&invalid_parent), directory_error.error().path());
+        assert_eq!(Some("local-file"), directory_error.error().provider());
+    }
+
+    #[test]
+    fn test_host_temp_parent_mapping_failure_is_contextualized_for_file_and_directory() {
+        let filesystem =
+            FileSystem::from_spi(LocalFileSystemSpi::new(crate::LocalResourcePolicy::unbounded()).expect("local SPI"))
+                .expect("facade");
+        // A logical escaped slash is a valid Path spelling, but cannot be
+        // represented as one native path component by the Host mapper.
+        let parent = Path::parse("/%2F").expect("escaped separator path parses logically");
+
+        let file_error = filesystem
+            .create_temp_file(TempOptions::default().with_parent(Some(parent.clone())))
+            .expect_err("Host temp file parent must reject an encoded native separator");
+        assert_eq!(FsErrorKind::InvalidPath, file_error.error().kind());
+        assert_eq!(Some(&parent), file_error.error().path());
+        assert_eq!(Some("local-file"), file_error.error().provider());
+
+        let directory_error = filesystem
+            .create_temp_directory(TempOptions::default().with_parent(Some(parent.clone())))
+            .expect_err("Host temp directory parent must reject an encoded native separator");
+        assert_eq!(FsErrorKind::InvalidPath, directory_error.error().kind());
+        assert_eq!(Some(&parent), directory_error.error().path());
+        assert_eq!(Some("local-file"), directory_error.error().provider());
+    }
 
     #[test]
     fn test_impossible_rooted_copy_coordinate_becomes_contract_violation() {
@@ -1593,10 +1707,8 @@ mod tests {
                 native_failure,
                 state,
                 partial_stats,
-                Some(std::path::Path::new("../escape")),
-                None,
-                &source,
-                &target,
+                (Some(std::path::Path::new("../escape")), None),
+                (&source, &target),
             )
             .expect_err("impossible native coordinate must become a provider contract violation");
 
